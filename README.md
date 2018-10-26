@@ -6,26 +6,31 @@ frugalos
 [![Build Status](https://travis-ci.org/frugalos/frugalos.svg?branch=master)](https://travis-ci.org/frugalos/frugalos)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Frugal Object Storage
+Frugal Object Storage.
 
+Frugalos is a distributed object storage written by Rust.
+It is suitable for storing medium size BLOBs that become petabyte scale in total.
 
 Documentation
 -------------
 
 - [Rustdoc](https://docs.rs/frugalos)
 - [Wiki (Japanese only)](https://github.com/frugalos/frugalos/wiki)
+- [Real World Example in Niconico (used for recording live video streams)][niconico example]
 
+[niconico example]: https://dwango.github.io/articles/frugalos/
 
 Installation
 ------------
 
-You can install `frugalos` by executing the following command:
+You can install `frugalos` by executing the following command (please also see [liberasurecode's prerequisites]):
 ```console
 $ cargo install frugalos
 ```
 
 And pre-build binaries are found in [releases] page.
 
+[liberasurecode's prerequisites]: https://github.com/frugalos/liberasurecode#prerequisites-to-build
 [releases]: https://github.com/frugalos/frugalos/releases
 
 Below is a minimal usage example:
@@ -49,7 +54,7 @@ Oct 26 13:46:16.086 INFO Starts RPC server, server: 127.0.0.1:14278, module: fib
 // Add a device and a bucket to store objects.
 $ DEVICE_JSON='{"file": {"id": "file0", "server": "example", "filepath": "example/file0.lusf"}}'
 $ curl -XPUT -d "$DEVICE_JSON" http://localhost:3000/v1/devices/file0
-{"file":{"id":"file0","seqno":0,"weight":"auto","server":"example","capacity":19556691462,"filepath":"example/file0.lusf"}}%   
+{"file":{"id":"file0","seqno":0,"weight":"auto","server":"example","capacity":19556691462,"filepath":"example/file0.lusf"}}%
 
 $ BUCKET_JSON='{"metadata": {"id": "bucket0", "device": "file0", "tolerable_faults": 1}}'
 $ curl -XPUT -d "$BUCKET_JSON" http://localhost:3000/v1/buckets/bucket0
