@@ -24,6 +24,10 @@ You can install `frugalos` by executing the following command:
 $ cargo install frugalos
 ```
 
+And pre-build binaries are found in [releases] page.
+
+[releases]: https://github.com/frugalos/frugalos/releases
+
 Below is a minimal usage example:
 ```console
 // Creates a cluster.
@@ -39,7 +43,7 @@ $ curl -XPUT -d "$DEVICE_JSON" http://localhost:3000/v1/devices/file0
 $ BUCKET_JSON='{"metadata": {"id": "bucket0", "device": "file0", "tolerable_faults": 1}}'
 $ curl -XPUT -d "$BUCKET_JSON" http://localhost:3000/v1/buckets/bucket0
 
-// PUT and GET objects
+// PUT and GET objects.
 $ curl -XPUT -d 'foo' http://localhost:3000/v1/buckets/bucket0/objects/foo
 $ curl http://localhost:3000/v1/buckets/bucket0/objects/foo
 foo
