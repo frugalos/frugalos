@@ -1,0 +1,29 @@
+[package]
+name = "frugalos_config"
+version = "0.3.0"
+authors = ["The FrugalOS Developers"]
+description = "Configuration Management Layer of Frugalos"
+homepage = "https://github.com/frugalos/frugalos"
+repository = "https://github.com/frugalos/frugalos"
+readme = "README.md"
+license = "MIT"
+
+[badges]
+travis-ci = {repository = "frugalos/frugalos"}
+
+[dependencies]
+bytecodec = "0.4"
+byteorder = "1"
+cannyls = "0.9"
+fibers = "0.1"
+fibers_rpc = "0.2"
+fibers_tasque = "0.1"
+frugalos_raft = { version = "0.6", path = "../frugalos_raft/" }
+futures = "0.1"
+libfrugalos = "0.2"
+prometrics = "0.1"
+protobuf_codec = "0.2"
+raftlog = "0.4"
+rendezvous_hash = "0.2"
+slog = "2"
+trackable = "0.2"

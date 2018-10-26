@@ -1,0 +1,201 @@
+///
+/// システムバケツに格納されるメッセージ群の定義
+///
+syntax = "proto3";
+
+//
+// バケツ系
+//
+
+// [PATH] /v1/buckets/__system/objects/buckets
+message Buckets {
+  repeated string bucket_id = 1;
+}
+
+// [PATH] /v1/buckets/__system/objects/buckets.${BUCKET_ID}
+//
+// NOTE: バケツオブジェクトのバージョンは特別に"エポック"と呼称することがある
+message Bucket {
+  // システムが自動的に採番するシーケンス番号
+  uint32 bucket_seqno = 2;
+  DeviceRef device = 3;
+  uint32 segment_count = 4;
+  uint32 tolerable_faults = 5;
+  oneof storage {
+    MetadataStorage metadata = 6;
+    ReplicatedStorage replicated = 7;
+    DispersedStorage dispersed = 8;
+  }
+}
+
+message MetadataStorage {
+}
+
+message ReplicatedStorage {
+}
+
+message DispersedStorage {
+  uint32 data_fragment_count = 1;
+}
+
+
+//
+// サーバ系
+//
+
+// [PATH] /v1/buckets/__system/objects/servers
+message Servers {
+  repeated string server_id = 1;
+}
+
+// [PATH] /v1/buckets/__system/objects/servers.${SERVER_ID}
+message Server {
+  string host = 1;
+  uint32 port = 2;
+}
+
+
+//
+// デバイス系
+//
+
+// [PATH] /v1/buckets/__system/objects/devices
+message DeviceSummaries {
+  repeated string devices = 1;
+}
+
+message DeviceSummary {
+  string device_id = 1;
+  string server = 2;
+  DeviceType type = 3;
+}
+
+enum DeviceType {
+  VIRTUAL = 0;
+  MEMORY = 1;
+  FILE = 2;
+}
+
+// [PATH] /v1/buckets/__system/objects/devices.${DEVICE_ID}
+//
+// - IDは同一だがバージョンが異なる複数のインスタンスが格納されている可能性がある
+message Devices {
+  repeated Device devices = 1;
+}
+
+message DeviceRef {
+  string id = 1;
+  uint64 version = 2;
+}
+
+message Device {
+  DeviceRef device = 1;
+  Weight weight = 2;
+  oneof type {
+    VirtualDevice virtual = 3;
+    MemoryDevice memory = 4;
+    FileDevice file = 5;
+  }
+}
+
+// セグメント割当時に使用される重み.
+//
+// 最終値(weight) = absolute * relative
+message Weight {
+  // デフォルト値:
+  // - type=virtual: 子デバイスのweight(i.e., `absolute * relateive`)の合計
+  // - other: capacityの値
+  oneof abs {
+    uint64 absolute = 1;
+  }
+
+  // デフォルト値: `1.0`
+  oneof rel {
+    double relateive = 2;
+  }
+}
+
+message VirtualDevice {
+  repeated DeviceRef children = 1;
+  SegmentAllocatePolicy policy = 2;
+}
+
+enum SegmentAllocatePolicy {
+  SCATTER_IF_POSSIBLE = 0;
+  SCATTER = 1;
+  NEUTRAL = 2;
+  GATHER = 3;
+}
+
+message MemoryDevice {
+  string server_id = 1;
+  uint64 capacity = 2;
+}
+
+message FileDevice {
+  string server_id = 1;
+  uint64 capacity = 2;
+  string filepath = 3;
+}
+
+//
+// コマンド系
+//
+
+// [PATH] /v1/buckets/__system/objects/command
+//
+// - 現在処理中のコマンド(i.e., 更新系操作)
+// - システムの整合性保証を容易にするために、一度に処理可能なコマンドは一つのみ
+message Command {
+  oneof command {
+    PutBucket put_bucket = 1;
+    DeleteBucket delete_bucket = 2;
+    PutServer put_server = 3;
+    DeleteServer delete_server = 4;
+    PutDevice put_device = 5;
+    DeleteDevice delete_device = 6;
+  }
+}
+
+message PutBucket {
+  string bucket_id = 1;
+  Bucket bucket = 2;
+}
+message DeleteBucket {
+  string bucket_id = 1;
+}
+message PutServer {
+  string server_id = 1;
+  Server server = 2;
+}
+message DeleteServer {
+  string server_id = 1;
+}
+message PutDevice {
+  string device_id = 1;
+  Device device = 2;
+}
+message DeleteDevice {
+  string device_id = 1;
+}
+
+//
+// セグメント系
+//
+
+// [PATH] /v1/buckets/__system/objects/segments.${BUCKET_ID}.${SEGMENT_ID}
+message Segments {
+  repeated Cluster clusters = 1;
+}
+
+message Cluster {
+  // NOTE: 差分がない場合には、前回のエポック番号(and members)がそのまま使用される
+  // (正確には、要素が丸ごと流用されて、リストの長さは増加しない)
+  uint64 epoch = 1;
+  repeated Member members = 2;
+}
+
+message Member {
+  string server_id = 1;
+  string device_id = 2;
+}

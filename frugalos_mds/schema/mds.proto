@@ -1,0 +1,62 @@
+///
+/// ストレージに永続化されるデータ用のスキーマ定義
+//
+syntax = "proto3";
+
+package frugalos.mds;
+
+// https://raw.githubusercontent.com/google/protobuf/master/src/google/protobuf/empty.proto
+import "google/protobuf/empty.proto";
+
+// 状態機械に適用されるコマンド
+message Command {
+  oneof command {
+    PutCommand put = 1;
+    DeleteCommand delete = 2;
+  }
+}
+
+message PutCommand {
+  string object_id = 1;
+  bytes userdata = 2;
+  Expect expect = 3;
+  uint64 put_content_timeout = 4;
+}
+
+message DeleteCommand {
+  string object_id = 1;
+  Expect expect = 2;
+}
+
+message Expect {
+  oneof expect {
+    Versions if_match = 1;
+    Versions if_none_match = 2;
+    google.protobuf.Empty if_none = 3;
+  }
+}
+
+message Versions {
+  repeated uint64 versions = 1;
+}
+
+// 状態機械のスナップショット
+message Snapshot {
+  oneof data {
+    Objects objects = 1;
+
+    // https://docs.rs/patricia_tree/0.1.6/patricia_tree/node/struct.NodeEncoder.html でエンコードされた
+    // object_id => versionのマップ (userdataが存在する場合にはこの形式は使えない).
+    bytes patricia = 2;
+  }
+}
+
+message Objects {
+  // object_id => metadata
+  map<string, Metadata> objects = 1;
+}
+
+message Metadata {
+  uint64 version = 1;
+  bytes userdata = 2;
+}

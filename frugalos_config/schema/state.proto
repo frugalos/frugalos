@@ -1,0 +1,83 @@
+///
+/// 状態機械関連メッセージのスキーマ定義
+///
+syntax = "proto3";
+
+package frugalos.cluster.state;
+
+import "config.proto";
+
+// 状態機械に適用されるコマンド
+message Command {
+  oneof command {
+    PutBucket put_bucket = 1;
+    DeleteBucket delete_bucket = 2;
+    PutDevice put_device = 3;
+    DeleteDevice delete_device = 4;
+    PutServer put_server = 5;
+    DeleteServer delete_server = 6;
+  }
+}
+
+message PutBucket {
+  frugalos.cluster.config.Bucket bucket = 1;
+}
+message DeleteBucket {
+  string id = 1;
+}
+message PutServer {
+  frugalos.cluster.config.Server server = 1;
+}
+message DeleteServer {
+  string id = 1;
+}
+message PutDevice {
+  frugalos.cluster.config.Device device = 1;
+}
+message DeleteDevice {
+  string id = 1;
+}
+
+// 状態機械のスナップショット
+message Snapshot {
+  // NOTE: 将来的にoneofを使って拡張したくなるかもしれないので、一段メッセージを被せておく
+  MachineState state = 1;
+}
+
+message MachineState {
+  NextSeqNo next_seqno = 1;
+  repeated frugalos.cluster.config.Bucket buckets = 2;
+  repeated frugalos.cluster.config.Device devices = 3;
+  repeated frugalos.cluster.config.Server servers = 4;
+  repeated SegmentTable segment_tables = 5;
+}
+
+message NextSeqNo {
+  uint32 bucket = 1;
+  uint32 device = 2;
+  uint32 server = 3;
+}
+
+///
+/// セグメント系
+///
+message SegmentTable {
+  string bucket = 1;
+  repeated Segment segments = 2;
+}
+
+message Segment {
+  // NOTE:
+  // 構成変更時のデータ移行用に過去の情報も保持しておく.
+  // 最新構成のメンバ全員(or 規定数以上)がデータ同期に
+  // 完了している場合は、最新のものを除いて削除可能.
+  // なお、メタデータバケツの場合は常に最新のみ保持で良い.
+  //
+  // 要素は新しい順に並んでいるものとする.
+  repeated DeviceGroup groups = 1;
+}
+
+// セグメントに対応するデバイス群(e.g., Raftクラスタのメンバ群)
+message DeviceGroup {
+  repeated uint32 members = 1; // デバイス番号のリスト
+}

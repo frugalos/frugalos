@@ -1,0 +1,49 @@
+[package]
+name = "frugalos"
+version = "0.9.0"
+authors = ["The FrugalOS Developers"]
+description = "Frugal Object Storage"
+homepage = "https://github.com/frugalos/frugalos"
+repository = "https://github.com/frugalos/frugalos"
+readme = "README.md"
+keywords = ["object-storage", "distributed"]
+categories = ["database-implementations"]
+license = "MIT"
+
+[badges]
+travis-ci = {repository = "frugalos/frugalos"}
+
+[dependencies]
+atomic_immut = "0.1"
+bytecodec = { version = "0.4", features = ["json_codec"] }
+cannyls = "0.9"
+cannyls_rpc = "0.1"
+clap = "2"
+fibers = "0.1"
+fibers_http_server = "0.1"
+fibers_rpc = "0.2"
+fibers_tasque = "0.1"
+frugalos_config = { version = "0.3", path = "frugalos_config" }
+frugalos_mds = { version = "0.6", path = "frugalos_mds" }
+frugalos_raft = { version = "0.6", path = "frugalos_raft" }
+frugalos_segment = { version = "0.5", path = "frugalos_segment" }
+futures = "0.1"
+jemalloc-ctl = "0.2"
+hostname = "0.1"
+httpcodec = "0.2"
+libfrugalos = "0.2"
+num_cpus = "1"
+prometrics = "0.1"
+raftlog = "0.4"
+rustracing = "0.1"
+rustracing_jaeger = "0.1"
+siphasher = "0.2"
+slog = "2"
+sloggers = "0.3"
+serde = "1"
+serde_derive = "1"
+trackable = "0.2"
+url = "1"
+
+[workspace]
+members = ["frugalos_config", "frugalos_mds", "frugalos_raft", "frugalos_segment"]

@@ -1,0 +1,137 @@
+version: '2'
+
+services:
+  frugalos01:
+    image: frugalos
+    hostname: frugalos01
+    command: bootstrap.sh
+    volumes:
+      - /tmp/frugalos_it/frugalos01/:/var/lib/frugalos/
+    networks:
+      frugalos_net:
+        ipv4_address: 172.18.0.21
+    env_file: ../frugalos.env
+
+  frugalos02:
+    image: frugalos
+    hostname: frugalos02
+    command: join.sh
+    volumes:
+      - /tmp/frugalos_it/frugalos02/:/var/lib/frugalos/
+    networks:
+      frugalos_net:
+        ipv4_address: 172.18.0.22
+    depends_on:
+      - frugalos01
+    env_file: ../frugalos.env
+
+  frugalos03:
+    image: frugalos
+    hostname: frugalos03
+    command: join.sh
+    volumes:
+      - /tmp/frugalos_it/frugalos03/:/var/lib/frugalos/
+    networks:
+      frugalos_net:
+        ipv4_address: 172.18.0.23
+    depends_on:
+      - frugalos01
+    env_file: ../frugalos.env
+
+  frugalos04:
+    image: frugalos
+    hostname: frugalos04
+    command: join.sh
+    volumes:
+      - /tmp/frugalos_it/frugalos04/:/var/lib/frugalos/
+    networks:
+      frugalos_net:
+        ipv4_address: 172.18.0.24
+    depends_on:
+      - frugalos01
+    env_file: ../frugalos.env
+
+  frugalos05:
+    image: frugalos
+    hostname: frugalos05
+    command: join.sh
+    volumes:
+      - /tmp/frugalos_it/frugalos05/:/var/lib/frugalos/
+    networks:
+      frugalos_net:
+        ipv4_address: 172.18.0.25
+    depends_on:
+      - frugalos01
+    env_file: ../frugalos.env
+
+  frugalos06:
+    image: frugalos
+    hostname: frugalos06
+    command: join.sh
+    volumes:
+      - /tmp/frugalos_it/frugalos06/:/var/lib/frugalos/
+    networks:
+      frugalos_net:
+        ipv4_address: 172.18.0.26
+    depends_on:
+      - frugalos01
+    env_file: ../frugalos.env
+
+  frugalos07:
+    image: frugalos
+    hostname: frugalos07
+    command: join.sh
+    volumes:
+      - /tmp/frugalos_it/frugalos07/:/var/lib/frugalos/
+    networks:
+      frugalos_net:
+        ipv4_address: 172.18.0.27
+    depends_on:
+      - frugalos01
+    env_file: ../frugalos.env
+
+  frugalos08:
+    image: frugalos
+    hostname: frugalos08
+    command: join.sh
+    volumes:
+      - /tmp/frugalos_it/frugalos08/:/var/lib/frugalos/
+    networks:
+      frugalos_net:
+        ipv4_address: 172.18.0.28
+    depends_on:
+      - frugalos01
+    env_file: ../frugalos.env
+
+  frugalos09:
+    image: frugalos
+    hostname: frugalos09
+    command: join.sh
+    volumes:
+      - /tmp/frugalos_it/frugalos09/:/var/lib/frugalos/
+    networks:
+      frugalos_net:
+        ipv4_address: 172.18.0.29
+    depends_on:
+      - frugalos01
+    env_file: ../frugalos.env
+
+  frugalos10:
+    image: frugalos
+    hostname: frugalos10
+    command: join.sh
+    volumes:
+      - /tmp/frugalos_it/frugalos10/:/var/lib/frugalos/
+    networks:
+      frugalos_net:
+        ipv4_address: 172.18.0.30
+    depends_on:
+      - frugalos01
+    env_file: ../frugalos.env
+
+networks:
+  frugalos_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.18.0.0/16

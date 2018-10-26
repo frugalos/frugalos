@@ -1,0 +1,20 @@
+version: '2'
+
+services:
+  frugalos01:
+    image: frugalos
+    hostname: frugalos01
+    command: bootstrap.sh
+    volumes:
+      - /tmp/frugalos_it/frugalos01/:/var/lib/frugalos/
+    networks:
+      frugalos_net:
+        ipv4_address: 172.18.0.21
+    env_file: ../frugalos.env
+
+networks:
+  frugalos_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.18.0.0/16

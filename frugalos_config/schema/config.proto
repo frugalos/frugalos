@@ -1,0 +1,129 @@
+///
+/// クラスタ構成関連メッセージのスキーマ定義
+///
+syntax = "proto3";
+
+package frugalos.cluster.config;
+
+//
+// バケツ系
+//
+message Bucket {
+  oneof bucket {
+    MetadataBucket metadata = 1;
+    ReplicatedBucket replicated = 2;
+    DispersedBucket dispersed = 3;
+  }
+}
+
+message MetadataBucket {
+  // 共通フィールド群
+  string id = 1;
+  uint32 seqno = 2; // NOTE: 自動的に採番される (LumpID生成用に必要)
+  string device = 3;
+
+  // デフォルト値: `物理デバイス数 * 5 / (tolerable_faults * 2 + 1)`
+  uint32 segment_count = 4;
+  uint32 tolerable_faults = 5;
+}
+
+message ReplicatedBucket {
+  // 共通フィールド群
+  string id = 1;
+  uint32 seqno = 2; // NOTE: 自動的に採番される (LumpID生成用に必要)
+  string device = 3;
+
+  // デフォルト値: `物理デバイス数 * 10 / (tolerable_faults * 2 + 1)`
+  uint32 segment_count = 4;
+  uint32 tolerable_faults = 5;
+}
+
+message DispersedBucket {
+  // 共通フィールド群
+  string id = 1;
+  uint32 seqno = 2; // NOTE: 自動的に採番される (LumpID生成用に必要)
+  string device = 3;
+
+  // デフォルト値: `物理デバイス数 * 10 / max(tolerable_faults * 2 + 1, tolerable_faults + data_fragment_count)`
+  uint32 segment_count = 4;
+  uint32 tolerable_faults = 5;
+
+  // 固有フィールド群
+  uint32 data_fragment_count = 6;
+}
+
+//
+// サーバ系
+//
+message Server {
+  string id = 1;
+  uint32 seqno = 2; // 自動採番
+  string host = 3;
+  uint32 port = 4;
+}
+
+///
+/// デバイス系
+///
+message Device {
+  oneof device {
+    VirtualDevice virtual = 1;
+    MemoryDevice memory = 2;
+    FileDevice file = 3;
+  }
+}
+
+message Weight {
+  // 省略には`relative = 1.0`として扱われる
+  oneof weight {
+    uint64 absolute = 1;
+
+    // NOTE:
+    // - type=virtual: 子デバイスのweight合計値 * relative
+    // - その他: capacity * relative
+    double relative = 2;
+  }
+}
+
+message VirtualDevice {
+  // デバイス共通フィールド群
+  string id = 1;
+  uint32 seqno = 2;
+  Weight weight = 3;
+
+  // 固有フィールド群
+  repeated string children = 4;  // デバイスIDのリスト
+  SegmentAllocationPolicy policy = 5;
+}
+
+enum SegmentAllocationPolicy {
+  SCATTER_IF_POSSIBLE = 0;
+  SCATTER = 1;
+  NEUTRAL = 2;
+  GATHER = 3;
+}
+
+message MemoryDevice {
+  // デバイス共通フィールド群
+  string id = 1;
+  uint32 seqno = 2;
+  Weight weight = 3;
+
+  // 物理デバイス共通フィールド群
+  string server = 4;
+  uint64 capacity = 5;
+}
+
+message FileDevice {
+  // デバイス共通フィールド群
+  string id = 1;
+  uint32 seqno = 2;
+  Weight weight = 3;
+
+  // 物理デバイス共通フィールド群
+  string server = 4;
+  uint64 capacity = 5;
+
+  // 固有フィールド群
+  string filepath = 6;
+}

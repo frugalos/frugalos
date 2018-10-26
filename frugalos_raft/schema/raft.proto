@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package frugal.raft;
+
+import "raftlog_protobuf/protobuf/state.proto";
+import "raftlog_protobuf/protobuf/log.proto";
+
+// 巨大なスナップショットを分割して保存するためのインデックス情報
+message LogPrefixIndex {
+  uint64 head = 1;
+  uint64 tail = 2;
+}
+
+message LocalNodeId {
+  fixed64 id = 1;
+}

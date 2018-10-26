@@ -1,0 +1,1509 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>バケツAPI (Version 1)</title><link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.3.0/css/font-awesome.min.css"><style>@import url('https://fonts.googleapis.com/css?family=Roboto:400,700|Inconsolata|Raleway:200');.hljs-comment,.hljs-title{color:#8e908c}.hljs-variable,.hljs-attribute,.hljs-tag,.hljs-regexp,.ruby .hljs-constant,.xml .hljs-tag .hljs-title,.xml .hljs-pi,.xml .hljs-doctype,.html .hljs-doctype,.css .hljs-id,.css .hljs-class,.css .hljs-pseudo{color:#c82829}.hljs-number,.hljs-preprocessor,.hljs-pragma,.hljs-built_in,.hljs-literal,.hljs-params,.hljs-constant{color:#f5871f}.ruby .hljs-class .hljs-title,.css .hljs-rules .hljs-attribute{color:#eab700}.hljs-string,.hljs-value,.hljs-inheritance,.hljs-header,.ruby .hljs-symbol,.xml .hljs-cdata{color:#718c00}.css .hljs-hexcolor{color:#3e999f}.hljs-function,.python .hljs-decorator,.python .hljs-title,.ruby .hljs-function .hljs-title,.ruby .hljs-title .hljs-keyword,.perl .hljs-sub,.javascript .hljs-title,.coffeescript .hljs-title{color:#4271ae}.hljs-keyword,.javascript .hljs-function{color:#8959a8}.hljs{display:block;background:white;color:#4d4d4c;padding:.5em}.coffeescript .javascript,.javascript .xml,.tex .hljs-formula,.xml .javascript,.xml .vbscript,.xml .css,.xml .hljs-cdata{opacity:.5}.right .hljs-comment{color:#969896}.right .css .hljs-class,.right .css .hljs-id,.right .css .hljs-pseudo,.right .hljs-attribute,.right .hljs-regexp,.right .hljs-tag,.right .hljs-variable,.right .html .hljs-doctype,.right .ruby .hljs-constant,.right .xml .hljs-doctype,.right .xml .hljs-pi,.right .xml .hljs-tag .hljs-title{color:#c66}.right .hljs-built_in,.right .hljs-constant,.right .hljs-literal,.right .hljs-number,.right .hljs-params,.right .hljs-pragma,.right .hljs-preprocessor{color:#de935f}.right .css .hljs-rule .hljs-attribute,.right .ruby .hljs-class .hljs-title{color:#f0c674}.right .hljs-header,.right .hljs-inheritance,.right .hljs-name,.right .hljs-string,.right .hljs-value,.right .ruby .hljs-symbol,.right .xml .hljs-cdata{color:#b5bd68}.right .css .hljs-hexcolor,.right .hljs-title{color:#8abeb7}.right .coffeescript .hljs-title,.right .hljs-function,.right .javascript .hljs-title,.right .perl .hljs-sub,.right .python .hljs-decorator,.right .python .hljs-title,.right .ruby .hljs-function .hljs-title,.right .ruby .hljs-title .hljs-keyword{color:#81a2be}.right .hljs-keyword,.right .javascript .hljs-function{color:#b294bb}.right .hljs{display:block;overflow-x:auto;background:#1d1f21;color:#c5c8c6;padding:.5em;-webkit-text-size-adjust:none}.right .coffeescript .javascript,.right .javascript .xml,.right .tex .hljs-formula,.right .xml .css,.right .xml .hljs-cdata,.right .xml .javascript,.right .xml .vbscript{opacity:.5}body{color:black;background:white;font:400 14px / 1.42 'Roboto',Helvetica,sans-serif}header{border-bottom:1px solid #f2f2f2;margin-bottom:12px}h1,h2,h3,h4,h5{color:black;margin:12px 0}h1 .permalink,h2 .permalink,h3 .permalink,h4 .permalink,h5 .permalink{margin-left:0;opacity:0;transition:opacity .25s ease}h1:hover .permalink,h2:hover .permalink,h3:hover .permalink,h4:hover .permalink,h5:hover .permalink{opacity:1}.triple h1 .permalink,.triple h2 .permalink,.triple h3 .permalink,.triple h4 .permalink,.triple h5 .permalink{opacity:.15}.triple h1:hover .permalink,.triple h2:hover .permalink,.triple h3:hover .permalink,.triple h4:hover .permalink,.triple h5:hover .permalink{opacity:.15}h1{font:200 36px 'Raleway',Helvetica,sans-serif;font-size:36px}h2{font:200 36px 'Raleway',Helvetica,sans-serif;font-size:30px}h3{font-size:100%;text-transform:uppercase}h5{font-size:100%;font-weight:normal}p{margin:0 0 10px}p.choices{line-height:1.6}a{color:#428bca;text-decoration:none}li p{margin:0}hr.split{border:0;height:1px;width:100%;padding-left:6px;margin:12px auto;background-image:linear-gradient(to right, rgba(0,0,0,0) 20%, rgba(0,0,0,0.2) 51.4%, rgba(255,255,255,0.2) 51.4%, rgba(255,255,255,0) 80%)}dl dt{float:left;width:130px;clear:left;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}dl dd{margin-left:150px}blockquote{color:rgba(0,0,0,0.5);font-size:15.5px;padding:10px 20px;margin:12px 0;border-left:5px solid #e8e8e8}blockquote p:last-child{margin-bottom:0}pre{background-color:#f5f5f5;padding:12px;border:1px solid #cfcfcf;border-radius:6px;overflow:auto}pre code{color:black;background-color:transparent;padding:0;border:none}code{color:#444;background-color:#f5f5f5;font:'Inconsolata',monospace;padding:1px 4px;border:1px solid #cfcfcf;border-radius:3px}ul,ol{padding-left:2em}table{border-collapse:collapse;border-spacing:0;margin-bottom:12px}table tr:nth-child(2n){background-color:#fafafa}table th,table td{padding:6px 12px;border:1px solid #e6e6e6}.text-muted{opacity:.5}.note,.warning{padding:.3em 1em;margin:1em 0;border-radius:2px;font-size:90%}.note h1,.warning h1,.note h2,.warning h2,.note h3,.warning h3,.note h4,.warning h4,.note h5,.warning h5,.note h6,.warning h6{font-family:200 36px 'Raleway',Helvetica,sans-serif;font-size:135%;font-weight:500}.note p,.warning p{margin:.5em 0}.note{color:black;background-color:#f0f6fb;border-left:4px solid #428bca}.note h1,.note h2,.note h3,.note h4,.note h5,.note h6{color:#428bca}.warning{color:black;background-color:#fbf1f0;border-left:4px solid #c9302c}.warning h1,.warning h2,.warning h3,.warning h4,.warning h5,.warning h6{color:#c9302c}header{margin-top:24px}nav{position:fixed;top:24px;bottom:0;overflow-y:auto}nav .resource-group{padding:0}nav .resource-group .heading{position:relative}nav .resource-group .heading .chevron{position:absolute;top:12px;right:12px;opacity:.5}nav .resource-group .heading a{display:block;color:black;opacity:.7;border-left:2px solid transparent;margin:0}nav .resource-group .heading a:hover{text-decoration:none;background-color:bad-color;border-left:2px solid black}nav ul{list-style-type:none;padding-left:0}nav ul a{display:block;font-size:13px;color:rgba(0,0,0,0.7);padding:8px 12px;border-top:1px solid #d9d9d9;border-left:2px solid transparent;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}nav ul a:hover{text-decoration:none;background-color:bad-color;border-left:2px solid black}nav ul>li{margin:0}nav ul>li:first-child{margin-top:-12px}nav ul>li:last-child{margin-bottom:-12px}nav ul ul a{padding-left:24px}nav ul ul li{margin:0}nav ul ul li:first-child{margin-top:0}nav ul ul li:last-child{margin-bottom:0}nav>div>div>ul>li:first-child>a{border-top:none}.preload *{transition:none !important}.pull-left{float:left}.pull-right{float:right}.badge{display:inline-block;float:right;min-width:10px;min-height:14px;padding:3px 7px;font-size:12px;color:#000;background-color:#f2f2f2;border-radius:10px;margin:-2px 0}.badge.get{color:#70bbe1;background-color:#d9edf7}.badge.head{color:#70bbe1;background-color:#d9edf7}.badge.options{color:#70bbe1;background-color:#d9edf7}.badge.put{color:#f0db70;background-color:#fcf8e3}.badge.patch{color:#f0db70;background-color:#fcf8e3}.badge.post{color:#93cd7c;background-color:#dff0d8}.badge.delete{color:#ce8383;background-color:#f2dede}.collapse-button{float:right}.collapse-button .close{display:none;color:#428bca;cursor:pointer}.collapse-button .open{color:#428bca;cursor:pointer}.collapse-button.show .close{display:inline}.collapse-button.show .open{display:none}.collapse-content{max-height:0;overflow:hidden;transition:max-height .3s ease-in-out}nav{width:220px}.container{max-width:940px;margin-left:auto;margin-right:auto}.container .row .content{margin-left:244px;width:696px}.container .row:after{content:'';display:block;clear:both}.container-fluid nav{width:22%}.container-fluid .row .content{margin-left:24%}.container-fluid.triple nav{width:16.5%;padding-right:1px}.container-fluid.triple .row .content{position:relative;margin-left:16.5%;padding-left:24px}.middle:before,.middle:after{content:'';display:table}.middle:after{clear:both}.middle{box-sizing:border-box;width:51.5%;padding-right:12px}.right{box-sizing:border-box;float:right;width:48.5%;padding-left:12px}.right a{color:#428bca}.right h1,.right h2,.right h3,.right h4,.right h5,.right p,.right div{color:white}.right pre{background-color:#1d1f21;border:1px solid #1d1f21}.right pre code{color:#c5c8c6}.right .description{margin-top:12px}.triple .resource-heading{font-size:125%}.definition{margin-top:12px;margin-bottom:12px}.definition .method{font-weight:bold}.definition .method.get{color:#2e8ab8}.definition .method.head{color:#2e8ab8}.definition .method.options{color:#2e8ab8}.definition .method.post{color:#56b82e}.definition .method.put{color:#b8a22e}.definition .method.patch{color:#b8a22e}.definition .method.delete{color:#b82e2e}.definition .uri{word-break:break-all;word-wrap:break-word}.definition .hostname{opacity:.5}.example-names{background-color:#eee;padding:12px;border-radius:6px}.example-names .tab-button{cursor:pointer;color:black;border:1px solid #ddd;padding:6px;margin-left:12px}.example-names .tab-button.active{background-color:#d5d5d5}.right .example-names{background-color:#444}.right .example-names .tab-button{color:white;border:1px solid #666;border-radius:6px}.right .example-names .tab-button.active{background-color:#5e5e5e}#nav-background{position:fixed;left:0;top:0;bottom:0;width:16.5%;padding-right:14.4px;background-color:#fbfbfb;border-right:1px solid #f0f0f0;z-index:-1}#right-panel-background{position:absolute;right:-12px;top:-12px;bottom:-12px;width:48.6%;background-color:#333;z-index:-1}@media (max-width:1200px){nav{width:198px}.container{max-width:840px}.container .row .content{margin-left:224px;width:606px}}@media (max-width:992px){nav{width:169.4px}.container{max-width:720px}.container .row .content{margin-left:194px;width:526px}}@media (max-width:768px){nav{display:none}.container{width:95%;max-width:none}.container .row .content,.container-fluid .row .content,.container-fluid.triple .row .content{margin-left:auto;margin-right:auto;width:95%}#nav-background{display:none}#right-panel-background{width:48.6%}}.back-to-top{position:fixed;z-index:1;bottom:0;right:24px;padding:4px 8px;color:rgba(0,0,0,0.5);background-color:#f2f2f2;text-decoration:none !important;border-top:1px solid #d9d9d9;border-left:1px solid #d9d9d9;border-right:1px solid #d9d9d9;border-top-left-radius:3px;border-top-right-radius:3px}.resource-group{padding:12px;margin-bottom:12px;background-color:white;border:1px solid #d9d9d9;border-radius:6px}.resource-group h2.group-heading,.resource-group .heading a{padding:12px;margin:-12px -12px 12px -12px;background-color:#f2f2f2;border-bottom:1px solid #d9d9d9;border-top-left-radius:6px;border-top-right-radius:6px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.triple .content .resource-group{padding:0;border:none}.triple .content .resource-group h2.group-heading,.triple .content .resource-group .heading a{margin:0 0 12px 0;border:1px solid #d9d9d9}nav .resource-group .heading a{padding:12px;margin-bottom:0}nav .resource-group .collapse-content{padding:0}.action{margin-bottom:12px;padding:12px 12px 0 12px;overflow:hidden;border:1px solid transparent;border-radius:6px}.action h4.action-heading{padding:6px 12px;margin:-12px -12px 12px -12px;border-bottom:1px solid transparent;border-top-left-radius:6px;border-top-right-radius:6px;overflow:hidden}.action h4.action-heading .name{float:right;font-weight:normal;padding:6px 0}.action h4.action-heading .method{padding:6px 12px;margin-right:12px;border-radius:3px;display:inline-block}.action h4.action-heading .method.get{color:#fff;background-color:#337ab7}.action h4.action-heading .method.head{color:#fff;background-color:#337ab7}.action h4.action-heading .method.options{color:#fff;background-color:#337ab7}.action h4.action-heading .method.put{color:#fff;background-color:#ed9c28}.action h4.action-heading .method.patch{color:#fff;background-color:#ed9c28}.action h4.action-heading .method.post{color:#fff;background-color:#5cb85c}.action h4.action-heading .method.delete{color:#fff;background-color:#d9534f}.action h4.action-heading code{color:#444;background-color:#f5f5f5;border-color:#cfcfcf;font-weight:normal;word-break:break-all;display:inline-block;margin-top:2px}.action dl.inner{padding-bottom:2px}.action .title{border-bottom:1px solid white;margin:0 -12px -1px -12px;padding:12px}.action.get{border-color:#bce8f1}.action.get h4.action-heading{color:#337ab7;background:#d9edf7;border-bottom-color:#bce8f1}.action.head{border-color:#bce8f1}.action.head h4.action-heading{color:#337ab7;background:#d9edf7;border-bottom-color:#bce8f1}.action.options{border-color:#bce8f1}.action.options h4.action-heading{color:#337ab7;background:#d9edf7;border-bottom-color:#bce8f1}.action.post{border-color:#d6e9c6}.action.post h4.action-heading{color:#5cb85c;background:#dff0d8;border-bottom-color:#d6e9c6}.action.put{border-color:#faebcc}.action.put h4.action-heading{color:#ed9c28;background:#fcf8e3;border-bottom-color:#faebcc}.action.patch{border-color:#faebcc}.action.patch h4.action-heading{color:#ed9c28;background:#fcf8e3;border-bottom-color:#faebcc}.action.delete{border-color:#ebccd1}.action.delete h4.action-heading{color:#d9534f;background:#f2dede;border-bottom-color:#ebccd1}</style></head><body class="preload"><a href="#top" class="text-muted back-to-top"><i class="fa fa-toggle-up"></i>&nbsp;Back to top</a><div class="container"><div class="row"><nav><div class="resource-group"><div class="heading"><div class="chevron"><i class="open fa fa-angle-down"></i></div><a href="#top">Overview</a></div><div class="collapse-content"><ul><li><a href="#header-用語">用語</a></li><li><a href="#header-共通仕様">共通仕様</a></li></ul></div></div><div class="resource-group"><div class="heading"><div class="chevron"><i class="open fa fa-angle-down"></i></div><a href="#バケツ">バケツ</a></div><div class="collapse-content"><ul><li><a href="#バケツ-バケツ一覧-get"><span class="badge get"><i class="fa fa-arrow-down"></i></span>バケツ一覧の取得</a></li><li><a href="#バケツ-バケツ操作">バケツ操作</a><ul><li><a href="#バケツ-バケツ操作-get"><span class="badge get"><i class="fa fa-arrow-down"></i></span>バケツ構成の取得</a></li><li><a href="#バケツ-バケツ操作-put"><span class="badge put"><i class="fa fa-pencil"></i></span>バケツの作成・更新</a></li><li><a href="#バケツ-バケツ操作-delete"><span class="badge delete"><i class="fa fa-times"></i></span>バケツの削除（未実装）</a></li></ul></li></ul></div></div><div class="resource-group"><div class="heading"><div class="chevron"><i class="open fa fa-angle-down"></i></div><a href="#オブジェクト">オブジェクト</a></div><div class="collapse-content"><ul><li><a href="#オブジェクト-オブジェクト操作">オブジェクト操作</a><ul><li><a href="#オブジェクト-オブジェクト操作-get"><span class="badge get"><i class="fa fa-arrow-down"></i></span>オブジェクトの取得</a></li><li><a href="#オブジェクト-オブジェクト操作-head"><span class="badge head"><i class="fa fa-info-circle"></i></span>オブジェクトの存在確認</a></li><li><a href="#オブジェクト-オブジェクト操作-put"><span class="badge put"><i class="fa fa-pencil"></i></span>オブジェクトの作成・更新</a></li><li><a href="#オブジェクト-オブジェクト操作-delete"><span class="badge delete"><i class="fa fa-times"></i></span>オブジェクトの削除</a></li></ul></li></ul></div></div><div class="resource-group"><div class="heading"><div class="chevron"><i class="open fa fa-angle-down"></i></div><a href="#オブジェクトプレフィックス">オブジェクトプレフィックス</a></div><div class="collapse-content"><ul><li><a href="#オブジェクトプレフィックス-プレフィックス指定でのオブジェクト操作-delete"><span class="badge delete"><i class="fa fa-times"></i></span>オブジェクトの削除</a></li></ul></div></div><div class="resource-group"><div class="heading"><div class="chevron"><i class="open fa fa-angle-down"></i></div><a href="#セグメント">セグメント</a></div><div class="collapse-content"><ul><li><a href="#セグメント-セグメント一覧-get"><span class="badge get"><i class="fa fa-arrow-down"></i></span>セグメント一覧の取得</a></li><li><a href="#セグメント-セグメント操作-get"><span class="badge get"><i class="fa fa-arrow-down"></i></span>セグメント構成の取得(未実装)</a></li><li><a href="#セグメント-オブジェクト一覧-get"><span class="badge get"><i class="fa fa-arrow-down"></i></span>オブジェクト一覧の取得</a></li></ul></div></div><p style="text-align: center; word-wrap: break-word;"><a href="http://example.com">http://example.com</a></p></nav><div class="content"><header><h1 id="top">バケツAPI (Version 1)</h1></header><p>バケツ関連の操作を提供するAPI。</p>
+<h2 id="header-用語">用語 <a class="permalink" href="#header-用語" aria-hidden="true">¶</a></h2>
+<p><strong>サーバ:</strong></p>
+<ul>
+<li>
+<p><code>frugalos</code>プロセスのこと</p>
+</li>
+<li>
+<p>各サーバは、クラスタ内で一意なIDを有している</p>
+</li>
+</ul>
+<p><strong>バケツ:</strong></p>
+<ul>
+<li>
+<p><strong>バケツ</strong>とは、オブジェクト群を格納するための入れ物</p>
+</li>
+<li>
+<p>オブジェクトの名前空間は、バケツ毎に異なる</p>
+</li>
+<li>
+<p>冗長化方式等の設定は、バケツ毎に異なるものを設定可能</p>
+</li>
+<li>
+<p>バケツ内の領域は、作成時に指定された数の<strong>セグメント</strong>に(論理的に)分割されている</p>
+</li>
+<li>
+<p>一つのバケツには、一つの<strong>デバイス</strong>が対応する</p>
+<ul>
+<li>オブジェクト群は、そのデバイスに格納される</li>
+<li>デバイスに関する詳細は <a href="./devices.md">デバイスAPI</a> を参照のこと</li>
+</ul>
+</li>
+<li>
+<p>なお<code>__system</code>という名前のバケツが、システム用に予約されている(i.e., 最初から存在し削除は不可)</p>
+</li>
+</ul>
+<p><strong>セグメント:</strong></p>
+<ul>
+<li>
+<p>バケツの論理的な分割単位</p>
+</li>
+<li>
+<p>セグメント数は、バケツ作成時に指定されて、その後変更は不可</p>
+</li>
+<li>
+<p>一つのバケツは、典型的には千個程度のセグメントに分割される</p>
+</li>
+<li>
+<p>オブジェクト一覧を取得したい場合を除いて、基本的には利用者が意識する必要はない</p>
+</li>
+</ul>
+<p><strong>オブジェクト:</strong></p>
+<ul>
+<li>
+<p>オブジェクトとは、<strong>ID</strong>とそれに対応する<strong>内容</strong>、および<strong>バージョン</strong>から構成されるデータ</p>
+</li>
+<li>
+<p>あるオブジェクトは、いずれかのバケツに格納され、そのIDはバケツ内で一意である</p>
+</li>
+<li>
+<p>あるオブジェクトのバージョンは、保存(PUT)毎に自動で割り当てられ、その値は単調増加することが保証されている</p>
+<ul>
+<li>値が1ずつ増加する保証はない</li>
+<li>このバージョンの値を利用することで、いわゆるCAS(Compare And Swap)的な操作が可能となる</li>
+</ul>
+</li>
+<li>
+<p>オブジェクトの内容としては、任意のバイト列を格納可能</p>
+<ul>
+<li>ただし、構成・設定に応じて、最大サイズには上限が設けられる</li>
+<li>具体的な上限は設定に依存するが、通常は数十MB程度となる</li>
+<li><strong>TODO: 使用しているバケツでの上限は <a href="TODO">TODO</a> のAPIを叩くことで取得可能</strong></li>
+</ul>
+</li>
+</ul>
+<p><strong>オブジェクトプレフィックス:</strong></p>
+<ul>
+<li>
+<p>バケツに登録されているオブジェクトに付与されている<strong>ID</strong>の接頭辞</p>
+</li>
+<li>
+<p>接頭辞であるので、あるオブジェクトに対してオブジェクトプレフィックスは複数存在する</p>
+<ul>
+<li>例えば lv12 のオブジェクトプレフィックスは l, lv, lv1, lv12 となる</li>
+</ul>
+</li>
+</ul>
+<p><strong>デッドライン:</strong></p>
+<ul>
+<li>
+<p>オブジェクト関連の操作では、その完了までに要する時間の期待上限値が指定可能である</p>
+<ul>
+<li>この値のことを<strong>デッドライン</strong>と呼称する</li>
+</ul>
+</li>
+<li>
+<p>デッドラインが指定された操作は、極力その時間内で実行が完了するようにスケジューリングされる</p>
+</li>
+<li>
+<p>ただし、その時間内で確実に完了する保証はなく、またそれを超過したからといって実行が中断されることもない</p>
+<ul>
+<li>つまり一種の優先度的な値</li>
+</ul>
+</li>
+<li>
+<p>即時に実行する必要がない操作に関しては、デッドラインを長めに指定することで、他のより緊急度の高い操作を優先されることが可能</p>
+</li>
+</ul>
+<p><strong>デバイス:</strong></p>
+<ul>
+<li>
+<p>オブジェクト群の物理的な格納先</p>
+</li>
+<li>
+<p>デバイスには大別して <strong>物理デバイス</strong> と <strong>仮想デバイス</strong> の二種類が存在する</p>
+</li>
+<li>
+<p>物理デバイス:</p>
+<ul>
+<li>HDDやSSD等の物理的なデバイス</li>
+<li>各物理デバイスは、特定の <strong>サーバ</strong> に属する</li>
+<li>物理デバイスの種別は、その実体に応じて<code>memory</code>や<code>monofile</code>といったようにさらに細分化される</li>
+</ul>
+</li>
+<li>
+<p>仮想デバイス (<code>type=virtual</code>):</p>
+<ul>
+<li>物理デバイスをグルーピングする仮想的なデバイス</li>
+<li>「マシン」、「ラック」、「データセンタ」といった単位は仮想デバイスを用いて表現する</li>
+</ul>
+</li>
+<li>
+<p><code>type=memory</code>:</p>
+<ul>
+<li>全てのオブジェクトをメモリ上に保持する</li>
+</ul>
+</li>
+<li>
+<p><code>type=monofile</code>:</p>
+<ul>
+<li>オブジェクト群を単一ファイル上に保持する</li>
+</ul>
+</li>
+<li>
+<p>サーバが保持するオブジェクト群を物理的に保持するための装置</p>
+<ul>
+<li>e.g., HDD, SSD</li>
+</ul>
+</li>
+<li>
+<p>各サーバへのデバイスの追加は<a href="https://frugalos.github.io/frugalos/v1/devices.html">デバイスAPI</a>経由で行う</p>
+</li>
+</ul>
+<p><strong>重み (Weight):</strong></p>
+<ul>
+<li>
+<p>デバイスをセグメントに割り当てる際の重み</p>
+</li>
+<li>
+<p>各デバイスは、この値に比例した数のセグメントを担当することになる</p>
+</li>
+<li>
+<p>デフォルト値は、デバイスの種別によって異なる:</p>
+<ul>
+<li><code>memory</code>: 1</li>
+<li><code>monofile</code>: <code>capacity_gb</code>の値</li>
+<li><code>virtual</code>: <code>children</code>の重みの合計値</li>
+</ul>
+</li>
+</ul>
+<p><strong>デバイスの無効化:</strong></p>
+<ul>
+<li>
+<p><code>enable</code>フラグを<code>false</code>に設定することで、一時的にそのデバイスの使用を停止することができる</p>
+</li>
+<li>
+<p>これは機能的にはデバイスの削除と似ているが、以下の点が異なる:</p>
+<ul>
+<li>デバイスが無効化された場合には、そのデバイスが担当していたセグメント群のみを、他のデバイス群が肩代わりする
+<ul>
+<li>つまり、データの移動は発生するが、その量は最小限で済む</li>
+<li>=&gt; 短期的に取り外しているだけなら、こちらの方が良い</li>
+</ul>
+</li>
+<li>逆に、デバイスを削除した場合には、クラスタ全体でのセグメント群の割り当てが最適化されるように割振りの調整が行われる
+<ul>
+<li>つまり、データの移動量は若干増えるが、それが完了した後のバランスぐらいは最適なものとなる</li>
+<li>=&gt; 永続的に削除するなら、こちらの方が良い</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h2 id="header-共通仕様">共通仕様 <a class="permalink" href="#header-共通仕様" aria-hidden="true">¶</a></h2>
+<p><strong>エラー時の応答:</strong></p>
+<ul>
+<li>
+<p>エラー時の応答形式は<a href="https://tools.ietf.org/html/rfc7807">RFC 7807</a>に準拠する</p>
+</li>
+<li>
+<p>各エンドポイントで固有の意味を持つ応答ステータスコードに関しては、この文書内で明示的に定義している</p>
+</li>
+<li>
+<p>それ以外のエラー応答に関しては、HTTPの一般的なセマンティクスに従い、この文書内で定義することはしない</p>
+<ul>
+<li>e.g., 応答ステータスが<code>500</code>なら、サーバ内部エラー</li>
+</ul>
+</li>
+</ul>
+<section id="バケツ" class="resource-group"><h2 class="group-heading">バケツ <a href="#バケツ" class="permalink">&para;</a></h2><div id="バケツ-バケツ一覧" class="resource"><h3 class="resource-heading">バケツ一覧 <a href="#バケツ-バケツ一覧" class="permalink">&nbsp;&para;</a></h3><div id="バケツ-バケツ一覧-get" class="action get"><h4 class="action-heading"><div class="name">バケツ一覧の取得</div><a href="#バケツ-バケツ一覧-get" class="method get">GET</a><code class="uri">/v1/buckets</code></h4><p>存在するバケツのID一覧を返す。</p>
+<h4>Example URI</h4><div class="definition"><span class="method get">GET</span>&nbsp;<span class="uri"><span class="hostname">http://example.com</span>/v1/buckets</span></div><div class="title"><strong>Response&nbsp;&nbsp;<code>200</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>[
+  {
+    "<span class="hljs-attribute">id</span>": <span class="hljs-value"><span class="hljs-string">"chunk"</span></span>,
+    "<span class="hljs-attribute">device</span>": <span class="hljs-value"><span class="hljs-string">"device00"</span></span>,
+    "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"Hello, world!"</span>
+  </span>}
+]</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"array"</span></span>,
+  "<span class="hljs-attribute">items</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+    "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+        "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツのID"</span>
+      </span>}</span>,
+      "<span class="hljs-attribute">device</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+        "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツの中身(オブジェクト群)を保存するのに使用するデバイスのID"</span>
+      </span>}</span>,
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+        "<span class="hljs-attribute">enum</span>": <span class="hljs-value">[
+          <span class="hljs-string">"dispersed"</span>,
+          <span class="hljs-string">"replicated"</span>,
+          <span class="hljs-string">"metadata"</span>,
+          <span class="hljs-string">"dispersed"</span>
+        ]</span>,
+        "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツ内のデータの冗長化方式"</span>
+      </span>}
+    </span>}</span>,
+    "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+      <span class="hljs-string">"id"</span>,
+      <span class="hljs-string">"device"</span>,
+      <span class="hljs-string">"type"</span>
+    ]
+  </span>}
+</span>}</code></pre><div style="height: 1px;"></div></div></div></div></div><div id="バケツ-バケツ操作" class="resource"><h3 class="resource-heading">バケツ操作 <a href="#バケツ-バケツ操作" class="permalink">&nbsp;&para;</a></h3><div id="バケツ-バケツ操作-get" class="action get"><h4 class="action-heading"><div class="name">バケツ構成の取得</div><a href="#バケツ-バケツ操作-get" class="method get">GET</a><code class="uri">/v1/buckets/{bucket_id}</code></h4><p>指定されたバケツの構成を取得する。</p>
+<h4>Example URI</h4><div class="definition"><span class="method get">GET</span>&nbsp;<span class="uri"><span class="hostname">http://example.com</span>/v1/buckets/<span class="hljs-attribute" title="bucket_id">foo</span></span></div><div class="title"><strong>URI Parameters</strong><div class="collapse-button show"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><dl class="inner"><dt>bucket_id</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>foo</span></span><p>操作対象のバケツのID</p>
+</dd></dl></div><div class="title"><strong>Response&nbsp;&nbsp;<code>200</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">dispersed</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">data_fragment_count</span>": <span class="hljs-value"><span class="hljs-number">1</span></span>,
+    "<span class="hljs-attribute">id</span>": <span class="hljs-value"><span class="hljs-string">"chunk"</span></span>,
+    "<span class="hljs-attribute">device</span>": <span class="hljs-value"><span class="hljs-string">"device00"</span></span>,
+    "<span class="hljs-attribute">seqno</span>": <span class="hljs-value"><span class="hljs-number">0</span></span>,
+    "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value"><span class="hljs-number">1000</span></span>,
+    "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value"><span class="hljs-number">3</span>
+  </span>}
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{}</span>,
+  "<span class="hljs-attribute">oneOf</span>": <span class="hljs-value">[
+    {
+      "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">dispersed</span>": <span class="hljs-value">{
+          "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+          "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+            "<span class="hljs-attribute">data_fragment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"ErasureCodingにおけるデータフラグメントの数(正の整数)"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">device</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツの中身(オブジェクト群)を保存するのに使用するデバイスのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">seqno</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツ内部で自動採番されている数値。利用者が意識する必要はない。"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"セグメント数 (正の整数)"</span></span>,
+              "<span class="hljs-attribute">default</span>": <span class="hljs-value"><span class="hljs-number">1000</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"故障耐性数 (非負の整数)"</span>
+            </span>}
+          </span>}</span>,
+          "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+            <span class="hljs-string">"data_fragment_count"</span>,
+            <span class="hljs-string">"id"</span>,
+            <span class="hljs-string">"device"</span>,
+            <span class="hljs-string">"seqno"</span>,
+            <span class="hljs-string">"tolerable_faults"</span>
+          ]
+        </span>}
+      </span>}
+    </span>},
+    {
+      "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">replcated</span>": <span class="hljs-value">{
+          "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+          "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+            "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">device</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツの中身(オブジェクト群)を保存するのに使用するデバイスのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">seqno</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツ内部で自動採番されている数値。利用者が意識する必要はない。"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"セグメント数 (正の整数)"</span></span>,
+              "<span class="hljs-attribute">default</span>": <span class="hljs-value"><span class="hljs-number">1000</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"故障耐性数 (非負の整数)"</span>
+            </span>}
+          </span>}</span>,
+          "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+            <span class="hljs-string">"id"</span>,
+            <span class="hljs-string">"device"</span>,
+            <span class="hljs-string">"seqno"</span>,
+            <span class="hljs-string">"tolerable_faults"</span>
+          ]
+        </span>}
+      </span>}
+    </span>},
+    {
+      "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">metadata</span>": <span class="hljs-value">{
+          "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+          "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+            "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">device</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツの中身(オブジェクト群)を保存するのに使用するデバイスのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">seqno</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツ内部で自動採番されている数値。利用者が意識する必要はない。"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"セグメント数 (正の整数)"</span></span>,
+              "<span class="hljs-attribute">default</span>": <span class="hljs-value"><span class="hljs-number">1000</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"故障耐性数 (非負の整数)"</span>
+            </span>}
+          </span>}</span>,
+          "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+            <span class="hljs-string">"id"</span>,
+            <span class="hljs-string">"device"</span>,
+            <span class="hljs-string">"seqno"</span>,
+            <span class="hljs-string">"tolerable_faults"</span>
+          ]
+        </span>}
+      </span>}
+    </span>}
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>404</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>指定されたバケツが存在しない。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/problem+json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">kind</span>": <span class="hljs-value"><span class="hljs-string">"Other"</span></span>,
+  "<span class="hljs-attribute">cause</span>": <span class="hljs-value"><span class="hljs-string">"Not Found"</span></span>,
+  "<span class="hljs-attribute">history</span>": <span class="hljs-value">[
+    <span class="hljs-literal">null</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">kind</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーの種類を表す文字列"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">cause</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーを発生させた原因の説明"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">history</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"array"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーが発生するまでに経由したコード上の経路情報。デバッグ用の情報。"</span>
+    </span>}
+  </span>}</span>,
+  "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+    <span class="hljs-string">"kind"</span>,
+    <span class="hljs-string">"cause"</span>,
+    <span class="hljs-string">"history"</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div></div><div id="バケツ-バケツ操作-put" class="action put"><h4 class="action-heading"><div class="name">バケツの作成・更新</div><a href="#バケツ-バケツ操作-put" class="method put">PUT</a><code class="uri">/v1/buckets/{bucket_id}</code></h4><p>バケツの新規作成、あるいは更新を行う。</p>
+<h4>Example URI</h4><div class="definition"><span class="method put">PUT</span>&nbsp;<span class="uri"><span class="hostname">http://example.com</span>/v1/buckets/<span class="hljs-attribute" title="bucket_id">foo</span></span></div><div class="title"><strong>URI Parameters</strong><div class="collapse-button show"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><dl class="inner"><dt>bucket_id</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>foo</span></span><p>操作対象のバケツのID</p>
+</dd></dl></div><div class="title"><strong>Request</strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">dispersed</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">data_fragment_count</span>": <span class="hljs-value"><span class="hljs-number">1</span></span>,
+    "<span class="hljs-attribute">id</span>": <span class="hljs-value"><span class="hljs-string">"chunk"</span></span>,
+    "<span class="hljs-attribute">device</span>": <span class="hljs-value"><span class="hljs-string">"device00"</span></span>,
+    "<span class="hljs-attribute">seqno</span>": <span class="hljs-value"><span class="hljs-number">0</span></span>,
+    "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value"><span class="hljs-number">1000</span></span>,
+    "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value"><span class="hljs-number">3</span>
+  </span>}
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{}</span>,
+  "<span class="hljs-attribute">oneOf</span>": <span class="hljs-value">[
+    {
+      "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">dispersed</span>": <span class="hljs-value">{
+          "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+          "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+            "<span class="hljs-attribute">data_fragment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"ErasureCodingにおけるデータフラグメントの数(正の整数)"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">device</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツの中身(オブジェクト群)を保存するのに使用するデバイスのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">seqno</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツ内部で自動採番されている数値。利用者が意識する必要はない。"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"セグメント数 (正の整数)"</span></span>,
+              "<span class="hljs-attribute">default</span>": <span class="hljs-value"><span class="hljs-number">1000</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"故障耐性数 (非負の整数)"</span>
+            </span>}
+          </span>}</span>,
+          "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+            <span class="hljs-string">"data_fragment_count"</span>,
+            <span class="hljs-string">"id"</span>,
+            <span class="hljs-string">"device"</span>,
+            <span class="hljs-string">"seqno"</span>,
+            <span class="hljs-string">"tolerable_faults"</span>
+          ]
+        </span>}
+      </span>}
+    </span>},
+    {
+      "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">replcated</span>": <span class="hljs-value">{
+          "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+          "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+            "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">device</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツの中身(オブジェクト群)を保存するのに使用するデバイスのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">seqno</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツ内部で自動採番されている数値。利用者が意識する必要はない。"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"セグメント数 (正の整数)"</span></span>,
+              "<span class="hljs-attribute">default</span>": <span class="hljs-value"><span class="hljs-number">1000</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"故障耐性数 (非負の整数)"</span>
+            </span>}
+          </span>}</span>,
+          "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+            <span class="hljs-string">"id"</span>,
+            <span class="hljs-string">"device"</span>,
+            <span class="hljs-string">"seqno"</span>,
+            <span class="hljs-string">"tolerable_faults"</span>
+          ]
+        </span>}
+      </span>}
+    </span>},
+    {
+      "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">metadata</span>": <span class="hljs-value">{
+          "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+          "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+            "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">device</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツの中身(オブジェクト群)を保存するのに使用するデバイスのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">seqno</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツ内部で自動採番されている数値。利用者が意識する必要はない。"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"セグメント数 (正の整数)"</span></span>,
+              "<span class="hljs-attribute">default</span>": <span class="hljs-value"><span class="hljs-number">1000</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"故障耐性数 (非負の整数)"</span>
+            </span>}
+          </span>}</span>,
+          "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+            <span class="hljs-string">"id"</span>,
+            <span class="hljs-string">"device"</span>,
+            <span class="hljs-string">"seqno"</span>,
+            <span class="hljs-string">"tolerable_faults"</span>
+          ]
+        </span>}
+      </span>}
+    </span>}
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>200</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>バケツが更新された。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">dispersed</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">data_fragment_count</span>": <span class="hljs-value"><span class="hljs-number">1</span></span>,
+    "<span class="hljs-attribute">id</span>": <span class="hljs-value"><span class="hljs-string">"chunk"</span></span>,
+    "<span class="hljs-attribute">device</span>": <span class="hljs-value"><span class="hljs-string">"device00"</span></span>,
+    "<span class="hljs-attribute">seqno</span>": <span class="hljs-value"><span class="hljs-number">0</span></span>,
+    "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value"><span class="hljs-number">1000</span></span>,
+    "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value"><span class="hljs-number">3</span>
+  </span>}
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{}</span>,
+  "<span class="hljs-attribute">oneOf</span>": <span class="hljs-value">[
+    {
+      "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">dispersed</span>": <span class="hljs-value">{
+          "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+          "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+            "<span class="hljs-attribute">data_fragment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"ErasureCodingにおけるデータフラグメントの数(正の整数)"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">device</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツの中身(オブジェクト群)を保存するのに使用するデバイスのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">seqno</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツ内部で自動採番されている数値。利用者が意識する必要はない。"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"セグメント数 (正の整数)"</span></span>,
+              "<span class="hljs-attribute">default</span>": <span class="hljs-value"><span class="hljs-number">1000</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"故障耐性数 (非負の整数)"</span>
+            </span>}
+          </span>}</span>,
+          "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+            <span class="hljs-string">"data_fragment_count"</span>,
+            <span class="hljs-string">"id"</span>,
+            <span class="hljs-string">"device"</span>,
+            <span class="hljs-string">"seqno"</span>,
+            <span class="hljs-string">"tolerable_faults"</span>
+          ]
+        </span>}
+      </span>}
+    </span>},
+    {
+      "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">replcated</span>": <span class="hljs-value">{
+          "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+          "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+            "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">device</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツの中身(オブジェクト群)を保存するのに使用するデバイスのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">seqno</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツ内部で自動採番されている数値。利用者が意識する必要はない。"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"セグメント数 (正の整数)"</span></span>,
+              "<span class="hljs-attribute">default</span>": <span class="hljs-value"><span class="hljs-number">1000</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"故障耐性数 (非負の整数)"</span>
+            </span>}
+          </span>}</span>,
+          "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+            <span class="hljs-string">"id"</span>,
+            <span class="hljs-string">"device"</span>,
+            <span class="hljs-string">"seqno"</span>,
+            <span class="hljs-string">"tolerable_faults"</span>
+          ]
+        </span>}
+      </span>}
+    </span>},
+    {
+      "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">metadata</span>": <span class="hljs-value">{
+          "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+          "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+            "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">device</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツの中身(オブジェクト群)を保存するのに使用するデバイスのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">seqno</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツ内部で自動採番されている数値。利用者が意識する必要はない。"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"セグメント数 (正の整数)"</span></span>,
+              "<span class="hljs-attribute">default</span>": <span class="hljs-value"><span class="hljs-number">1000</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"故障耐性数 (非負の整数)"</span>
+            </span>}
+          </span>}</span>,
+          "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+            <span class="hljs-string">"id"</span>,
+            <span class="hljs-string">"device"</span>,
+            <span class="hljs-string">"seqno"</span>,
+            <span class="hljs-string">"tolerable_faults"</span>
+          ]
+        </span>}
+      </span>}
+    </span>}
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>201</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>バケツが作成された。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">dispersed</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">data_fragment_count</span>": <span class="hljs-value"><span class="hljs-number">1</span></span>,
+    "<span class="hljs-attribute">id</span>": <span class="hljs-value"><span class="hljs-string">"chunk"</span></span>,
+    "<span class="hljs-attribute">device</span>": <span class="hljs-value"><span class="hljs-string">"device00"</span></span>,
+    "<span class="hljs-attribute">seqno</span>": <span class="hljs-value"><span class="hljs-number">0</span></span>,
+    "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value"><span class="hljs-number">1000</span></span>,
+    "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value"><span class="hljs-number">3</span>
+  </span>}
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{}</span>,
+  "<span class="hljs-attribute">oneOf</span>": <span class="hljs-value">[
+    {
+      "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">dispersed</span>": <span class="hljs-value">{
+          "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+          "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+            "<span class="hljs-attribute">data_fragment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"ErasureCodingにおけるデータフラグメントの数(正の整数)"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">device</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツの中身(オブジェクト群)を保存するのに使用するデバイスのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">seqno</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツ内部で自動採番されている数値。利用者が意識する必要はない。"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"セグメント数 (正の整数)"</span></span>,
+              "<span class="hljs-attribute">default</span>": <span class="hljs-value"><span class="hljs-number">1000</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"故障耐性数 (非負の整数)"</span>
+            </span>}
+          </span>}</span>,
+          "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+            <span class="hljs-string">"data_fragment_count"</span>,
+            <span class="hljs-string">"id"</span>,
+            <span class="hljs-string">"device"</span>,
+            <span class="hljs-string">"seqno"</span>,
+            <span class="hljs-string">"tolerable_faults"</span>
+          ]
+        </span>}
+      </span>}
+    </span>},
+    {
+      "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">replcated</span>": <span class="hljs-value">{
+          "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+          "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+            "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">device</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツの中身(オブジェクト群)を保存するのに使用するデバイスのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">seqno</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツ内部で自動採番されている数値。利用者が意識する必要はない。"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"セグメント数 (正の整数)"</span></span>,
+              "<span class="hljs-attribute">default</span>": <span class="hljs-value"><span class="hljs-number">1000</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"故障耐性数 (非負の整数)"</span>
+            </span>}
+          </span>}</span>,
+          "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+            <span class="hljs-string">"id"</span>,
+            <span class="hljs-string">"device"</span>,
+            <span class="hljs-string">"seqno"</span>,
+            <span class="hljs-string">"tolerable_faults"</span>
+          ]
+        </span>}
+      </span>}
+    </span>},
+    {
+      "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">metadata</span>": <span class="hljs-value">{
+          "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+          "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+            "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">device</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツの中身(オブジェクト群)を保存するのに使用するデバイスのID"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">seqno</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツ内部で自動採番されている数値。利用者が意識する必要はない。"</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"セグメント数 (正の整数)"</span></span>,
+              "<span class="hljs-attribute">default</span>": <span class="hljs-value"><span class="hljs-number">1000</span>
+            </span>}</span>,
+            "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value">{
+              "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+              "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"故障耐性数 (非負の整数)"</span>
+            </span>}
+          </span>}</span>,
+          "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+            <span class="hljs-string">"id"</span>,
+            <span class="hljs-string">"device"</span>,
+            <span class="hljs-string">"seqno"</span>,
+            <span class="hljs-string">"tolerable_faults"</span>
+          ]
+        </span>}
+      </span>}
+    </span>}
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>400</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>指定されたバケツの構成が不正だったり、対象のバケツが更新をサポートしていない場合に返される。
+なお、更新をサポートしているのは、種別が<code>metadata</code>のバケツのみである。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/problem+json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">kind</span>": <span class="hljs-value"><span class="hljs-string">"Other"</span></span>,
+  "<span class="hljs-attribute">cause</span>": <span class="hljs-value"><span class="hljs-string">"Not Found"</span></span>,
+  "<span class="hljs-attribute">history</span>": <span class="hljs-value">[
+    <span class="hljs-literal">null</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">kind</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーの種類を表す文字列"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">cause</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーを発生させた原因の説明"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">history</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"array"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーが発生するまでに経由したコード上の経路情報。デバッグ用の情報。"</span>
+    </span>}
+  </span>}</span>,
+  "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+    <span class="hljs-string">"kind"</span>,
+    <span class="hljs-string">"cause"</span>,
+    <span class="hljs-string">"history"</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div></div><div id="バケツ-バケツ操作-delete" class="action delete"><h4 class="action-heading"><div class="name">バケツの削除（未実装）</div><a href="#バケツ-バケツ操作-delete" class="method delete">DELETE</a><code class="uri">/v1/buckets/{bucket_id}</code></h4><p>指定されたバケツを削除する。</p>
+<h4>Example URI</h4><div class="definition"><span class="method delete">DELETE</span>&nbsp;<span class="uri"><span class="hostname">http://example.com</span>/v1/buckets/<span class="hljs-attribute" title="bucket_id">foo</span></span></div><div class="title"><strong>URI Parameters</strong><div class="collapse-button show"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><dl class="inner"><dt>bucket_id</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>foo</span></span><p>操作対象のバケツのID</p>
+</dd></dl></div><div class="title"><strong>Response&nbsp;&nbsp;<code>200</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>削除されたバケツの構成を返す。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">id</span>": <span class="hljs-value"><span class="hljs-string">"chunk"</span></span>,
+  "<span class="hljs-attribute">device</span>": <span class="hljs-value"><span class="hljs-string">"device00"</span></span>,
+  "<span class="hljs-attribute">seqno</span>": <span class="hljs-value"><span class="hljs-number">0</span></span>,
+  "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value"><span class="hljs-number">1000</span></span>,
+  "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value"><span class="hljs-number">3</span>
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツのID"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">device</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツの中身(オブジェクト群)を保存するのに使用するデバイスのID"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">seqno</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"バケツ内部で自動採番されている数値。利用者が意識する必要はない。"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">segment_count</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"セグメント数 (正の整数)"</span></span>,
+      "<span class="hljs-attribute">default</span>": <span class="hljs-value"><span class="hljs-number">1000</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">tolerable_faults</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"故障耐性数 (非負の整数)"</span>
+    </span>}
+  </span>}</span>,
+  "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+    <span class="hljs-string">"id"</span>,
+    <span class="hljs-string">"device"</span>,
+    <span class="hljs-string">"seqno"</span>,
+    <span class="hljs-string">"tolerable_faults"</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div></div></div></section><section id="オブジェクト" class="resource-group"><h2 class="group-heading">オブジェクト <a href="#オブジェクト" class="permalink">&para;</a></h2><div id="オブジェクト-オブジェクト操作" class="resource"><h3 class="resource-heading">オブジェクト操作 <a href="#オブジェクト-オブジェクト操作" class="permalink">&nbsp;&para;</a></h3><p>個々のオブジェクトに対する操作。HTTP ヘッダーで <code>If-None</code>, <code>If-None-Match</code> のいずれも指定しなかった場合はオブジェクトのバージョン確認は<strong>されない</strong>。</p>
+<p>指定可能な HTTP Header は以下のとおり。</p>
+<ul>
+<li>
+<p><code>If-None</code></p>
+<ul>
+<li>オブジェクトのバージョンがこのヘッダーで指定した値の場合のみ操作が適用される。</li>
+<li><code>*</code> を指定すると任意のバージョンに対して操作が適用される。</li>
+</ul>
+</li>
+<li>
+<p><code>If-None-Match</code></p>
+<ul>
+<li>オブジェクトのバージョンがこのヘッダーで指定した値以外の場合のみ操作が適用される。</li>
+<li><code>*</code> を指定するとオブジェクトが存在しない場合のみ操作が適用される。</li>
+</ul>
+</li>
+</ul>
+<div id="オブジェクト-オブジェクト操作-get" class="action get"><h4 class="action-heading"><div class="name">オブジェクトの取得</div><a href="#オブジェクト-オブジェクト操作-get" class="method get">GET</a><code class="uri">/v1/buckets/{bucket_id}/objects/{object_id}{?deadline}</code></h4><p><code>object_id</code>で指定されたオブジェクトの内容を取得する。</p>
+<h3 id="header-注記">注記 <a class="permalink" href="#header-注記" aria-hidden="true">¶</a></h3>
+<h4>Example URI</h4><div class="definition"><span class="method get">GET</span>&nbsp;<span class="uri"><span class="hostname">http://example.com</span>/v1/buckets/<span class="hljs-attribute" title="bucket_id">foo</span>/objects/<span class="hljs-attribute" title="object_id">bar</span>?<span class="hljs-attribute">deadline=</span><span class="hljs-literal">5000</span></span></div><div class="title"><strong>URI Parameters</strong><div class="collapse-button show"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><dl class="inner"><dt>bucket_id</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>foo</span></span><p>操作対象のバケツのID</p>
+</dd><dt>object_id</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>bar</span></span><p>操作対象のオブジェクトのID</p>
+</dd><dt>deadline</dt><dd><code>number</code>&nbsp;<span>(optional)</span>&nbsp;<span class="text-info default"><strong>Default:&nbsp;</strong><span>5000</span></span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>5000</span></span><p>処理完了までのデッドライン(ミリ秒)</p>
+</dd></dl></div><div class="title"><strong>Response&nbsp;&nbsp;<code>200</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>以前にPUTされたオブジェクトの内容を取得する。</p>
+<p>応答ヘッダの<code>ETag</code>には、該当オブジェクトのバージョンが格納される。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/octet-stream</span><br><span class="hljs-attribute">ETag</span>: <span class="hljs-string">10</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>${オブジェクトの内容}</code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>404</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>対象オブジェクトが存在しない。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/problem+json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">kind</span>": <span class="hljs-value"><span class="hljs-string">"Other"</span></span>,
+  "<span class="hljs-attribute">cause</span>": <span class="hljs-value"><span class="hljs-string">"Not Found"</span></span>,
+  "<span class="hljs-attribute">history</span>": <span class="hljs-value">[
+    <span class="hljs-literal">null</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">kind</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーの種類を表す文字列"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">cause</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーを発生させた原因の説明"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">history</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"array"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーが発生するまでに経由したコード上の経路情報。デバッグ用の情報。"</span>
+    </span>}
+  </span>}</span>,
+  "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+    <span class="hljs-string">"kind"</span>,
+    <span class="hljs-string">"cause"</span>,
+    <span class="hljs-string">"history"</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>410</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p><code>object_id</code>に対応するオブジェクトは存在するが、内容が壊れている。</p>
+<p>再び利用可能にするには、ユーザが再度PUTを発行する必要がある可能性が高い。</p>
+<p>応答ヘッダの<code>ETag</code>には、該当オブジェクトのバージョンが格納される。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/problem+json</span><br><span class="hljs-attribute">ETag</span>: <span class="hljs-string">10</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">kind</span>": <span class="hljs-value"><span class="hljs-string">"Other"</span></span>,
+  "<span class="hljs-attribute">cause</span>": <span class="hljs-value"><span class="hljs-string">"Not Found"</span></span>,
+  "<span class="hljs-attribute">history</span>": <span class="hljs-value">[
+    <span class="hljs-literal">null</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">kind</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーの種類を表す文字列"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">cause</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーを発生させた原因の説明"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">history</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"array"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーが発生するまでに経由したコード上の経路情報。デバッグ用の情報。"</span>
+    </span>}
+  </span>}</span>,
+  "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+    <span class="hljs-string">"kind"</span>,
+    <span class="hljs-string">"cause"</span>,
+    <span class="hljs-string">"history"</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div></div><div id="オブジェクト-オブジェクト操作-head" class="action head"><h4 class="action-heading"><div class="name">オブジェクトの存在確認</div><a href="#オブジェクト-オブジェクト操作-head" class="method head">HEAD</a><code class="uri">/v1/buckets/{bucket_id}/objects/{object_id}{?deadline}</code></h4><p><code>object_id</code>で指定されたオブジェクトが存在するかを確認する。</p>
+<h3 id="header-注記-1">注記 <a class="permalink" href="#header-注記-1" aria-hidden="true">¶</a></h3>
+<h4>Example URI</h4><div class="definition"><span class="method head">HEAD</span>&nbsp;<span class="uri"><span class="hostname">http://example.com</span>/v1/buckets/<span class="hljs-attribute" title="bucket_id">foo</span>/objects/<span class="hljs-attribute" title="object_id">bar</span>?<span class="hljs-attribute">deadline=</span><span class="hljs-literal">5000</span></span></div><div class="title"><strong>URI Parameters</strong><div class="collapse-button show"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><dl class="inner"><dt>bucket_id</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>foo</span></span><p>操作対象のバケツのID</p>
+</dd><dt>object_id</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>bar</span></span><p>操作対象のオブジェクトのID</p>
+</dd><dt>deadline</dt><dd><code>number</code>&nbsp;<span>(optional)</span>&nbsp;<span class="text-info default"><strong>Default:&nbsp;</strong><span>5000</span></span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>5000</span></span><p>処理完了までのデッドライン(ミリ秒)</p>
+</dd></dl></div><div class="title"><strong>Response&nbsp;&nbsp;<code>200</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>応答ヘッダの<code>ETag</code>には、該当オブジェクトのバージョンが格納される。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/octet-stream</span><br><span class="hljs-attribute">ETag</span>: <span class="hljs-string">10</span></code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>404</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>対象オブジェクトが存在しない。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/problem+json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">kind</span>": <span class="hljs-value"><span class="hljs-string">"Other"</span></span>,
+  "<span class="hljs-attribute">cause</span>": <span class="hljs-value"><span class="hljs-string">"Not Found"</span></span>,
+  "<span class="hljs-attribute">history</span>": <span class="hljs-value">[
+    <span class="hljs-literal">null</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">kind</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーの種類を表す文字列"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">cause</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーを発生させた原因の説明"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">history</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"array"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーが発生するまでに経由したコード上の経路情報。デバッグ用の情報。"</span>
+    </span>}
+  </span>}</span>,
+  "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+    <span class="hljs-string">"kind"</span>,
+    <span class="hljs-string">"cause"</span>,
+    <span class="hljs-string">"history"</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div></div><div id="オブジェクト-オブジェクト操作-put" class="action put"><h4 class="action-heading"><div class="name">オブジェクトの作成・更新</div><a href="#オブジェクト-オブジェクト操作-put" class="method put">PUT</a><code class="uri">/v1/buckets/{bucket_id}/objects/{object_id}{?deadline}</code></h4><p>オブジェクトの新規作成、あるいは更新を行う。</p>
+<h4>Example URI</h4><div class="definition"><span class="method put">PUT</span>&nbsp;<span class="uri"><span class="hostname">http://example.com</span>/v1/buckets/<span class="hljs-attribute" title="bucket_id">foo</span>/objects/<span class="hljs-attribute" title="object_id">bar</span>?<span class="hljs-attribute">deadline=</span><span class="hljs-literal">5000</span></span></div><div class="title"><strong>URI Parameters</strong><div class="collapse-button show"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><dl class="inner"><dt>bucket_id</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>foo</span></span><p>操作対象のバケツのID</p>
+</dd><dt>object_id</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>bar</span></span><p>操作対象のオブジェクトのID</p>
+</dd><dt>deadline</dt><dd><code>number</code>&nbsp;<span>(optional)</span>&nbsp;<span class="text-info default"><strong>Default:&nbsp;</strong><span>5000</span></span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>5000</span></span><p>処理完了までのデッドライン(ミリ秒)</p>
+</dd></dl></div><div class="title"><strong>Request</strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/octet-stream</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>${オブジェクトの内容}</code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>200</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>オブジェクトが更新された。</p>
+<p>応答ヘッダの<code>ETag</code>には、更新後のオブジェクトのバージョンが格納される。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">ETag</span>: <span class="hljs-string">10</span></code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>201</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>オブジェクトが作成された。</p>
+<p>応答ヘッダの<code>ETag</code>には、作成後のオブジェクトのバージョンが格納される。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">ETag</span>: <span class="hljs-string">10</span></code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>412</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p><code>expect</code>パラメータで指定された条件と、実際のオブジェクトのバージョンが異なる。</p>
+<p>応答ヘッダの<code>ETag</code>には、現在のオブジェクトのバージョンが格納される。
+なお、オブジェクトが存在しない場合には、このヘッダは応答には含まれない。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/problem+json</span><br><span class="hljs-attribute">ETag</span>: <span class="hljs-string">10</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">kind</span>": <span class="hljs-value"><span class="hljs-string">"Other"</span></span>,
+  "<span class="hljs-attribute">cause</span>": <span class="hljs-value"><span class="hljs-string">"Not Found"</span></span>,
+  "<span class="hljs-attribute">history</span>": <span class="hljs-value">[
+    <span class="hljs-literal">null</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">kind</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーの種類を表す文字列"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">cause</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーを発生させた原因の説明"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">history</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"array"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーが発生するまでに経由したコード上の経路情報。デバッグ用の情報。"</span>
+    </span>}
+  </span>}</span>,
+  "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+    <span class="hljs-string">"kind"</span>,
+    <span class="hljs-string">"cause"</span>,
+    <span class="hljs-string">"history"</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div></div><div id="オブジェクト-オブジェクト操作-delete" class="action delete"><h4 class="action-heading"><div class="name">オブジェクトの削除</div><a href="#オブジェクト-オブジェクト操作-delete" class="method delete">DELETE</a><code class="uri">/v1/buckets/{bucket_id}/objects/{object_id}{?deadline}</code></h4><p>オブジェクトの削除を行う。</p>
+<p>対象オブジェクトが存在しない場合には、<code>404</code>応答が返される。</p>
+<h4>Example URI</h4><div class="definition"><span class="method delete">DELETE</span>&nbsp;<span class="uri"><span class="hostname">http://example.com</span>/v1/buckets/<span class="hljs-attribute" title="bucket_id">foo</span>/objects/<span class="hljs-attribute" title="object_id">bar</span>?<span class="hljs-attribute">deadline=</span><span class="hljs-literal">5000</span></span></div><div class="title"><strong>URI Parameters</strong><div class="collapse-button show"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><dl class="inner"><dt>bucket_id</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>foo</span></span><p>操作対象のバケツのID</p>
+</dd><dt>object_id</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>bar</span></span><p>操作対象のオブジェクトのID</p>
+</dd><dt>deadline</dt><dd><code>number</code>&nbsp;<span>(optional)</span>&nbsp;<span class="text-info default"><strong>Default:&nbsp;</strong><span>5000</span></span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>5000</span></span><p>処理完了までのデッドライン(ミリ秒)</p>
+</dd></dl></div><div class="title"><strong>Response&nbsp;&nbsp;<code>200</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>オブジェクトが削除された。</p>
+<p>応答ヘッダの<code>ETag</code>には、削除されたオブジェクトのバージョンが格納される。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">ETag</span>: <span class="hljs-string">10</span></code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>404</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>対象オブジェクトが存在しない。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/problem+json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">kind</span>": <span class="hljs-value"><span class="hljs-string">"Other"</span></span>,
+  "<span class="hljs-attribute">cause</span>": <span class="hljs-value"><span class="hljs-string">"Not Found"</span></span>,
+  "<span class="hljs-attribute">history</span>": <span class="hljs-value">[
+    <span class="hljs-literal">null</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">kind</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーの種類を表す文字列"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">cause</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーを発生させた原因の説明"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">history</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"array"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーが発生するまでに経由したコード上の経路情報。デバッグ用の情報。"</span>
+    </span>}
+  </span>}</span>,
+  "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+    <span class="hljs-string">"kind"</span>,
+    <span class="hljs-string">"cause"</span>,
+    <span class="hljs-string">"history"</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>412</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p><code>expect</code>パラメータで指定された条件と、実際のオブジェクトのバージョンが異なる。</p>
+<p>応答ヘッダの<code>ETag</code>には、現在のオブジェクトのバージョンが格納される。
+なお、オブジェクトが存在しない場合には、このヘッダは応答には含まれない。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/problem+json</span><br><span class="hljs-attribute">ETag</span>: <span class="hljs-string">10</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">kind</span>": <span class="hljs-value"><span class="hljs-string">"Other"</span></span>,
+  "<span class="hljs-attribute">cause</span>": <span class="hljs-value"><span class="hljs-string">"Not Found"</span></span>,
+  "<span class="hljs-attribute">history</span>": <span class="hljs-value">[
+    <span class="hljs-literal">null</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">kind</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーの種類を表す文字列"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">cause</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーを発生させた原因の説明"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">history</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"array"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーが発生するまでに経由したコード上の経路情報。デバッグ用の情報。"</span>
+    </span>}
+  </span>}</span>,
+  "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+    <span class="hljs-string">"kind"</span>,
+    <span class="hljs-string">"cause"</span>,
+    <span class="hljs-string">"history"</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div></div></div></section><section id="オブジェクトプレフィックス" class="resource-group"><h2 class="group-heading">オブジェクトプレフィックス <a href="#オブジェクトプレフィックス" class="permalink">&para;</a></h2><div id="オブジェクトプレフィックス-プレフィックス指定でのオブジェクト操作" class="resource"><h3 class="resource-heading">プレフィックス指定でのオブジェクト操作 <a href="#オブジェクトプレフィックス-プレフィックス指定でのオブジェクト操作" class="permalink">&nbsp;&para;</a></h3><div id="オブジェクトプレフィックス-プレフィックス指定でのオブジェクト操作-delete" class="action delete"><h4 class="action-heading"><div class="name">オブジェクトの削除</div><a href="#オブジェクトプレフィックス-プレフィックス指定でのオブジェクト操作-delete" class="method delete">DELETE</a><code class="uri">/v1/buckets/{bucket_id}/object_prefixes/{object_prefix}</code></h4><p>指定したプレフィックスを ID のプレフィックスに持つオブジェクトを削除する。</p>
+<p>例えば、<code>lv123</code>, <code>25lv25</code> の ID を持つオブジェクトが登録されている場合に、<code>lv</code> を <code>object_prefix</code> に指定すると、<code>lv123</code> のみ削除される。</p>
+<p>削除されたオブジェクトが1つもなくても <code>200</code> 応答が返される。</p>
+<h4>Example URI</h4><div class="definition"><span class="method delete">DELETE</span>&nbsp;<span class="uri"><span class="hostname">http://example.com</span>/v1/buckets/<span class="hljs-attribute" title="bucket_id">live</span>/object_prefixes/<span class="hljs-attribute" title="object_prefix">lv3293</span></span></div><div class="title"><strong>URI Parameters</strong><div class="collapse-button show"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><dl class="inner"><dt>bucket_id</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>live</span></span><p>操作対象のバケツのID</p>
+</dd><dt>object_prefix</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>lv3293</span></span><p>削除対象のオブジェクトのIDのプレフィックス</p>
+</dd></dl></div><div class="title"><strong>Response&nbsp;&nbsp;<code>200</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>オブジェクトが削除された。</p>
+</div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">total</span>": <span class="hljs-value"><span class="hljs-string">"Hello, world!"</span>
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">total</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"削除されたオブジェクト総数の文字列表現(JSON で表現できない巨大な数になりうるため)"</span>
+    </span>}
+  </span>}</span>,
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span>
+</span>}</code></pre><div style="height: 1px;"></div></div></div></div></div></section><section id="セグメント" class="resource-group"><h2 class="group-heading">セグメント <a href="#セグメント" class="permalink">&para;</a></h2><div id="セグメント-セグメント一覧" class="resource"><h3 class="resource-heading">セグメント一覧 <a href="#セグメント-セグメント一覧" class="permalink">&nbsp;&para;</a></h3><div id="セグメント-セグメント一覧-get" class="action get"><h4 class="action-heading"><div class="name">セグメント一覧の取得</div><a href="#セグメント-セグメント一覧-get" class="method get">GET</a><code class="uri">/v1/buckets/{bucket_id}/segments</code></h4><p>指定されたバケツのセグメント一覧を取得する。</p>
+<h4>Example URI</h4><div class="definition"><span class="method get">GET</span>&nbsp;<span class="uri"><span class="hostname">http://example.com</span>/v1/buckets/<span class="hljs-attribute" title="bucket_id">foo</span>/segments</span></div><div class="title"><strong>URI Parameters</strong><div class="collapse-button show"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><dl class="inner"><dt>bucket_id</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>foo</span></span><p>操作対象のバケツのID</p>
+</dd></dl></div><div class="title"><strong>Response&nbsp;&nbsp;<code>200</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>[
+  {
+    "<span class="hljs-attribute">id</span>": <span class="hljs-value"><span class="hljs-number">0</span>
+  </span>}
+]</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"array"</span></span>,
+  "<span class="hljs-attribute">items</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+    "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+        "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"セグメントのID"</span>
+      </span>}
+    </span>}</span>,
+    "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+      <span class="hljs-string">"id"</span>
+    ]
+  </span>}
+</span>}</code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>404</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>対象のバケツが存在しない。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/problem+json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">kind</span>": <span class="hljs-value"><span class="hljs-string">"Other"</span></span>,
+  "<span class="hljs-attribute">cause</span>": <span class="hljs-value"><span class="hljs-string">"Not Found"</span></span>,
+  "<span class="hljs-attribute">history</span>": <span class="hljs-value">[
+    <span class="hljs-literal">null</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">kind</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーの種類を表す文字列"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">cause</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーを発生させた原因の説明"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">history</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"array"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーが発生するまでに経由したコード上の経路情報。デバッグ用の情報。"</span>
+    </span>}
+  </span>}</span>,
+  "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+    <span class="hljs-string">"kind"</span>,
+    <span class="hljs-string">"cause"</span>,
+    <span class="hljs-string">"history"</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div></div></div><div id="セグメント-セグメント操作" class="resource"><h3 class="resource-heading">セグメント操作 <a href="#セグメント-セグメント操作" class="permalink">&nbsp;&para;</a></h3><div id="セグメント-セグメント操作-get" class="action get"><h4 class="action-heading"><div class="name">セグメント構成の取得(未実装)</div><a href="#セグメント-セグメント操作-get" class="method get">GET</a><code class="uri">/v1/buckets/{bucket_id}/segments/{segment_id}</code></h4><p>指定されたセグメントの構成情報を返す。</p>
+<p>TODO: 各デバイスに関して、データ同期が完了(i.e., 即座に利用可能か)しているかどうかのフラグを返しても良いかも
+(statistics的なもので「Raftログのcommit済み地点」を返せば十分？)</p>
+<h3 id="header-注記-2">注記 <a class="permalink" href="#header-注記-2" aria-hidden="true">¶</a></h3>
+<p>応答の値は暫定。</p>
+<h4>Example URI</h4><div class="definition"><span class="method get">GET</span>&nbsp;<span class="uri"><span class="hostname">http://example.com</span>/v1/buckets/<span class="hljs-attribute" title="bucket_id">foo</span>/segments/<span class="hljs-attribute" title="segment_id">0</span></span></div><div class="title"><strong>URI Parameters</strong><div class="collapse-button show"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><dl class="inner"><dt>bucket_id</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>foo</span></span><p>操作対象のバケツのID</p>
+</dd><dt>segment_id</dt><dd><code>number</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>0</span></span><p>操作対象のセグメントのID</p>
+</dd></dl></div><div class="title"><strong>Response&nbsp;&nbsp;<code>200</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">devices</span>": <span class="hljs-value">[
+    <span class="hljs-string">"device00"</span>,
+    <span class="hljs-string">"device01"</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div></div></div><div id="セグメント-オブジェクト一覧" class="resource"><h3 class="resource-heading">オブジェクト一覧 <a href="#セグメント-オブジェクト一覧" class="permalink">&nbsp;&para;</a></h3><div id="セグメント-オブジェクト一覧-get" class="action get"><h4 class="action-heading"><div class="name">オブジェクト一覧の取得</div><a href="#セグメント-オブジェクト一覧-get" class="method get">GET</a><code class="uri">/v1/buckets/{bucket_id}/segments/{segment_id}/objects</code></h4><p>指定されたセグメントに属するオブジェクトの一覧を返す。</p>
+<h4>Example URI</h4><div class="definition"><span class="method get">GET</span>&nbsp;<span class="uri"><span class="hostname">http://example.com</span>/v1/buckets/<span class="hljs-attribute" title="bucket_id">foo</span>/segments/<span class="hljs-attribute" title="segment_id">0</span>/objects</span></div><div class="title"><strong>URI Parameters</strong><div class="collapse-button show"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><dl class="inner"><dt>bucket_id</dt><dd><code>string</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>foo</span></span><p>操作対象のバケツのID</p>
+</dd><dt>segment_id</dt><dd><code>number</code>&nbsp;<span class="required">(required)</span>&nbsp;<span class="text-muted example"><strong>Example:&nbsp;</strong><span>0</span></span><p>操作対象のセグメントのID</p>
+</dd></dl></div><div class="title"><strong>Response&nbsp;&nbsp;<code>200</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>[
+  {
+    "<span class="hljs-attribute">id</span>": <span class="hljs-value"><span class="hljs-string">"sm9"</span></span>,
+    "<span class="hljs-attribute">version</span>": <span class="hljs-value"><span class="hljs-number">3</span>
+  </span>}
+]</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"array"</span></span>,
+  "<span class="hljs-attribute">items</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+    "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">id</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+        "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"オブジェクトのID"</span>
+      </span>}</span>,
+      "<span class="hljs-attribute">version</span>": <span class="hljs-value">{
+        "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"number"</span></span>,
+        "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"オブジェクトのバージョン"</span>
+      </span>}
+    </span>}</span>,
+    "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+      <span class="hljs-string">"id"</span>,
+      <span class="hljs-string">"version"</span>
+    ]
+  </span>}
+</span>}</code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>400</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>セグメントIDが不正。セグメントIDに適切な型を指定しているか確認する。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/problem+json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">kind</span>": <span class="hljs-value"><span class="hljs-string">"Other"</span></span>,
+  "<span class="hljs-attribute">cause</span>": <span class="hljs-value"><span class="hljs-string">"Not Found"</span></span>,
+  "<span class="hljs-attribute">history</span>": <span class="hljs-value">[
+    <span class="hljs-literal">null</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">kind</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーの種類を表す文字列"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">cause</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーを発生させた原因の説明"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">history</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"array"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーが発生するまでに経由したコード上の経路情報。デバッグ用の情報。"</span>
+    </span>}
+  </span>}</span>,
+  "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+    <span class="hljs-string">"kind"</span>,
+    <span class="hljs-string">"cause"</span>,
+    <span class="hljs-string">"history"</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>404</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>対象のセグメントが存在しない。存在しないバケツIDが指定された場合に返される。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/problem+json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">kind</span>": <span class="hljs-value"><span class="hljs-string">"Other"</span></span>,
+  "<span class="hljs-attribute">cause</span>": <span class="hljs-value"><span class="hljs-string">"Not Found"</span></span>,
+  "<span class="hljs-attribute">history</span>": <span class="hljs-value">[
+    <span class="hljs-literal">null</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">kind</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーの種類を表す文字列"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">cause</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーを発生させた原因の説明"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">history</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"array"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーが発生するまでに経由したコード上の経路情報。デバッグ用の情報。"</span>
+    </span>}
+  </span>}</span>,
+  "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+    <span class="hljs-string">"kind"</span>,
+    <span class="hljs-string">"cause"</span>,
+    <span class="hljs-string">"history"</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div><div class="title"><strong>Response&nbsp;&nbsp;<code>500</code></strong><div class="collapse-button"><span class="close">Hide</span><span class="open">Show</span></div></div><div class="collapse-content"><div class="inner"><div class="description"><p>バケツは存在するがセグメントIDが存在するセグメント範囲を超えている。現在は実装の都合で 500 を返すが、将来的には 400 を返すように修正される予定。</p>
+</div><h5>Headers</h5><pre><code><span class="hljs-attribute">Content-Type</span>: <span class="hljs-string">application/problem+json</span></code></pre><div style="height: 1px;"></div><h5>Body</h5><pre><code>{
+  "<span class="hljs-attribute">kind</span>": <span class="hljs-value"><span class="hljs-string">"Other"</span></span>,
+  "<span class="hljs-attribute">cause</span>": <span class="hljs-value"><span class="hljs-string">"Not Found"</span></span>,
+  "<span class="hljs-attribute">history</span>": <span class="hljs-value">[
+    <span class="hljs-literal">null</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div><h5>Schema</h5><pre><code>{
+  "<span class="hljs-attribute">$schema</span>": <span class="hljs-value"><span class="hljs-string">"http://json-schema.org/draft-04/schema#"</span></span>,
+  "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"object"</span></span>,
+  "<span class="hljs-attribute">properties</span>": <span class="hljs-value">{
+    "<span class="hljs-attribute">kind</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーの種類を表す文字列"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">cause</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"string"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーを発生させた原因の説明"</span>
+    </span>}</span>,
+    "<span class="hljs-attribute">history</span>": <span class="hljs-value">{
+      "<span class="hljs-attribute">type</span>": <span class="hljs-value"><span class="hljs-string">"array"</span></span>,
+      "<span class="hljs-attribute">description</span>": <span class="hljs-value"><span class="hljs-string">"エラーが発生するまでに経由したコード上の経路情報。デバッグ用の情報。"</span>
+    </span>}
+  </span>}</span>,
+  "<span class="hljs-attribute">required</span>": <span class="hljs-value">[
+    <span class="hljs-string">"kind"</span>,
+    <span class="hljs-string">"cause"</span>,
+    <span class="hljs-string">"history"</span>
+  ]
+</span>}</code></pre><div style="height: 1px;"></div></div></div></div></div></section></div></div></div><p style="text-align: center;" class="text-muted">Generated by&nbsp;<a href="https://github.com/danielgtaylor/aglio" class="aglio">aglio</a>&nbsp;on 25 Oct 2018</p><script>/* eslint-env browser */
+/* eslint quotes: [2, "single"] */
+'use strict';
+
+/*
+  Determine if a string ends with another string.
+*/
+function endsWith(str, suffix) {
+    return str.indexOf(suffix, str.length - suffix.length) !== -1;
+}
+
+/*
+  Get a list of direct child elements by class name.
+*/
+function childrenByClass(element, name) {
+  var filtered = [];
+
+  for (var i = 0; i < element.children.length; i++) {
+    var child = element.children[i];
+    var classNames = child.className.split(' ');
+    if (classNames.indexOf(name) !== -1) {
+      filtered.push(child);
+    }
+  }
+
+  return filtered;
+}
+
+/*
+  Get an array [width, height] of the window.
+*/
+function getWindowDimensions() {
+  var w = window,
+      d = document,
+      e = d.documentElement,
+      g = d.body,
+      x = w.innerWidth || e.clientWidth || g.clientWidth,
+      y = w.innerHeight || e.clientHeight || g.clientHeight;
+
+  return [x, y];
+}
+
+/*
+  Collapse or show a request/response example.
+*/
+function toggleCollapseButton(event) {
+    var button = event.target.parentNode;
+    var content = button.parentNode.nextSibling;
+    var inner = content.children[0];
+
+    if (button.className.indexOf('collapse-button') === -1) {
+      // Clicked without hitting the right element?
+      return;
+    }
+
+    if (content.style.maxHeight && content.style.maxHeight !== '0px') {
+        // Currently showing, so let's hide it
+        button.className = 'collapse-button';
+        content.style.maxHeight = '0px';
+    } else {
+        // Currently hidden, so let's show it
+        button.className = 'collapse-button show';
+        content.style.maxHeight = inner.offsetHeight + 12 + 'px';
+    }
+}
+
+function toggleTabButton(event) {
+    var i, index;
+    var button = event.target;
+
+    // Get index of the current button.
+    var buttons = childrenByClass(button.parentNode, 'tab-button');
+    for (i = 0; i < buttons.length; i++) {
+        if (buttons[i] === button) {
+            index = i;
+            button.className = 'tab-button active';
+        } else {
+            buttons[i].className = 'tab-button';
+        }
+    }
+
+    // Hide other tabs and show this one.
+    var tabs = childrenByClass(button.parentNode.parentNode, 'tab');
+    for (i = 0; i < tabs.length; i++) {
+        if (i === index) {
+            tabs[i].style.display = 'block';
+        } else {
+            tabs[i].style.display = 'none';
+        }
+    }
+}
+
+/*
+  Collapse or show a navigation menu. It will not be hidden unless it
+  is currently selected or `force` has been passed.
+*/
+function toggleCollapseNav(event, force) {
+    var heading = event.target.parentNode;
+    var content = heading.nextSibling;
+    var inner = content.children[0];
+
+    if (heading.className.indexOf('heading') === -1) {
+      // Clicked without hitting the right element?
+      return;
+    }
+
+    if (content.style.maxHeight && content.style.maxHeight !== '0px') {
+      // Currently showing, so let's hide it, but only if this nav item
+      // is already selected. This prevents newly selected items from
+      // collapsing in an annoying fashion.
+      if (force || window.location.hash && endsWith(event.target.href, window.location.hash)) {
+        content.style.maxHeight = '0px';
+      }
+    } else {
+      // Currently hidden, so let's show it
+      content.style.maxHeight = inner.offsetHeight + 12 + 'px';
+    }
+}
+
+/*
+  Refresh the page after a live update from the server. This only
+  works in live preview mode (using the `--server` parameter).
+*/
+function refresh(body) {
+    document.querySelector('body').className = 'preload';
+    document.body.innerHTML = body;
+
+    // Re-initialize the page
+    init();
+    autoCollapse();
+
+    document.querySelector('body').className = '';
+}
+
+/*
+  Determine which navigation items should be auto-collapsed to show as many
+  as possible on the screen, based on the current window height. This also
+  collapses them.
+*/
+function autoCollapse() {
+  var windowHeight = getWindowDimensions()[1];
+  var itemsHeight = 64; /* Account for some padding */
+  var itemsArray = Array.prototype.slice.call(
+    document.querySelectorAll('nav .resource-group .heading'));
+
+  // Get the total height of the navigation items
+  itemsArray.forEach(function (item) {
+    itemsHeight += item.parentNode.offsetHeight;
+  });
+
+  // Should we auto-collapse any nav items? Try to find the smallest item
+  // that can be collapsed to show all items on the screen. If not possible,
+  // then collapse the largest item and do it again. First, sort the items
+  // by height from smallest to largest.
+  var sortedItems = itemsArray.sort(function (a, b) {
+    return a.parentNode.offsetHeight - b.parentNode.offsetHeight;
+  });
+
+  while (sortedItems.length && itemsHeight > windowHeight) {
+    for (var i = 0; i < sortedItems.length; i++) {
+      // Will collapsing this item help?
+      var itemHeight = sortedItems[i].nextSibling.offsetHeight;
+      if ((itemsHeight - itemHeight <= windowHeight) || i === sortedItems.length - 1) {
+        // It will, so let's collapse it, remove its content height from
+        // our total and then remove it from our list of candidates
+        // that can be collapsed.
+        itemsHeight -= itemHeight;
+        toggleCollapseNav({target: sortedItems[i].children[0]}, true);
+        sortedItems.splice(i, 1);
+        break;
+      }
+    }
+  }
+}
+
+/*
+  Initialize the interactive functionality of the page.
+*/
+function init() {
+    var i, j;
+
+    // Make collapse buttons clickable
+    var buttons = document.querySelectorAll('.collapse-button');
+    for (i = 0; i < buttons.length; i++) {
+        buttons[i].onclick = toggleCollapseButton;
+
+        // Show by default? Then toggle now.
+        if (buttons[i].className.indexOf('show') !== -1) {
+            toggleCollapseButton({target: buttons[i].children[0]});
+        }
+    }
+
+    var responseCodes = document.querySelectorAll('.example-names');
+    for (i = 0; i < responseCodes.length; i++) {
+        var tabButtons = childrenByClass(responseCodes[i], 'tab-button');
+        for (j = 0; j < tabButtons.length; j++) {
+            tabButtons[j].onclick = toggleTabButton;
+
+            // Show by default?
+            if (j === 0) {
+                toggleTabButton({target: tabButtons[j]});
+            }
+        }
+    }
+
+    // Make nav items clickable to collapse/expand their content.
+    var navItems = document.querySelectorAll('nav .resource-group .heading');
+    for (i = 0; i < navItems.length; i++) {
+        navItems[i].onclick = toggleCollapseNav;
+
+        // Show all by default
+        toggleCollapseNav({target: navItems[i].children[0]});
+    }
+}
+
+// Initial call to set up buttons
+init();
+
+window.onload = function () {
+    autoCollapse();
+    // Remove the `preload` class to enable animations
+    document.querySelector('body').className = '';
+};
+</script></body></html>

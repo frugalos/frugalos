@@ -1,0 +1,9 @@
+{
+  "name": "frugalos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "frugalos",
+  "devDependencies": {
+    "aglio": "^2.3.0"
+  }
+}
