@@ -1,14 +1,22 @@
-frugalos
-========
+<h1 align="center">Frugalos</h1>
+<h3 align="center">Frugal Object Storage</h3>
 
-[![Crates.io: frugalos](https://img.shields.io/crates/v/frugalos.svg)](https://crates.io/crates/frugalos)
-[![Documentation](https://docs.rs/frugalos/badge.svg)](https://docs.rs/frugalos)
-[![Build Status](https://travis-ci.org/frugalos/frugalos.svg?branch=master)](https://travis-ci.org/frugalos/frugalos)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<p align="center">
+ <a href="https://crates.io/crates/frugalos">
+ <img src="https://img.shields.io/crates/v/frugalos.svg" alt="Crates.io: frugalos">
+ </a>
+ <a href="https://docs.rs/frugalos">
+  <img src="https://docs.rs/frugalos/badge.svg" alt="Documentation">
+ </a>
+ <a href="https://travis-ci.org/frugalos/frugalos">
+   <img src="https://travis-ci.org/frugalos/frugalos.svg?branch=master" alt="Build Status">
+ </a>
+ <a href="LICENSE">
+  <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT">
+ </a>
+</p>
 
-Frugal Object Storage.
-
-Frugalos is a distributed object storage written by Rust.
+Frugalos is a distributed object storage written by Rust.  
 It is suitable for storing medium size BLOBs that become petabyte scale in total.
 
 Documentation
@@ -23,17 +31,22 @@ Documentation
 Installation
 ------------
 
-You can install `frugalos` by executing the following command (please also see [liberasurecode's prerequisites]):
+You can install `frugalos` by the following command:
 ```console
 $ cargo install frugalos
 ```
 
-And pre-build binaries are found in [releases] page.
+**Note:** The current installation process requires `automake`, `autoconf`, and `libtool` to build [liberasurecode] internally. If you have not installed them, please install them. (See also [liberasurecode's prerequisites])
 
+You can also use pre-build binaries from the [releases] page.
+
+[liberasurecode]: https://github.com/frugalos/liberasurecode
 [liberasurecode's prerequisites]: https://github.com/frugalos/liberasurecode#prerequisites-to-build
 [releases]: https://github.com/frugalos/frugalos/releases
 
-Below is a minimal usage example:
+
+Simple Example
+------------
 ```console
 // Create a cluster.
 $ frugalos create --id example --data-dir example/
