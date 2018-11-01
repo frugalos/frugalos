@@ -1,4 +1,4 @@
-it
+it (integration test)
 ===
 
 結合テスト
