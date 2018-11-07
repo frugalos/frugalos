@@ -13,7 +13,7 @@ use std::cmp::{self, Reverse};
 use std::collections::{BTreeSet, BinaryHeap};
 use std::time::{Duration, SystemTime};
 
-use client::storage::{GetFragment, StorageClient};
+use client::storage::{GetFragment, MaybeFragment, StorageClient};
 use config;
 use util::Phase3;
 use Error;
@@ -358,7 +358,16 @@ impl Future for RepairContent {
                     let future = self.client.clone().get_fragment(self.node_id, self.version);
                     Phase3::B(future)
                 }
-                Phase3::B(mut content) => {
+                Phase3::B(MaybeFragment::NotParticipant) => {
+                    debug!(
+                        self.logger,
+                        "The object {:?} should not be stored on this node: node_id={:?}",
+                        self.version,
+                        self.node_id
+                    );
+                    return Ok(Async::Ready(()));
+                }
+                Phase3::B(MaybeFragment::Fragment(mut content)) => {
                     ::client::storage::append_checksum(&mut content); // TODO
 
                     let lump_id = config::make_lump_id(&self.node_id, self.version);
