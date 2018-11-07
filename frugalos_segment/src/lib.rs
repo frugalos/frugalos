@@ -8,6 +8,8 @@ extern crate cannyls;
 extern crate cannyls_rpc;
 extern crate ecpool;
 extern crate fibers;
+#[cfg(test)]
+extern crate fibers_global;
 extern crate fibers_rpc;
 extern crate frugalos_mds;
 extern crate frugalos_raft;
@@ -38,6 +40,7 @@ mod client;
 mod error;
 mod service;
 mod synchronizer;
+mod test_util;
 mod util;
 
 /// クレート固有の`Result`型。

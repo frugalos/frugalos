@@ -73,6 +73,16 @@ impl From<ecpool::Error> for Error {
         ErrorKind::Other.takes_over(f).into()
     }
 }
+impl From<fibers_rpc::Error> for Error {
+    fn from(f: fibers_rpc::Error) -> Self {
+        let kind = match *f.kind() {
+            fibers_rpc::ErrorKind::InvalidInput => ErrorKind::Invalid,
+            fibers_rpc::ErrorKind::Unavailable => ErrorKind::Busy,
+            fibers_rpc::ErrorKind::Timeout | fibers_rpc::ErrorKind::Other => ErrorKind::Other,
+        };
+        kind.takes_over(f).into()
+    }
+}
 impl From<cannyls::Error> for Error {
     fn from(f: cannyls::Error) -> Self {
         ErrorKind::Other.takes_over(f).into()
