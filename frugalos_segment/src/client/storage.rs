@@ -802,3 +802,38 @@ fn verify_and_remove_checksum(bytes: &mut Vec<u8>) -> Result<()> {
     bytes.truncate(split_pos);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test_util::tests::{setup_system, wait, System};
+    use trackable::result::TestResult;
+
+    #[test]
+    fn it_puts_data_correctly() -> TestResult {
+        let data_fragments = 5;
+        let mut system = System::new(data_fragments)?;
+        let (_, _, storage_client) = setup_system(&mut system)?;
+        let version = ObjectVersion(1);
+        let expected = vec![0x03];
+
+        let _ = wait(storage_client.clone().put(
+            version.clone(),
+            expected.clone(),
+            Deadline::Infinity,
+            Span::inactive().handle(),
+        ))?;
+        let actual = wait(storage_client.clone().get(
+            ObjectValue {
+                version,
+                content: expected.clone(),
+            },
+            Deadline::Infinity,
+            Span::inactive().handle(),
+        ))?;
+
+        assert_eq!(expected, actual);
+
+        Ok(())
+    }
+}

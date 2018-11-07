@@ -33,3 +33,6 @@ serde_derive = "1"
 siphasher = "0.2"
 slog = "2"
 trackable = "0.2"
+
+[dev-dependencies]
+fibers_global = "0.1"

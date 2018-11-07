@@ -145,3 +145,61 @@ pub struct DispersedConfig {
     /// データおよびパリティを合わせたフラグメントの合計数。
     pub fragments: u8,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use frugalos_raft::LocalNodeId;
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+    /// Makes a cluster member.
+    /// `n` is used for the id of a node.
+    fn make_member(n: u8) -> ClusterMember {
+        let local_id = LocalNodeId::new([0, 0, 0, 0, 0, 0, n]);
+        ClusterMember {
+            node: NodeId {
+                local_id,
+                // an arbitrary value is ok
+                instance: 0,
+                // an arbitrary value is ok
+                addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0),
+            },
+            device: n.to_string(),
+        }
+    }
+
+    /// Makes a cluster which has the given size of members.
+    fn make_cluster(size: u8) -> ClusterConfig {
+        let mut members = Vec::new();
+
+        for n in 0..size {
+            members.push(make_member(n));
+        }
+
+        ClusterConfig { members }
+    }
+
+    /// Collects all device names from `ClusterConfig`.
+    /// This function makes assertion ease in a test.
+    /// The ordering of the returned `Vec<String>` is consistent
+    /// with the `ClusterConfig::candidates`.
+    fn collect_devices(cluster: &ClusterConfig, version: ObjectVersion) -> Vec<String> {
+        cluster
+            .candidates(version)
+            .map(|m| m.device.clone())
+            .collect::<Vec<_>>()
+    }
+
+    #[test]
+    fn it_works() {
+        let cluster = make_cluster(5);
+        let candidates = collect_devices(&cluster, ObjectVersion(1));
+
+        assert_eq!(candidates.len(), 5);
+        assert_eq!(candidates[0], "3");
+        assert_eq!(candidates[1], "4");
+        assert_eq!(candidates[2], "0");
+        assert_eq!(candidates[3], "1");
+        assert_eq!(candidates[4], "2");
+    }
+}
