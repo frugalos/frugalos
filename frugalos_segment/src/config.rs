@@ -6,7 +6,6 @@ use libfrugalos::entity::object::ObjectVersion;
 use raftlog::cluster::ClusterMembers;
 use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
-use {ErrorKind, Result};
 
 // TODO: LumpIdの名前空間の使い方に関してWikiに記載する
 pub(crate) const LUMP_NAMESPACE_CONTENT: u8 = 1;
@@ -111,14 +110,11 @@ pub struct Participants<'a> {
 
 impl<'a> Participants<'a> {
     /// Creates a new `Participants` from a set of `ClusterMember`.
-    pub fn dispersed(members: &'a [ClusterMember], fragments: u8) -> Result<Self> {
-        if fragments as usize > members.len() {
-            return track!(Err(ErrorKind::Invalid.into()));
-        }
-
+    /// This function doesn't validate the given arguments, so
+    /// the caller has the responsibility for using a correct configuration.
+    pub fn dispersed(members: &'a [ClusterMember], fragments: u8) -> Self {
         let (members, _) = members.split_at(fragments as usize);
-
-        Ok(Participants { members })
+        Participants { members }
     }
 
     /// Returns the position of the given node in this participants.
@@ -257,24 +253,6 @@ mod tests {
     }
 
     #[test]
-    fn participants_dispersed_works() {
-        let cluster_size = 12;
-        let cluster = make_cluster(cluster_size);
-        let candidates = cluster
-            .candidates(ObjectVersion(3))
-            .cloned()
-            .collect::<Vec<_>>();
-
-        for n in 0..(cluster_size + 1) {
-            assert!(Participants::dispersed(&candidates, n).is_ok());
-        }
-
-        for n in (cluster_size + 1)..(cluster_size + 10) {
-            assert!(Participants::dispersed(&candidates, n).is_err());
-        }
-    }
-
-    #[test]
     fn participants_works() -> TestResult {
         let cluster_size = 5;
         let fragments = 3;
@@ -284,7 +262,7 @@ mod tests {
             .candidates(version.clone())
             .cloned()
             .collect::<Vec<_>>();
-        let participants = Participants::dispersed(&candidates, fragments)?;
+        let participants = Participants::dispersed(&candidates, fragments);
 
         let matrix = vec![
             (0, "3", true),

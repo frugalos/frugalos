@@ -347,9 +347,7 @@ impl DispersedClient {
             .candidates(version)
             .cloned()
             .collect::<Vec<_>>();
-        // we don't return Result here because using Result in this context makes the code too much complicated.
-        let participants = Participants::dispersed(&candidates, self.config.fragments())
-            .expect(&format!("Found a bug: the configuration must be validated before use. fragments(len = {}) must be lower than candidates(len = {}", self.config.fragments(), candidates.len()));
+        let participants = Participants::dispersed(&candidates, self.config.fragments());
         let missing_index = participants.fragment_index(&local_node);
         let mut spares = participants.spares(&local_node);
         spares.reverse();
