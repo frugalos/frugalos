@@ -777,7 +777,7 @@ impl Future for GetReplicatedFragment {
 }
 
 /// Reconstructs original data from dispersed fragments even if
-/// a focusing node loses his data fragment.
+/// a focusing node loses its data fragment.
 pub struct GetDispersedFragment {
     /// The processing order of futures
     phase: Phase<CollectFragments, BoxFuture<Vec<u8>>>,
