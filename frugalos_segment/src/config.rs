@@ -26,7 +26,7 @@ impl ClusterMember {
 }
 
 /// 対象ノードが指定のバージョン番号を有するオブジェクトを保存する際に使用する`LumpId`を返す。
-pub(crate) fn make_lump_id(node: &NodeId, version: ObjectVersion) -> LumpId {
+pub fn make_lump_id(node: &NodeId, version: ObjectVersion) -> LumpId {
     let mut id = [0; 16];
     // NOTE:
     // `id[0]`は常に`0`になることが保証されている（TODO: もう少し根拠を詳しく).

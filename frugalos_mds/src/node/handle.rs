@@ -7,6 +7,7 @@ use libfrugalos::entity::object::{
 };
 use libfrugalos::expect::Expect;
 use libfrugalos::time::Seconds;
+use std::collections::BTreeSet;
 use std::ops::Range;
 
 use super::Request;
@@ -35,6 +36,13 @@ impl NodeHandle {
     pub fn take_snapshot(&self) {
         let _ = self.request_tx.send(Request::TakeSnapshot);
     }
+
+    /// Invokes a repair of objects matching the given versions.
+    pub fn repair_objects_by_ids(&self, object_ids: BTreeSet<ObjectId>) {
+        let request = Request::Repair(object_ids);
+        let _ = self.request_tx.send(request);
+    }
+
     pub fn start_reelection(&self) {
         let _ = self.request_tx.send(Request::StartElection);
     }

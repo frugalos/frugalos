@@ -14,12 +14,14 @@ use frugalos_config;
 use frugalos_raft;
 use futures::{Async, Future, Poll, Stream};
 use libfrugalos;
+use libfrugalos::entity;
 use num_cpus;
 use prometrics;
 use rustracing::sampler::{PassiveSampler, ProbabilisticSampler, Sampler};
 use rustracing_jaeger;
 use rustracing_jaeger::span::SpanContextState;
 use slog::{self, Drain, Logger};
+use std::collections::BTreeSet;
 use std::mem;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -226,6 +228,9 @@ impl DaemonRunner {
             DaemonCommand::TakeSnapshot => {
                 self.service.take_snapshot();
             }
+            DaemonCommand::RepairObjects(object_ids) => {
+                self.service.repair_objects(object_ids);
+            }
         }
     }
 }
@@ -247,6 +252,7 @@ impl Future for DaemonRunner {
         while let Async::Ready(Some(command)) = self.command_rx.poll().expect("Never fails") {
             self.handle_command(command);
         }
+
         Ok(Async::NotReady)
     }
 }
@@ -270,6 +276,12 @@ impl FrugalosDaemonHandle {
         let command = DaemonCommand::TakeSnapshot;
         let _ = self.command_tx.send(command);
     }
+
+    /// Sends a request to repair objects.
+    pub fn repair_objects(&self, object_ids: BTreeSet<entity::object::ObjectId>) {
+        let command = DaemonCommand::RepairObjects(object_ids);
+        let _ = self.command_tx.send(command);
+    }
 }
 
 #[derive(Debug)]
@@ -278,6 +290,7 @@ enum DaemonCommand {
         reply: oneshot::Monitored<(), Error>,
     },
     TakeSnapshot,
+    RepairObjects(BTreeSet<entity::object::ObjectId>),
 }
 
 #[derive(Debug)]
@@ -399,4 +412,39 @@ fn rpc_write_timeout() -> Duration {
     } else {
         Duration::from_secs(5)
     }
+}
+
+/// Repairs objects by the given `ObjectId`s.
+pub fn repair_objects_by_ids(
+    logger: &Logger,
+    rpc_addr: SocketAddr,
+    bucket_id: entity::bucket::BucketId,
+    object_ids: BTreeSet<entity::object::ObjectId>,
+) -> Result<()> {
+    info!(
+        logger,
+        "Starts repairing objects: bucket={:?}, object_ids={:?}", bucket_id, object_ids
+    );
+
+    let mut executor = track!(ThreadPoolExecutor::with_thread_count(1).map_err(Error::from))?;
+    let rpc_service = RpcServiceBuilder::new()
+        .logger(logger.clone())
+        .finish(executor.handle());
+    let rpc_service_handle = rpc_service.handle();
+    executor.spawn(rpc_service.map_err(|e| panic!("{}", e)));
+
+    let client = libfrugalos::client::frugalos::Client::new(rpc_addr, rpc_service_handle);
+    let fiber = executor.spawn_monitor(client.repair_by_ids(bucket_id, object_ids));
+    track!(
+        executor
+            .run_fiber(fiber)
+            .unwrap()
+            .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected")))
+    )?;
+
+    info!(
+        logger,
+        "The FrugalOS server has repaired the given ObjectIds."
+    );
+    Ok(())
 }

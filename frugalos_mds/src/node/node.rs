@@ -8,6 +8,7 @@ use fibers_tasque::{self, AsyncCall, TaskQueueExt};
 use frugalos_raft::{NodeId, RaftIo};
 use futures::{Async, Future, Poll, Stream};
 use libfrugalos::entity::object::{Metadata, ObjectVersion};
+use libfrugalos::expect::Expect;
 use prometrics::metrics::{Counter, CounterBuilder, Gauge, GaugeBuilder};
 use raftlog::cluster::{ClusterConfig, ClusterMembers};
 use raftlog::election::Role;
@@ -344,6 +345,21 @@ impl Node {
                     Ok(proposal_id) => {
                         let proposal = Proposal::DeleteByPrefix(proposal_id, prefix, monitored);
                         self.push_proposal(proposal);
+                    }
+                }
+            }
+            Request::Repair(object_ids) => {
+                for object_id in object_ids {
+                    match self.machine.head(&object_id, &Expect::Any) {
+                        Ok(Some(version)) => {
+                            self.events.push_back(Event::Putted {
+                                version,
+                                put_content_timeout: Seconds(0), // run immediately
+                            });
+                        }
+                        _ => {
+                            debug!(self.logger, "Not Found: object_id={:?}", object_id);
+                        }
                     }
                 }
             }

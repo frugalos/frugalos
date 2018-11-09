@@ -3,8 +3,9 @@ use fibers::sync::mpsc;
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
 use frugalos_raft::{LocalNodeId, NodeId};
 use futures::{Async, Future, Poll, Stream};
+use libfrugalos::entity::object::ObjectId;
 use slog::Logger;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use node::NodeHandle;
@@ -67,6 +68,19 @@ impl Service {
         for (id, node) in self.nodes.load().iter() {
             info!(self.logger, "Sends taking snapshot request: {:?}", id);
             node.take_snapshot();
+        }
+    }
+
+    /// Repairs objects.
+    pub fn repair_objects(&mut self, object_ids: BTreeSet<ObjectId>) {
+        info!(
+            self.logger,
+            "Sends repairing objects request: {:?}", object_ids
+        );
+
+        for (id, node) in self.nodes.load().iter() {
+            info!(self.logger, "Sends repairing objects request: {:?}", id);
+            node.repair_objects_by_ids(object_ids.clone());
         }
     }
 

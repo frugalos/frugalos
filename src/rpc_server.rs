@@ -35,6 +35,7 @@ impl RpcServer {
         builder.add_call_handler::<rpc::DeleteObjectByVersionRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectsByRangeRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectsByPrefixRpc, _>(this.clone());
+        builder.add_call_handler::<rpc::RepairObjectRpc, _>(this.clone());
     }
 }
 impl HandleCall<rpc::DeleteObjectRpc> for RpcServer {
@@ -133,6 +134,13 @@ impl HandleCall<rpc::GetLatestVersionRpc> for RpcServer {
             .request(request.bucket_id)
             .latest(request.segment as usize);
         Reply::future(future.map_err(into_rpc_error).then(Ok))
+    }
+}
+
+impl HandleCall<rpc::RepairObjectRpc> for RpcServer {
+    fn handle_call(&self, request: rpc::ObjectSetRequest) -> Reply<rpc::RepairObjectRpc> {
+        self.daemon.repair_objects(request.object_ids);
+        Reply::done(Ok(()))
     }
 }
 

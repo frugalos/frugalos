@@ -7,6 +7,7 @@ use libfrugalos::entity::object::{
 use libfrugalos::expect::Expect;
 use libfrugalos::time::Seconds;
 use raftlog::log::ProposalId;
+use std::collections::BTreeSet;
 use trackable::error::ErrorKindExt;
 
 use {Error, ErrorKind};
@@ -97,6 +98,7 @@ enum Request {
         Seconds,
         Reply<(ObjectVersion, Option<ObjectVersion>)>,
     ),
+    Repair(BTreeSet<ObjectId>),
     Delete(ObjectId, Expect, Reply<Option<ObjectVersion>>),
     DeleteByVersion(ObjectVersion, Reply<Option<ObjectVersion>>),
     #[allow(dead_code)]
@@ -119,7 +121,8 @@ impl Request {
             Request::DeleteByVersion(_, tx) => tx.exit(Err(track!(e))),
             Request::DeleteByRange(_, _, tx) => tx.exit(Err(track!(e))),
             Request::DeleteByPrefix(_, tx) => tx.exit(Err(track!(e))),
-            Request::Stop | Request::TakeSnapshot | Request::StartElection => {}
+            Request::Repair(_) | Request::Stop | Request::TakeSnapshot | Request::StartElection => {
+            }
         }
     }
 }

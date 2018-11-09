@@ -10,6 +10,7 @@ use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
 use fibers_tasque;
 use fibers_tasque::TaskQueueExt;
 use frugalos_config::{DeviceGroup, Event as ConfigEvent, Service as ConfigService};
+use frugalos_raft::NodeId;
 use frugalos_raft::Service as RaftService;
 use frugalos_segment;
 use frugalos_segment::Service as SegmentService;
@@ -17,12 +18,14 @@ use futures::future::Fuse;
 use futures::{Async, Future, Poll, Stream};
 use libfrugalos::entity::bucket::{Bucket as BucketConfig, BucketId};
 use libfrugalos::entity::device::{
-    Device as DeviceConfig, FileDevice as FileDeviceConfig, MemoryDevice as MemoryDeviceConfig,
+    Device as DeviceConfig, DeviceNo, FileDevice as FileDeviceConfig,
+    MemoryDevice as MemoryDeviceConfig,
 };
+use libfrugalos::entity::object::ObjectId;
 use libfrugalos::entity::server::{Server, ServerId};
 use prometrics::metrics::MetricBuilder;
 use slog::Logger;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use trackable::error::ErrorKindExt;
 
@@ -45,10 +48,10 @@ pub struct Service<S> {
     config_service: ConfigService,
 
     // このサーバが所有するデバイス一覧
-    local_devices: HashMap<u32, LocalDevice>,
+    local_devices: HashMap<DeviceNo, LocalDevice>,
 
     // クラスタ全体の情報
-    seqno_to_device: HashMap<u32, PhysicalDevice>,
+    seqno_to_device: HashMap<DeviceNo, PhysicalDevice>,
 
     buckets: Arc<AtomicImmut<HashMap<BucketId, Bucket>>>,
     bucket_no_to_id: HashMap<u32, BucketId>,
@@ -98,6 +101,12 @@ where
     pub fn take_snapshot(&mut self) {
         self.frugalos_segment_service.take_snapshot();
     }
+
+    /// Repairs objects.
+    pub fn repair_objects(&mut self, object_ids: BTreeSet<ObjectId>) {
+        self.frugalos_segment_service.repair_objects(object_ids);
+    }
+
     fn handle_config_event(&mut self, event: ConfigEvent) -> Result<()> {
         info!(self.logger, "Configuration Event: {:?}", event);
         match event {
@@ -168,8 +177,8 @@ where
     ) -> Result<()> {
         // このグループに対応するRaftクラスタのメンバ群を用意
         let mut members = Vec::new();
+
         for (member_no, device_no) in (0..group.members.len()).zip(group.members.iter()) {
-            use frugalos_raft::NodeId;
             let owner = &self.servers[&self.seqno_to_device[device_no].server];
             let node: NodeId = track!(
                 format!(
@@ -177,6 +186,7 @@ where
                     bucket_no, segment_no, member_no, device_no, owner.host, owner.port
                 ).parse()
             )?;
+
             members.push(node);
         }
 

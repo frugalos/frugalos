@@ -8,8 +8,10 @@ use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
 use frugalos_mds::{Node, Service as RaftMdsService, ServiceHandle as MdsHandle};
 use frugalos_raft::{self, NodeId};
 use futures::{Async, Future, Poll, Stream};
+use libfrugalos::entity::object::ObjectId;
 use raftlog::cluster::ClusterMembers;
 use slog::Logger;
+use std::collections::BTreeSet;
 use std::env;
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
@@ -82,6 +84,11 @@ where
     /// Raftのスナップショット取得要求を発行する。
     pub fn take_snapshot(&mut self) {
         self.mds_service.take_snapshot();
+    }
+
+    /// Repairs objects.
+    pub fn repair_objects(&mut self, object_ids: BTreeSet<ObjectId>) {
+        self.mds_service.repair_objects(object_ids);
     }
 
     /// デバイスレジストリへの破壊的な参照を返す。
