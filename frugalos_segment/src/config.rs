@@ -72,7 +72,8 @@ impl ClusterConfig {
     }
 }
 
-/// A set of `ClusterMember` which MAY have a replica of original data.
+/// A set of `ClusterMember`s which MAY have a replica of original data.
+/// Be sure to create a `Candidates` object via `ClusterConfig::candidates`.
 #[derive(Debug)]
 struct Candidates<'a> {
     members: &'a [ClusterMember],
@@ -101,7 +102,7 @@ impl<'a> Iterator for Candidates<'a> {
     }
 }
 
-/// A set of `ClusterMember` which MUST have a replica of original data.
+/// A set of `ClusterMember`s which MUST have a replica of original data.
 /// Use `Participants::dispersed` to compute spares for a dispersed configuration.
 #[derive(Debug)]
 pub struct Participants<'a> {
@@ -109,7 +110,7 @@ pub struct Participants<'a> {
 }
 
 impl<'a> Participants<'a> {
-    /// Creates a new `Participants` from a set of `ClusterMember`.
+    /// Creates a new `Participants` from a set of `ClusterMember`s.
     /// This function doesn't validate the given arguments, so
     /// the caller has the responsibility for using a correct configuration.
     pub fn dispersed(members: &'a [ClusterMember], fragments: u8) -> Self {
