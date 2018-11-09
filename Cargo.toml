@@ -47,3 +47,6 @@ url = "1"
 
 [workspace]
 members = ["frugalos_config", "frugalos_mds", "frugalos_raft", "frugalos_segment"]
+
+[patch.crates-io]
+libfrugalos = { path = "../libfrugalos" }

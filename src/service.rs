@@ -10,14 +10,18 @@ use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
 use fibers_tasque;
 use fibers_tasque::TaskQueueExt;
 use frugalos_config::{DeviceGroup, Event as ConfigEvent, Service as ConfigService};
+use frugalos_raft::NodeId;
 use frugalos_raft::Service as RaftService;
 use frugalos_segment;
 use frugalos_segment::Service as SegmentService;
+use futures;
 use futures::future::Fuse;
 use futures::{Async, Future, Poll, Stream};
+use libfrugalos::entity;
 use libfrugalos::entity::bucket::{Bucket as BucketConfig, BucketId};
 use libfrugalos::entity::device::{
-    Device as DeviceConfig, FileDevice as FileDeviceConfig, MemoryDevice as MemoryDeviceConfig,
+    Device as DeviceConfig, DeviceNo, FileDevice as FileDeviceConfig,
+    MemoryDevice as MemoryDeviceConfig, PhysicalDeviceInspection,
 };
 use libfrugalos::entity::server::{Server, ServerId};
 use prometrics::metrics::MetricBuilder;
@@ -45,10 +49,10 @@ pub struct Service<S> {
     config_service: ConfigService,
 
     // このサーバが所有するデバイス一覧
-    local_devices: HashMap<u32, LocalDevice>,
+    local_devices: HashMap<DeviceNo, LocalDevice>,
 
     // クラスタ全体の情報
-    seqno_to_device: HashMap<u32, PhysicalDevice>,
+    seqno_to_device: HashMap<DeviceNo, PhysicalDevice>,
 
     buckets: Arc<AtomicImmut<HashMap<BucketId, Bucket>>>,
     bucket_no_to_id: HashMap<u32, BucketId>,
@@ -98,6 +102,31 @@ where
     pub fn take_snapshot(&mut self) {
         self.frugalos_segment_service.take_snapshot();
     }
+
+    /// Inspects a physical device.
+    /// `PhysicalDeviceInspection` contains a sequence of `LumpId`s.
+    pub fn inspect_physical_device(
+        &self,
+        device_id: entity::device::DeviceId,
+    ) -> impl Future<Item = PhysicalDeviceInspection, Error = Error> {
+        futures::future::result(
+            self.frugalos_segment_service
+                .device_registry()
+                .handle()
+                .get_device(&DeviceId::new(device_id.clone())),
+        ).and_then(|handle| {
+            handle
+                .request()
+                .list()
+                .map(|lump_ids| {
+                    PhysicalDeviceInspection::new(
+                        device_id,
+                        lump_ids.iter().map(|id| format!("{:?}", id)).collect(),
+                    )
+                }).map_err(|e| track!(e))
+        }).map_err(|e| track!(Error::from(e)))
+    }
+
     fn handle_config_event(&mut self, event: ConfigEvent) -> Result<()> {
         info!(self.logger, "Configuration Event: {:?}", event);
         match event {
@@ -133,6 +162,7 @@ where
                 segment_no,
                 groups,
             } => {
+                /// See https://github.com/frugalos/frugalos/issues/38
                 track_assert_eq!(groups.len(), 1, ErrorKind::Other, "Unimplemented");
                 track!(self.handle_patch_segment(bucket_no, segment_no, &groups[0]))?;
             }
@@ -168,8 +198,8 @@ where
     ) -> Result<()> {
         // このグループに対応するRaftクラスタのメンバ群を用意
         let mut members = Vec::new();
+
         for (member_no, device_no) in (0..group.members.len()).zip(group.members.iter()) {
-            use frugalos_raft::NodeId;
             let owner = &self.servers[&self.seqno_to_device[device_no].server];
             let node: NodeId = track!(
                 format!(
@@ -177,6 +207,7 @@ where
                     bucket_no, segment_no, member_no, device_no, owner.host, owner.port
                 ).parse()
             )?;
+
             members.push(node);
         }
 

@@ -14,6 +14,8 @@ use frugalos_config;
 use frugalos_raft;
 use futures::{Async, Future, Poll, Stream};
 use libfrugalos;
+use libfrugalos::entity;
+use libfrugalos::entity::device::PhysicalDeviceInspection;
 use num_cpus;
 use prometrics;
 use rustracing::sampler::{PassiveSampler, ProbabilisticSampler, Sampler};
@@ -199,6 +201,7 @@ impl FrugalosDaemon {
             rpc_service: self.rpc_service,
             command_rx: self.command_rx,
             stop_notifications: Vec::new(),
+            inspect_device_tasks: Vec::new(),
         };
 
         let monitor = self.executor.handle().spawn_monitor(runner);
@@ -214,6 +217,8 @@ struct DaemonRunner {
     rpc_service: fibers_rpc::client::ClientService,
     command_rx: mpsc::Receiver<DaemonCommand>,
     stop_notifications: Vec<oneshot::Monitored<(), Error>>,
+    /// A sequence of tasks which inspect a physical device.
+    inspect_device_tasks: Vec<Box<Future<Item = (), Error = Error> + Send + 'static>>,
 }
 impl DaemonRunner {
     fn handle_command(&mut self, command: DaemonCommand) {
@@ -225,6 +230,13 @@ impl DaemonRunner {
             }
             DaemonCommand::TakeSnapshot => {
                 self.service.take_snapshot();
+            }
+            DaemonCommand::InspectPhysicalDevice { reply, device, .. } => {
+                self.inspect_device_tasks.push(Box::new(
+                    self.service.inspect_physical_device(device).map(|result| {
+                        let _ = reply.exit(Ok(result));
+                    }),
+                ));
             }
         }
     }
@@ -247,6 +259,12 @@ impl Future for DaemonRunner {
         while let Async::Ready(Some(command)) = self.command_rx.poll().expect("Never fails") {
             self.handle_command(command);
         }
+
+        // No sleep because this task is mainly for debugging.
+        if let Some(mut future) = self.inspect_device_tasks.pop() {
+            while future.poll()?.is_not_ready() {}
+        }
+
         Ok(Async::NotReady)
     }
 }
@@ -270,6 +288,20 @@ impl FrugalosDaemonHandle {
         let command = DaemonCommand::TakeSnapshot;
         let _ = self.command_tx.send(command);
     }
+
+    /// Sends a request to inspect a physical device.
+    pub fn inspect_physical_device(
+        &self,
+        device: entity::device::DeviceId,
+    ) -> impl Future<Item = PhysicalDeviceInspection, Error = Error> {
+        let (reply_tx, reply_rx) = oneshot::monitor();
+        let command = DaemonCommand::InspectPhysicalDevice {
+            reply: reply_tx,
+            device,
+        };
+        let _ = self.command_tx.send(command);
+        InspectPhysicalDevice(reply_rx)
+    }
 }
 
 #[derive(Debug)]
@@ -278,12 +310,32 @@ enum DaemonCommand {
         reply: oneshot::Monitored<(), Error>,
     },
     TakeSnapshot,
+    InspectPhysicalDevice {
+        reply: oneshot::Monitored<PhysicalDeviceInspection, Error>,
+        device: entity::device::DeviceId,
+    },
 }
 
 #[derive(Debug)]
 pub(crate) struct StopDaemon(oneshot::Monitor<(), Error>);
 impl Future for StopDaemon {
     type Item = ();
+    type Error = Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        track!(self.0.poll().map_err(|e| e.unwrap_or_else(|| {
+            ErrorKind::Other
+                .cause("Monitoring channel disconnected")
+                .into()
+        })))
+    }
+}
+
+/// Asynchronously inspect a physical device.
+#[derive(Debug)]
+struct InspectPhysicalDevice(oneshot::Monitor<PhysicalDeviceInspection, Error>);
+impl Future for InspectPhysicalDevice {
+    type Item = PhysicalDeviceInspection;
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
@@ -399,4 +451,35 @@ fn rpc_write_timeout() -> Duration {
     } else {
         Duration::from_secs(5)
     }
+}
+
+/// Inspects the internal data of a device by the given `DeviceId`.
+pub fn inspect_physical_device(
+    logger: &Logger,
+    rpc_addr: SocketAddr,
+    device_id: entity::device::DeviceId,
+) -> Result<()> {
+    info!(logger, "Starts inspect the device: device={}", device_id);
+
+    let mut executor = track!(ThreadPoolExecutor::with_thread_count(1).map_err(Error::from))?;
+    let rpc_service = RpcServiceBuilder::new()
+        .logger(logger.clone())
+        .finish(executor.handle());
+    let rpc_service_handle = rpc_service.handle();
+    executor.spawn(rpc_service.map_err(|e| panic!("{}", e)));
+
+    let client = libfrugalos::client::frugalos::Client::new(rpc_addr, rpc_service_handle);
+    let fiber = executor.spawn_monitor(client.inspect_physical_device(device_id));
+    let result = track!(
+        executor
+            .run_fiber(fiber)
+            .unwrap()
+            .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected")))
+    )?;
+
+    info!(logger, "data: {:?}", result.data);
+    info!(logger, "data length: {:?}", result.data.len());
+    info!(logger, "device_id: {:?}", result.device_id);
+
+    Ok(())
 }

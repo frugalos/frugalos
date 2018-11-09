@@ -45,7 +45,10 @@ pub struct NextSeqNo {
 
 #[derive(Debug, Clone)]
 pub struct SegmentTable {
+    /// セグメントに対応するバケツID
     pub bucket_id: BucketId,
+
+    /// 添字がセグメント番号に対応している
     pub segments: Vec<Segment>,
 }
 impl SegmentTable {

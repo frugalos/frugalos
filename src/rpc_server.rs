@@ -35,6 +35,7 @@ impl RpcServer {
         builder.add_call_handler::<rpc::DeleteObjectByVersionRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectsByRangeRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectsByPrefixRpc, _>(this.clone());
+        builder.add_call_handler::<rpc::InspectPhysicalDeviceRpc, _>(this.clone());
     }
 }
 impl HandleCall<rpc::DeleteObjectRpc> for RpcServer {
@@ -133,6 +134,13 @@ impl HandleCall<rpc::GetLatestVersionRpc> for RpcServer {
             .request(request.bucket_id)
             .latest(request.segment as usize);
         Reply::future(future.map_err(into_rpc_error).then(Ok))
+    }
+}
+
+impl HandleCall<rpc::InspectPhysicalDeviceRpc> for RpcServer {
+    fn handle_call(&self, request: rpc::DeviceRequest) -> Reply<rpc::InspectPhysicalDeviceRpc> {
+        let future = self.daemon.inspect_physical_device(request.device_id);
+        Reply::future(future.map_err(|e| track!(into_rpc_error(e))).then(Ok))
     }
 }
 

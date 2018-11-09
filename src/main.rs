@@ -10,11 +10,13 @@ extern crate sloggers;
 extern crate trackable;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
+use frugalos::{ErrorKind, Result};
+use libfrugalos::entity::device::DeviceId;
 use libfrugalos::entity::server::Server;
 use sloggers::Build;
 use std::env;
 use std::net::{SocketAddr, ToSocketAddrs};
-use trackable::error::Failure;
+use trackable::error::{ErrorKindExt, Failure};
 
 #[cfg_attr(feature = "cargo-clippy", allow(cyclomatic_complexity))]
 fn main() {
@@ -53,20 +55,12 @@ fn main() {
                         .default_value("0.0.0.0:3000"),
                 ).arg(data_dir_arg()),
         ).subcommand(
-            SubCommand::with_name("stop").arg(
-                Arg::with_name("RPC_ADDR")
-                    .long("rpc-addr")
-                    .takes_value(true)
-                    .default_value("127.0.0.1:14278"),
-            ),
-        ).subcommand(
-            SubCommand::with_name("take-snapshot").arg(
-                Arg::with_name("RPC_ADDR")
-                    .long("rpc-addr")
-                    .takes_value(true)
-                    .default_value("127.0.0.1:14278"),
-            ),
-        ).arg(
+            SubCommand::with_name("inspect-physical-device")
+                .arg(rpc_addr_arg().required(true))
+                .arg(device_arg().required(true)),
+        ).subcommand(SubCommand::with_name("stop").arg(rpc_addr_arg().required(true)))
+        .subcommand(SubCommand::with_name("take-snapshot").arg(rpc_addr_arg().required(true)))
+        .arg(
             Arg::with_name("LOGLEVEL")
                 .short("l")
                 .long("loglevel")
@@ -186,6 +180,21 @@ fn main() {
 
         // NOTE: ログ出力(非同期)用に少し待機
         std::thread::sleep(std::time::Duration::from_millis(100));
+    } else if let Some(matches) = matches.subcommand_matches("inspect-physical-device") {
+        // TAKE SNAPSHOT
+        let logger = track_try_unwrap!(logger_builder.build());
+        let device_id = track_try_unwrap!(track_any_err!(get_device_id(&matches)));
+        let mut rpc_addrs = track_try_unwrap!(track_any_err!(
+            matches.value_of("RPC_ADDR").unwrap().to_socket_addrs()
+        ));
+        let rpc_addr = rpc_addrs.nth(0).expect("No available TCP address");
+        let logger = logger.new(o!("rpc_addr" => rpc_addr.to_string()));
+        track_try_unwrap!(frugalos::daemon::inspect_physical_device(
+            &logger, rpc_addr, device_id
+        ));
+
+        // NOTE: ログ出力(非同期)用に少し待機
+        std::thread::sleep(std::time::Duration::from_millis(100));
     } else if let Some(matches) = matches.subcommand_matches("stop") {
         // STOP SERVER
         let logger = track_try_unwrap!(logger_builder.build());
@@ -248,6 +257,21 @@ fn data_dir_arg<'a, 'b>() -> Arg<'a, 'b> {
         .takes_value(true)
 }
 
+fn device_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("DEVICE")
+        .help("Sets the device id")
+        .long("device")
+        .takes_value(true)
+}
+
+fn rpc_addr_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("RPC_ADDR")
+        .long("rpc-addr")
+        .help("Sets the address of the RPC server(e.g. --rpc-addr 127.0.0.1:14279)")
+        .takes_value(true)
+        .default_value("127.0.0.1:14278")
+}
+
 fn get_data_dir(matches: &ArgMatches) -> String {
     if let Some(value) = matches
         .value_of("DATA_DIR")
@@ -261,4 +285,16 @@ fn get_data_dir(matches: &ArgMatches) -> String {
         );
         std::process::exit(1);
     }
+}
+
+/// Gets a device id from `ArgMatches`.
+fn get_device_id(matches: &ArgMatches) -> Result<DeviceId> {
+    track!(matches.value_of("DEVICE").map_or_else(
+        || {
+            Err(ErrorKind::InvalidInput
+                .cause("[ERROR] Must set device id.")
+                .into())
+        },
+        |id| Ok(id.to_owned())
+    ))
 }

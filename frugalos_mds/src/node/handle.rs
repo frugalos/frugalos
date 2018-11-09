@@ -35,6 +35,7 @@ impl NodeHandle {
     pub fn take_snapshot(&self) {
         let _ = self.request_tx.send(Request::TakeSnapshot);
     }
+
     pub fn start_reelection(&self) {
         let _ = self.request_tx.send(Request::StartElection);
     }
