@@ -751,19 +751,17 @@ pub enum GetFragment {
     Replicated(GetReplicatedFragment),
     Dispersed(GetDispersedFragment),
 }
-impl GetFragment {
-    /// Maps `Vec<u8>` to `MaybeFragment`.
-    fn content_to_fragment(content: Async<Vec<u8>>) -> Async<MaybeFragment> {
-        content.map(|fragment| MaybeFragment::Fragment(fragment))
-    }
-}
 impl Future for GetFragment {
     type Item = MaybeFragment;
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match *self {
-            GetFragment::Failed(ref mut f) => track!(f.poll().map(Self::content_to_fragment)),
-            GetFragment::Replicated(ref mut f) => track!(f.poll().map(Self::content_to_fragment)),
+            GetFragment::Failed(ref mut f) => {
+                track!(f.poll().map(|content| content.map(MaybeFragment::Fragment)))
+            }
+            GetFragment::Replicated(ref mut f) => {
+                track!(f.poll().map(|content| content.map(MaybeFragment::Fragment)))
+            }
             GetFragment::Dispersed(ref mut f) => track!(f.poll()),
         }
     }
@@ -795,10 +793,11 @@ impl Future for GetDispersedFragment {
     type Item = MaybeFragment;
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let missing_index = match self.missing_index {
-            Some(index) => index,
-            None => return Ok(Async::Ready(MaybeFragment::NotParticipant)),
-        };
+        if self.missing_index.is_none() {
+            return Ok(Async::Ready(MaybeFragment::NotParticipant));
+        }
+
+        let missing_index = self.missing_index.expect("never fails");
 
         while let Async::Ready(phase) = track!(self.phase.poll().map_err(Error::from))? {
             let next = match phase {
