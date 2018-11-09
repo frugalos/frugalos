@@ -10,7 +10,7 @@ use libfrugalos::entity::object::{
 };
 use libfrugalos::expect::Expect;
 use rustracing_jaeger::span::{Span, SpanHandle};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::ops::Range;
 use std::sync::Arc;
@@ -101,6 +101,32 @@ impl<'a> Request<'a> {
         let segment = bucket.get_segment(&object_id);
         let future = segment.head(object_id, self.parent.clone());
         Box::new(future.map_err(|e| track!(Error::from(e))))
+    }
+    /// Get a sequence of `(ObjectVersion, SegmentNo)` from `ObjectId`s.
+    /// Excludes missing objects from the result.
+    pub fn head_by_ids(
+        &self,
+        object_ids: BTreeSet<ObjectId>,
+    ) -> BoxFuture<Vec<(ObjectVersion, u16)>> {
+        let buckets = self.client.buckets.load();
+        let bucket: &Bucket = try_get_bucket!(buckets, self.bucket_id);
+        let mut futures = Vec::new();
+
+        for object_id in object_ids {
+            let segment_no = bucket.segment_no(&object_id);
+            let segment = &bucket.segments()[segment_no as usize];
+            futures.push(
+                segment
+                    .head(object_id, self.parent.clone())
+                    .map(move |version| (version, segment_no)),
+            );
+        }
+
+        Box::new(
+            futures::future::join_all(futures)
+                .map(filter_existing_version)
+                .map_err(|e| track!(Error::from(e))),
+        )
     }
     pub fn put(&self, object_id: ObjectId, content: Vec<u8>) -> BoxFuture<(ObjectVersion, bool)> {
         let buckets = self.client.buckets.load();
@@ -216,4 +242,13 @@ impl<'a> Request<'a> {
             Box::new(futures::failed(e.into()))
         }
     }
+}
+
+/// Filters `ObjectVersion`s which is not deleted yet.
+fn filter_existing_version(xs: Vec<(Option<ObjectVersion>, u16)>) -> Vec<(ObjectVersion, u16)> {
+    xs.into_iter()
+        .filter_map(|(version, segment_no)| {
+            let version = version?;
+            Some((version, segment_no))
+        }).collect::<Vec<_>>()
 }

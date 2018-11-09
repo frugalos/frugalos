@@ -10,15 +10,20 @@ use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
 use fibers_tasque;
 use fibers_tasque::TaskQueueExt;
 use frugalos_config::{DeviceGroup, Event as ConfigEvent, Service as ConfigService};
+use frugalos_raft::NodeId;
 use frugalos_raft::Service as RaftService;
 use frugalos_segment;
 use frugalos_segment::Service as SegmentService;
+use futures;
 use futures::future::Fuse;
 use futures::{Async, Future, Poll, Stream};
+use libfrugalos::entity;
 use libfrugalos::entity::bucket::{Bucket as BucketConfig, BucketId};
 use libfrugalos::entity::device::{
-    Device as DeviceConfig, FileDevice as FileDeviceConfig, MemoryDevice as MemoryDeviceConfig,
+    Device as DeviceConfig, DeviceNo, FileDevice as FileDeviceConfig,
+    MemoryDevice as MemoryDeviceConfig,
 };
+use libfrugalos::entity::object::ObjectVersion;
 use libfrugalos::entity::server::{Server, ServerId};
 use prometrics::metrics::MetricBuilder;
 use slog::Logger;
@@ -28,6 +33,7 @@ use trackable::error::ErrorKindExt;
 
 use bucket::Bucket;
 use client::FrugalosClient;
+use frugalos_segment::config;
 use {Error, ErrorKind, Result};
 
 pub struct PhysicalDevice {
@@ -45,10 +51,13 @@ pub struct Service<S> {
     config_service: ConfigService,
 
     // このサーバが所有するデバイス一覧
-    local_devices: HashMap<u32, LocalDevice>,
+    local_devices: HashMap<DeviceNo, LocalDevice>,
 
     // クラスタ全体の情報
-    seqno_to_device: HashMap<u32, PhysicalDevice>,
+    seqno_to_device: HashMap<DeviceNo, PhysicalDevice>,
+
+    // このサーバーに紐付いているノード一覧
+    local_nodes: HashMap<(BucketId, u16, entity::device::DeviceId), NodeId>,
 
     buckets: Arc<AtomicImmut<HashMap<BucketId, Bucket>>>,
     bucket_no_to_id: HashMap<u32, BucketId>,
@@ -84,6 +93,7 @@ where
 
             local_devices: HashMap::new(),
             seqno_to_device: HashMap::new(),
+            local_nodes: HashMap::new(),
             buckets: Arc::new(AtomicImmut::new(HashMap::new())),
             bucket_no_to_id: HashMap::new(),
             servers: HashMap::new(),
@@ -98,6 +108,58 @@ where
     pub fn take_snapshot(&mut self) {
         self.frugalos_segment_service.take_snapshot();
     }
+
+    /// Deletes objects from the given device.
+    pub fn delete_objects_from_device(
+        &mut self,
+        bucket_id: BucketId,
+        device_id: entity::device::DeviceId,
+        versions: Vec<(ObjectVersion, u16)>,
+    ) -> impl Future<Item = Vec<()>, Error = Error> {
+        let mut futures = Vec::new();
+
+        debug!(
+            self.logger,
+            "delete_objects_from_device: bucket={}, device={}, versions={:?}",
+            bucket_id,
+            device_id,
+            versions
+        );
+
+        if let Some((_, local_device)) = self
+            .local_devices
+            .iter()
+            .find(|(_, device)| device.id().as_str() == device_id)
+        {
+            if let Some(handle) = local_device.handle() {
+                for (version, segment_no) in versions {
+                    if let Some(node_id) = self.get_local_node(bucket_id, segment_no, device_id) {
+                        let lump_id = config::make_lump_id(node_id, version.clone());
+                        let logger = self.logger.clone();
+                        debug!(
+                            logger,
+                            "lump deleting : node_id={:?}, lump={:?}, version={:?}",
+                            node_id,
+                            lump_id,
+                            version
+                        );
+                        futures.push(
+                            handle
+                                .request()
+                                .delete(lump_id.clone())
+                                .map(|_| ()) // we don't need any return value, so discard it.
+                                .map_err(|e| track!(Error::from(e))),
+                        );
+                    }
+
+                    return futures::future::join_all(futures);
+                }
+            }
+        }
+
+        return futures::future::join_all(vec![]);
+    }
+
     fn handle_config_event(&mut self, event: ConfigEvent) -> Result<()> {
         info!(self.logger, "Configuration Event: {:?}", event);
         match event {
@@ -118,6 +180,7 @@ where
             }
             ConfigEvent::DeleteDevice(device) => {
                 self.seqno_to_device.remove(&device.seqno());
+                self.remove_all_local_nodes(device.id());
                 // TODO:
                 track_panic!(ErrorKind::Other, "Unsupported: {:?}", device);
             }
@@ -133,6 +196,7 @@ where
                 segment_no,
                 groups,
             } => {
+                /// See https://github.com/frugalos/frugalos/issues/38
                 track_assert_eq!(groups.len(), 1, ErrorKind::Other, "Unimplemented");
                 track!(self.handle_patch_segment(bucket_no, segment_no, &groups[0]))?;
             }
@@ -166,22 +230,30 @@ where
         segment_no: u16,
         group: &DeviceGroup,
     ) -> Result<()> {
-        // このグループに対応するRaftクラスタのメンバ群を用意
-        let mut members = Vec::new();
-        for (member_no, device_no) in (0..group.members.len()).zip(group.members.iter()) {
-            use frugalos_raft::NodeId;
-            let owner = &self.servers[&self.seqno_to_device[device_no].server];
-            let node: NodeId = track!(
-                format!(
-                    "00{:06x}{:04x}{:02x}.{:x}@{}:{}",
-                    bucket_no, segment_no, member_no, device_no, owner.host, owner.port
-                ).parse()
-            )?;
-            members.push(node);
-        }
-
         // バケツの更新
         if let Some(id) = self.bucket_no_to_id.get(&bucket_no) {
+            // このグループに対応するRaftクラスタのメンバ群を用意
+            let mut members = Vec::new();
+
+            for (member_no, device_no) in (0..group.members.len()).zip(group.members.iter()) {
+                let owner = &self.servers[&self.seqno_to_device[device_no].server];
+                let node: NodeId = track!(
+                    format!(
+                        "00{:06x}{:04x}{:02x}.{:x}@{}:{}",
+                        bucket_no, segment_no, member_no, device_no, owner.host, owner.port
+                    ).parse()
+                )?;
+                let bucket_id = self.bucket_no_to_id[&bucket_no].clone();
+                let device_id = self.seqno_to_device[device_no].id.as_str().to_owned();
+
+                if self.is_my_device(device_no) {
+                    self.local_nodes
+                        .entry((bucket_id, segment_no.clone(), device_id))
+                        .or_insert(node);
+                }
+                members.push(node);
+            }
+
             // TODO: だいぶコスト高の操作なので、セグメント更新はバッチ的に行った方が良いかも
             let mut buckets = (&*self.buckets.load()).clone();
             let segment;
@@ -246,6 +318,25 @@ where
         self.local_devices.insert(device_config.seqno(), device);
         Ok(())
     }
+
+    fn get_local_node(
+        &self,
+        bucket: BucketId,
+        segment: u16,
+        device: entity::device::DeviceId,
+    ) -> Option<&NodeId> {
+        self.local_nodes.get(&(bucket, segment, device))
+    }
+
+    /// Removes all local nodes tied with the given `DeviceId`.
+    fn remove_all_local_nodes(&mut self, device: &entity::device::DeviceId) {
+        self.local_nodes.retain(|(_, _, d), _| d != device);
+    }
+
+    /// Returns true if the given device lies on locally.
+    fn is_my_device(&self, device_no: &DeviceNo) -> bool {
+        self.local_server.id == self.seqno_to_device[device_no].server
+    }
 }
 impl<S> Future for Service<S>
 where
@@ -298,6 +389,9 @@ impl LocalDevice {
     }
     fn id(&self) -> DeviceId {
         DeviceId::new(self.config.id().clone())
+    }
+    fn handle(&self) -> Option<DeviceHandle> {
+        self.handle.clone()
     }
     fn watch(&mut self) -> WatchDeviceHandle {
         if let Some(ref d) = self.handle {

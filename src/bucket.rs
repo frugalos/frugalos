@@ -81,11 +81,14 @@ impl Bucket {
         );
         self.segments[segment_no as usize] = segment;
     }
-    pub fn get_segment(&self, id: &ObjectId) -> &Segment {
+    pub fn segment_no(&self, id: &ObjectId) -> u16 {
         use std::hash::{Hash, Hasher};
         let mut hasher = siphasher::sip::SipHasher13::new();
         id.hash(&mut hasher);
-        let i = hasher.finish() as usize % self.segments.len();
+        (hasher.finish() as usize % self.segments.len()) as u16
+    }
+    pub fn get_segment(&self, id: &ObjectId) -> &Segment {
+        let i = self.segment_no(id) as usize;
         &self.segments[i]
     }
     pub fn segments(&self) -> &[Segment] {
