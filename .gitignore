@@ -1,2 +1,6 @@
 target
 node_modules
+
+# vagrant
+.vagrant
+Vagrantfile
