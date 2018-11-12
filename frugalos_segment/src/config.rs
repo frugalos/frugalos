@@ -11,7 +11,7 @@ use std::hash::{Hash, Hasher};
 pub(crate) const LUMP_NAMESPACE_CONTENT: u8 = 1;
 
 /// Raftクラスタ(i.e., セグメント)内のメンバ情報。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ClusterMember {
     /// ノードID。
     pub node: NodeId,
@@ -72,6 +72,8 @@ impl ClusterConfig {
     }
 }
 
+/// A set of `ClusterMember`s which MAY have a replica of original data.
+/// Be sure to create a `Candidates` object via `ClusterConfig::candidates`.
 #[derive(Debug)]
 struct Candidates<'a> {
     members: &'a [ClusterMember],
@@ -97,6 +99,45 @@ impl<'a> Iterator for Candidates<'a> {
             self.current += 1;
             Some(&self.members[i])
         }
+    }
+}
+
+/// A set of `ClusterMember`s which MUST have a replica of original data.
+/// Use `Participants::dispersed` to compute spares for a dispersed configuration.
+#[derive(Debug)]
+pub struct Participants<'a> {
+    members: &'a [ClusterMember],
+}
+
+impl<'a> Participants<'a> {
+    /// Creates a new `Participants` from a set of `ClusterMember`s.
+    /// This function doesn't validate the given arguments, so
+    /// the caller has the responsibility for using a correct configuration.
+    pub fn dispersed(members: &'a [ClusterMember], fragments: u8) -> Self {
+        let (members, _) = members.split_at(fragments as usize);
+        Participants { members }
+    }
+
+    /// Returns the position of the given node in this participants.
+    /// Returns None if the given node is not a member of the participants.
+    pub fn fragment_index(&self, node_id: &NodeId) -> Option<usize> {
+        self.members.iter().position(|m| m.node == *node_id)
+    }
+
+    /// Returns spares to be replicated.
+    /// The given `NodeId` is excluded from the result.
+    pub fn spares(&self, local_node: &NodeId) -> Vec<ClusterMember> {
+        self.members
+            .iter()
+            .filter(|m| m.node != *local_node)
+            .cloned()
+            .collect::<Vec<_>>()
+    }
+
+    /// For testing.
+    #[allow(dead_code)]
+    fn len(&self) -> usize {
+        self.members.len()
     }
 }
 
@@ -146,11 +187,20 @@ pub struct DispersedConfig {
     pub fragments: u8,
 }
 
+impl DispersedConfig {
+    /// Returns the sum of data fragments and parity fragments.
+    /// Must be positive.
+    pub fn fragments(&self) -> u8 {
+        self.fragments
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use frugalos_raft::LocalNodeId;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use trackable::result::TestResult;
 
     /// Makes a cluster member.
     /// `n` is used for the id of a node.
@@ -191,7 +241,7 @@ mod tests {
     }
 
     #[test]
-    fn it_works() {
+    fn cluster_config_works() {
         let cluster = make_cluster(5);
         let candidates = collect_devices(&cluster, ObjectVersion(1));
 
@@ -201,5 +251,60 @@ mod tests {
         assert_eq!(candidates[2], "0");
         assert_eq!(candidates[3], "1");
         assert_eq!(candidates[4], "2");
+    }
+
+    #[test]
+    fn participants_works() -> TestResult {
+        let cluster_size = 5;
+        let fragments = 3;
+        let version = ObjectVersion(1);
+        let cluster = make_cluster(cluster_size);
+        let candidates = cluster
+            .candidates(version.clone())
+            .cloned()
+            .collect::<Vec<_>>();
+        let participants = Participants::dispersed(&candidates, fragments);
+
+        let matrix = vec![
+            (0, "3", true),
+            (1, "4", true),
+            (2, "0", true),
+            (3, "1", false),
+            (4, "2", false),
+        ];
+
+        assert_eq!(participants.len(), fragments as usize);
+
+        for (i, device, is_participant) in matrix {
+            let member = candidates.get(i as usize).unwrap();
+
+            assert_eq!(member.device, device);
+            assert_eq!(
+                participants.fragment_index(&member.node).is_some(),
+                is_participant
+            );
+        }
+
+        let matrix = vec![
+            (0, vec!["4", "0"]),
+            (1, vec!["3", "0"]),
+            (2, vec!["3", "4"]),
+            (3, vec!["3", "4", "0"]),
+        ];
+
+        for (i, expected_spares) in matrix {
+            let node_id = candidates.get(i).unwrap().node;
+
+            assert_eq!(
+                expected_spares,
+                participants
+                    .spares(&node_id)
+                    .iter()
+                    .map(|m| m.device.clone())
+                    .collect::<Vec<_>>()
+            );
+        }
+
+        Ok(())
     }
 }

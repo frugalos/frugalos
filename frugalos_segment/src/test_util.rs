@@ -40,7 +40,10 @@ pub mod tests {
 
     /// Adds `ClusterMember`s to the given cluster.
     /// この関数は特定のテストシナリオに合わせて作られているので、他のユースケースでは別の関数を作る方がよい。
-    pub fn setup_system(system: &mut System) -> Result<(NodeId, DeviceHandle, StorageClient)> {
+    pub fn setup_system(
+        system: &mut System,
+        cluster_size: usize,
+    ) -> Result<(NodeId, DeviceHandle, StorageClient)> {
         let (node_id, device_id, device_handle) = system.make_node()?;
         let mut members = Vec::new();
 
@@ -50,7 +53,7 @@ pub mod tests {
         });
 
         // Decrements the size of this cluster because we've already created a node.
-        for _ in 0..(system.data_fragments() - 1) {
+        for _ in 0..(cluster_size - 1) {
             let (node, device, _) = system.make_node()?;
             members.push(ClusterMember { node, device });
         }
@@ -63,7 +66,7 @@ pub mod tests {
     /// A cluster for testing.
     /// All implementations under this struct is unstable.
     pub struct System {
-        data_fragments: u8,
+        fragments: u8,
         logger: slog::Logger,
         device_registry_handle: DeviceRegistryHandle,
         rpc_service_handle: ClientServiceHandle,
@@ -76,7 +79,7 @@ pub mod tests {
 
     impl System {
         /// Returns a new cluster with no node.
-        pub fn new(data_fragments: u8) -> Result<Self> {
+        pub fn new(fragments: u8) -> Result<Self> {
             let logger = slog::Logger::root(slog::Discard, o!());
             let executor = ThreadPoolExecutor::with_thread_count(10).expect("never fails");
             let mut rpc_server_builder = ServerBuilder::new(([127, 0, 0, 1], 0).into());
@@ -105,7 +108,7 @@ pub mod tests {
             fibers_global::spawn(rpc_server.map_err(|e| panic!("{}", e)));
 
             Ok(System {
-                data_fragments,
+                fragments,
                 logger,
                 device_registry_handle,
                 rpc_service_handle,
@@ -119,11 +122,9 @@ pub mod tests {
             })
         }
 
-        /// Returns the size of this cluster.
-        /// Use this function to know how many members will be added to
-        /// the cluster.
-        pub fn data_fragments(&self) -> u8 {
-            self.data_fragments
+        /// Returns the size of fragments(data_fragments + parity_fragments).
+        pub fn fragments(&self) -> u8 {
+            self.fragments
         }
 
         /// Returns a logger.
@@ -232,7 +233,7 @@ pub mod tests {
         fn make_dispersed_storage(&self) -> Storage {
             Storage::Dispersed(DispersedConfig {
                 tolerable_faults: 1,
-                fragments: self.data_fragments(),
+                fragments: self.fragments(),
             })
         }
     }

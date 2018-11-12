@@ -22,7 +22,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
-use config::{ClientConfig, ClusterConfig, ClusterMember, DispersedConfig, ReplicatedConfig};
+use config::{
+    ClientConfig, ClusterConfig, ClusterMember, DispersedConfig, Participants, ReplicatedConfig,
+};
 use util::Phase;
 use {Error, ErrorKind, ObjectValue, Result};
 
@@ -340,12 +342,14 @@ impl DispersedClient {
         }
     }
     pub fn get_fragment(self, local_node: NodeId, version: ObjectVersion) -> GetDispersedFragment {
-        let mut spares = self
+        let candidates = self
             .cluster
             .candidates(version)
-            .filter(|m| m.node != local_node)
             .cloned()
             .collect::<Vec<_>>();
+        let participants = Participants::dispersed(&candidates, self.config.fragments());
+        let missing_index = participants.fragment_index(&local_node);
+        let mut spares = participants.spares(&local_node);
         spares.reverse();
 
         // let spares = self.cluster
@@ -354,14 +358,12 @@ impl DispersedClient {
         //     .filter(|m| m.node != local_node)
         //     .cloned()
         //     .collect::<Vec<_>>();
-        let missing_index = self
-            .cluster
-            .candidates(version)
-            .position(|m| m.node == local_node)
-            .expect("TOOD");
         debug!(
             self.logger,
-            "get_fragment: version={:?}, index={}, spares={:?}", version, missing_index, spares
+            "get_fragment: version={:?}, missing_index={:?}, spares={:?}",
+            version,
+            missing_index,
+            spares
         );
 
         // rand::thread_rng().shuffle(&mut spares);
@@ -733,6 +735,16 @@ impl Future for CollectFragments {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+/// This enum represents the result of `GetFragment`.
+pub enum MaybeFragment {
+    /// Successfully get a content.
+    Fragment(Vec<u8>),
+
+    /// It's not responsible for storing a fragment.
+    NotParticipant,
+}
+
 #[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
 pub enum GetFragment {
     Failed(future::Failed<Vec<u8>, Error>),
@@ -740,12 +752,16 @@ pub enum GetFragment {
     Dispersed(GetDispersedFragment),
 }
 impl Future for GetFragment {
-    type Item = Vec<u8>;
+    type Item = MaybeFragment;
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match *self {
-            GetFragment::Failed(ref mut f) => track!(f.poll()),
-            GetFragment::Replicated(ref mut f) => track!(f.poll()),
+            GetFragment::Failed(ref mut f) => {
+                track!(f.poll().map(|content| content.map(MaybeFragment::Fragment)))
+            }
+            GetFragment::Replicated(ref mut f) => {
+                track!(f.poll().map(|content| content.map(MaybeFragment::Fragment)))
+            }
             GetFragment::Dispersed(ref mut f) => track!(f.poll()),
         }
     }
@@ -760,23 +776,37 @@ impl Future for GetReplicatedFragment {
     }
 }
 
+/// Reconstructs original data from dispersed fragments even if
+/// a focusing node loses its data fragment.
 pub struct GetDispersedFragment {
+    /// The processing order of futures
     phase: Phase<CollectFragments, BoxFuture<Vec<u8>>>,
+
+    /// A thread pool of encoders(by erasure code)
     ec: ErasureCoderPool<LibErasureCoderBuilder>,
-    missing_index: usize,
+
+    /// The index of a focusing node.
+    /// None represents that there is no missing index.
+    missing_index: Option<usize>,
 }
 impl Future for GetDispersedFragment {
-    type Item = Vec<u8>;
+    type Item = MaybeFragment;
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        if self.missing_index.is_none() {
+            return Ok(Async::Ready(MaybeFragment::NotParticipant));
+        }
+
+        let missing_index = self.missing_index.expect("never fails");
+
         while let Async::Ready(phase) = track!(self.phase.poll().map_err(Error::from))? {
             let next = match phase {
                 Phase::A(fragments) => {
-                    let future = self.ec.reconstruct(self.missing_index, fragments);
+                    let future = self.ec.reconstruct(missing_index, fragments);
                     let future: BoxFuture<_> = Box::new(future.map_err(|e| track!(Error::from(e))));
                     Phase::B(future)
                 }
-                Phase::B(fragment) => return Ok(Async::Ready(fragment)),
+                Phase::B(fragment) => return Ok(Async::Ready(MaybeFragment::Fragment(fragment))),
             };
             self.phase = next;
         }
@@ -811,9 +841,10 @@ mod tests {
 
     #[test]
     fn it_puts_data_correctly() -> TestResult {
-        let data_fragments = 5;
-        let mut system = System::new(data_fragments)?;
-        let (_, _, storage_client) = setup_system(&mut system)?;
+        let fragments = 5;
+        let cluster_size = 5;
+        let mut system = System::new(fragments)?;
+        let (_, _, storage_client) = setup_system(&mut system, cluster_size)?;
         let version = ObjectVersion(1);
         let expected = vec![0x03];
 
@@ -833,6 +864,67 @@ mod tests {
         ))?;
 
         assert_eq!(expected, actual);
+
+        Ok(())
+    }
+
+    #[test]
+    fn get_fragment_works() -> TestResult {
+        // fragments = 5 (data_fragments = 4, parity_fragments = 1)
+        let fragments = 5;
+        let cluster_size = 6;
+        let mut system = System::new(fragments)?;
+        let (node_id, _, storage_client) = setup_system(&mut system, cluster_size)?;
+        let version = ObjectVersion(4);
+        let expected = vec![0x02];
+
+        let _ = wait(storage_client.clone().put(
+            version.clone(),
+            expected.clone(),
+            Deadline::Infinity,
+            Span::inactive().handle(),
+        ))?;
+
+        let result = wait(
+            storage_client
+                .clone()
+                .get_fragment(node_id.clone(), version.clone()),
+        )?;
+
+        if let MaybeFragment::Fragment(content) = result {
+            assert!(content.len() > 0);
+            return Ok(());
+        }
+
+        Err(ErrorKind::Other
+            .cause("Cannot get a fragment".to_owned())
+            .into())
+    }
+
+    #[test]
+    fn get_fragment_returns_not_participant() -> TestResult {
+        // fragments = 5 (data_fragments = 4, parity_fragments = 1)
+        let fragments = 5;
+        let cluster_size = 6;
+        let mut system = System::new(fragments)?;
+        let (node_id, _, storage_client) = setup_system(&mut system, cluster_size)?;
+        let version = ObjectVersion(6);
+        let expected = vec![0x02];
+
+        let _ = wait(storage_client.clone().put(
+            version.clone(),
+            expected.clone(),
+            Deadline::Infinity,
+            Span::inactive().handle(),
+        ))?;
+
+        let result = wait(
+            storage_client
+                .clone()
+                .get_fragment(node_id.clone(), version.clone()),
+        )?;
+
+        assert_eq!(result, MaybeFragment::NotParticipant);
 
         Ok(())
     }
