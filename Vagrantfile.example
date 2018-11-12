@@ -1,0 +1,55 @@
+Vagrant.configure("2") do |config|
+  # frugalos probably works on other major Linux distributions (e.g. Ubuntu, Debian)
+  config.vm.box = "centos/7"
+
+  # Ignore files which slow down synchronization.
+  config.vm.synced_folder ".", "/vagrant",
+    type: "rsync",
+    rsync__exclude: [".git/", "target/"]
+
+  # Share sources of frugalos with guest OS.
+  # This configuration uses rsync but you can use your own way.
+  # Run `vagrant rsync-auto` to keep updated.
+  # https://www.vagrantup.com/docs/cli/rsync-auto.html
+  config.vm.synced_folder ".", "/home/vagrant/src/frugalos",
+    type: "rsync",
+    rsync__exclude: [".git/", "target/"]
+
+  # Share sources of libfrugalos with guest OS.
+  # Uncomment if you use your own libfrugalos.
+  # config.vm.synced_folder "../libfrugalos", "/home/vagrant/src/libfrugalos",
+  #   type: "rsync",
+  #   rsync__exclude: [".git/", "target/"]
+
+  config.vm.provider "virtualbox" do |box|
+    # Ucomment this line if you want to enable GUI.
+    # box.gui = true
+
+    # 1024 MB is ok but we recommend 2048 MB or more.
+    box.memory = "2048"
+
+    box.customize [
+      "modifyvm", :id,
+
+      # Assign CPUs as much as possible to reduce compilation times.
+      # It takes long time(few minutes or more) to compile sources with single CPU.
+      "--cpus", "2",
+
+      # Uncomment the following lines if you use GUI.
+      # "--clipboard", "bidirectional",   # share clipboard across host OS and guest OS.
+      # "--draganddrop", "bidirectional", # enable drag-and-drop
+      # "--vram", "256",                  # fullscreen support
+      # "--accelerate3d", "on",           # improve GUI performance
+
+      "--ioapic", "on"
+    ]
+  end
+
+  # Note that this script must be executed as root user.
+  # You can manually execute this provisioning by `vagrant provision --provision-with install_rpms`.
+  config.vm.provision "install_rpms", type: "shell", path: "./scripts/install_rpms_centos7.sh"
+
+  # Note that this script must be executed as vagrant user.
+  # You can manually execute this provisioning by `vagrant provision --provision-with install_rust`.
+  config.vm.provision "install_rust", type: "shell", privileged: false, path: "./scripts/install_rust_centos7.sh"
+end
