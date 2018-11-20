@@ -477,9 +477,26 @@ pub fn inspect_physical_device(
             .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected")))
     )?;
 
-    info!(logger, "data: {:?}", result.data);
-    info!(logger, "data length: {:?}", result.data.len());
-    info!(logger, "device_id: {:?}", result.device_id);
+    println!("{}", format_device_inspection(result)?);
 
     Ok(())
+}
+
+/// pretty print
+fn format_device_inspection(src: PhysicalDeviceInspection) -> Result<String> {
+    use bytecodec::json_codec::JsonEncoder;
+    use bytecodec::EncodeExt;
+    #[derive(Debug, Serialize)]
+    struct Output {
+        len: usize,
+        device_id: String,
+        data: Vec<String>,
+    }
+    let data = Output {
+        len: src.data.len(),
+        data: src.data,
+        device_id: src.device_id,
+    };
+    let bytes = track!(JsonEncoder::new().encode_into_bytes(data))?;
+    track!(String::from_utf8(bytes).map_err(Error::from))
 }

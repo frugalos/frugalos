@@ -1,3 +1,4 @@
+use bytecodec;
 use cannyls;
 use fibers::sync::oneshot::MonitorError;
 use fibers_http_server;
@@ -99,6 +100,16 @@ impl From<std::num::ParseIntError> for Error {
         ErrorKind::InvalidInput.cause(f).into()
     }
 }
+impl From<bytecodec::Error> for Error {
+    fn from(f: bytecodec::Error) -> Self {
+        ErrorKind::IllegalEncoding.cause(f).into()
+    }
+}
+impl From<std::string::FromUtf8Error> for Error {
+    fn from(f: std::string::FromUtf8Error) -> Self {
+        ErrorKind::InvalidUtf8String.cause(f).into()
+    }
+}
 
 /// エラーの種類。
 #[allow(missing_docs)]
@@ -107,6 +118,10 @@ pub enum ErrorKind {
     InvalidInput,
     NotFound,
     Unexpected(Option<ObjectVersion>),
+    /// An error occurred while encoding/decoding bytes.
+    IllegalEncoding,
+    /// An error occurred while encoding/decoding a utf8 string.
+    InvalidUtf8String,
     Other,
 }
 impl TrackableErrorKind for ErrorKind {}

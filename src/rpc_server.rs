@@ -160,8 +160,10 @@ impl HandleCall<rpc::TakeSnapshotRpc> for RpcServer {
 fn into_rpc_error(e: Error) -> libfrugalos::Error {
     let kind = match *e.kind() {
         ErrorKind::InvalidInput => libfrugalos::ErrorKind::InvalidInput,
-        ErrorKind::NotFound => libfrugalos::ErrorKind::Other,
         ErrorKind::Unexpected(v) => libfrugalos::ErrorKind::Unexpected(v),
+        ErrorKind::NotFound => libfrugalos::ErrorKind::Other,
+        ErrorKind::IllegalEncoding => libfrugalos::ErrorKind::Other,
+        ErrorKind::InvalidUtf8String => libfrugalos::ErrorKind::Other,
         ErrorKind::Other => libfrugalos::ErrorKind::Other,
     };
     kind.takes_over(e).into()
