@@ -67,6 +67,7 @@ impl FrugalosDaemonBuilder {
 
 /// Frugalosの各種機能を提供するためのデーモン。
 pub struct FrugalosDaemon {
+    logger: Logger,
     service: service::Service<ThreadPoolExecutorHandle>,
     http_server_builder: HttpServerBuilder,
     rpc_server_builder: RpcServerBuilder,
@@ -150,6 +151,7 @@ impl FrugalosDaemon {
         track!(config_server.register(&mut http_server_builder))?;
 
         Ok(FrugalosDaemon {
+            logger,
             service,
             http_server_builder,
             rpc_server_builder,
@@ -195,6 +197,7 @@ impl FrugalosDaemon {
         track!(self.register_prometheus_metrics())?;
 
         let runner = DaemonRunner {
+            logger: self.logger.clone(),
             service: self.service,
             rpc_server: self.rpc_server_builder.finish(self.executor.handle()),
             http_server: self.http_server_builder.finish(self.executor.handle()),
@@ -211,6 +214,7 @@ impl FrugalosDaemon {
 }
 
 struct DaemonRunner {
+    logger: Logger,
     service: service::Service<ThreadPoolExecutorHandle>,
     http_server: HttpServer,
     rpc_server: fibers_rpc::server::Server<ThreadPoolExecutorHandle>,
@@ -241,8 +245,9 @@ impl DaemonRunner {
                 self.delete_object_tasks.push(Box::new(
                     self.service
                         .delete_objects_from_device(bucket, device, versions)
-                        .map(|_| {
-                            let _ = reply.exit(Ok(()));
+                        .then(|result| {
+                            reply.exit(result.map(|_| ()));
+                            futures::future::ok(())
                         }),
                 ));
             }
@@ -270,7 +275,14 @@ impl Future for DaemonRunner {
 
         // No sleep because this task is mainly for debugging.
         if let Some(mut future) = self.delete_object_tasks.pop() {
-            while future.poll()?.is_not_ready() {}
+            while future
+                .poll()
+                .unwrap_or_else(|e| {
+                    // Ignores an error because frugalos can keep running.
+                    warn!(self.logger, "Delete error: {:?}", e);
+                    Async::Ready(())
+                }).is_not_ready()
+            {}
         }
 
         Ok(Async::NotReady)
