@@ -15,7 +15,7 @@ use frugalos_raft::Service as RaftService;
 use frugalos_segment;
 use frugalos_segment::Service as SegmentService;
 use futures;
-use futures::future::Fuse;
+use futures::future::{Fuse, IntoFuture};
 use futures::{Async, Future, Poll, Stream};
 use libfrugalos::entity;
 use libfrugalos::entity::bucket::{Bucket as BucketConfig, BucketId};
@@ -115,9 +115,7 @@ where
         bucket_id: BucketId,
         device_id: entity::device::DeviceId,
         versions: Vec<(ObjectVersion, u16)>,
-    ) -> impl Future<Item = Vec<()>, Error = Error> {
-        let mut futures = Vec::new();
-
+    ) -> impl Future<Item = (), Error = Error> {
         debug!(
             self.logger,
             "delete_objects_from_device: bucket={}, device={}, versions={:?}",
@@ -126,38 +124,53 @@ where
             versions
         );
 
-        if let Some((_, local_device)) = self
+        let future = self
             .local_devices
-            .iter()
-            .find(|(_, device)| device.id().as_str() == device_id)
-        {
-            if let Some(handle) = local_device.handle() {
-                for (version, segment_no) in versions {
-                    if let Some(node_id) = self.get_local_node(bucket_id, segment_no, device_id) {
-                        let lump_id = config::make_lump_id(node_id, version.clone());
-                        let logger = self.logger.clone();
-                        debug!(
-                            logger,
-                            "lump deleting : node_id={:?}, lump={:?}, version={:?}",
-                            node_id,
-                            lump_id,
-                            version
-                        );
-                        futures.push(
-                            handle
-                                .request()
-                                .delete(lump_id.clone())
-                                .map(|_| ()) // we don't need any return value, so discard it.
-                                .map_err(|e| track!(Error::from(e))),
-                        );
-                    }
+            .values()
+            .find(|d| d.id().as_str() == device_id)
+            .ok_or_else(|| {
+                ErrorKind::InvalidInput
+                    .cause("the device is not registered as a local device")
+                    .into()
+            }).and_then(|local_device| {
+                local_device.handle().ok_or_else(|| {
+                    ErrorKind::Other
+                        .cause("the device is not running yet")
+                        .into()
+                })
+            }).into_future();
 
-                    return futures::future::join_all(futures);
+        let logger = self.logger.clone();
+        let local_nodes = self.local_nodes.clone();
+        let future = future.and_then(move |handle| {
+            let mut futures = Vec::new();
+
+            for (version, segment_no) in versions {
+                if let Some(node_id) =
+                    local_nodes.get(&(bucket_id.clone(), segment_no, device_id.clone()))
+                {
+                    let lump_id = config::make_lump_id(node_id, version.clone());
+                    debug!(
+                        logger,
+                        "lump deleting : node_id={:?}, lump={:?}, version={:?}",
+                        node_id,
+                        lump_id,
+                        version
+                    );
+                    futures.push(
+                        handle
+                            .request()
+                            .delete(lump_id.clone())
+                            .map(|_| ()) // we don't need any return value, so discard it.
+                            .map_err(|e| track!(Error::from(e))),
+                    );
                 }
             }
-        }
 
-        return futures::future::join_all(vec![]);
+            futures::future::join_all(futures).map(|_| ())
+        });
+
+        future
     }
 
     fn handle_config_event(&mut self, event: ConfigEvent) -> Result<()> {
@@ -317,15 +330,6 @@ where
         );
         self.local_devices.insert(device_config.seqno(), device);
         Ok(())
-    }
-
-    fn get_local_node(
-        &self,
-        bucket: BucketId,
-        segment: u16,
-        device: entity::device::DeviceId,
-    ) -> Option<&NodeId> {
-        self.local_nodes.get(&(bucket, segment, device))
     }
 
     /// Removes all local nodes tied with the given `DeviceId`.

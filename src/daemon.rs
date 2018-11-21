@@ -246,7 +246,7 @@ impl DaemonRunner {
                     self.service
                         .delete_objects_from_device(bucket, device, versions)
                         .then(|result| {
-                            reply.exit(result.map(|_| ()));
+                            reply.exit(result);
                             futures::future::ok(())
                         }),
                 ));
