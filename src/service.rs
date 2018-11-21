@@ -259,7 +259,7 @@ where
                 let bucket_id = self.bucket_no_to_id[&bucket_no].clone();
                 let device_id = self.seqno_to_device[device_no].id.as_str().to_owned();
 
-                if self.is_my_device(device_no) {
+                if self.is_local_device(device_no) {
                     self.local_nodes
                         .entry((bucket_id, segment_no.clone(), device_id))
                         .or_insert(node);
@@ -337,8 +337,8 @@ where
         self.local_nodes.retain(|(_, _, d), _| d != device);
     }
 
-    /// Returns true if the given device lies on locally.
-    fn is_my_device(&self, device_no: &DeviceNo) -> bool {
+    /// Returns true if the given device is a local device.
+    fn is_local_device(&self, device_no: &DeviceNo) -> bool {
         self.local_server.id == self.seqno_to_device[device_no].server
     }
 }
