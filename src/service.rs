@@ -14,8 +14,7 @@ use frugalos_raft::NodeId;
 use frugalos_raft::Service as RaftService;
 use frugalos_segment;
 use frugalos_segment::Service as SegmentService;
-use futures;
-use futures::future::Fuse;
+use futures::future::{Fuse, IntoFuture};
 use futures::{Async, Future, Poll, Stream};
 use libfrugalos::entity;
 use libfrugalos::entity::bucket::{Bucket as BucketConfig, BucketId};
@@ -109,12 +108,19 @@ where
         &self,
         device_id: entity::device::DeviceId,
     ) -> impl Future<Item = PhysicalDeviceInspection, Error = Error> {
-        futures::future::result(
-            self.frugalos_segment_service
-                .device_registry()
-                .handle()
-                .get_device(&DeviceId::new(device_id.clone())),
-        ).and_then(|handle| {
+        let future = self
+            .local_devices
+            .values()
+            .find_map(|d| {
+                if d.id().as_str() == device_id {
+                    d.handle()
+                } else {
+                    None
+                }
+            }).ok_or_else(|| ErrorKind::InvalidInput.into())
+            .into_future();
+
+        future.and_then(|handle| {
             handle
                 .request()
                 .list()
@@ -123,8 +129,8 @@ where
                         device_id,
                         lump_ids.iter().map(|id| format!("{:?}", id)).collect(),
                     )
-                }).map_err(|e| track!(e))
-        }).map_err(|e| track!(Error::from(e)))
+                }).map_err(|e| track!(Error::from(e)))
+        })
     }
 
     fn handle_config_event(&mut self, event: ConfigEvent) -> Result<()> {
@@ -329,6 +335,9 @@ impl LocalDevice {
     }
     fn id(&self) -> DeviceId {
         DeviceId::new(self.config.id().clone())
+    }
+    fn handle(&self) -> Option<DeviceHandle> {
+        self.handle.clone()
     }
     fn watch(&mut self) -> WatchDeviceHandle {
         if let Some(ref d) = self.handle {
