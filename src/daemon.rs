@@ -22,6 +22,7 @@ use rustracing::sampler::{PassiveSampler, ProbabilisticSampler, Sampler};
 use rustracing_jaeger;
 use rustracing_jaeger::span::SpanContextState;
 use slog::{self, Drain, Logger};
+use std::collections::VecDeque;
 use std::mem;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -204,7 +205,7 @@ impl FrugalosDaemon {
             rpc_service: self.rpc_service,
             command_rx: self.command_rx,
             stop_notifications: Vec::new(),
-            inspect_device_tasks: Vec::new(),
+            unimportant_tasks: VecDeque::new(),
         };
 
         let monitor = self.executor.handle().spawn_monitor(runner);
@@ -221,8 +222,10 @@ struct DaemonRunner {
     rpc_service: fibers_rpc::client::ClientService,
     command_rx: mpsc::Receiver<DaemonCommand>,
     stop_notifications: Vec<oneshot::Monitored<(), Error>>,
-    /// A sequence of tasks which inspect a physical device.
-    inspect_device_tasks: Vec<Box<Future<Item = (), Error = Error> + Send + 'static>>,
+    /// A queue of unimportant tasks(FIFO).
+    /// The queue processes a task one by one to save machine resources.
+    /// An error caused by a task in the queue MUST be ignored not to kill frugalos process.
+    unimportant_tasks: VecDeque<Box<Future<Item = (), Error = Error> + Send + 'static>>,
 }
 impl DaemonRunner {
     fn handle_command(&mut self, command: DaemonCommand) {
@@ -236,7 +239,7 @@ impl DaemonRunner {
                 self.service.take_snapshot();
             }
             DaemonCommand::InspectPhysicalDevice { reply, device, .. } => {
-                self.inspect_device_tasks.push(Box::new(
+                self.unimportant_tasks.push_back(Box::new(
                     self.service.inspect_physical_device(device).then(|result| {
                         reply.exit(result);
                         futures::future::ok(())
@@ -265,16 +268,20 @@ impl Future for DaemonRunner {
             self.handle_command(command);
         }
 
-        // No sleep because this task is mainly for debugging.
-        if let Some(mut future) = self.inspect_device_tasks.pop() {
-            while future
-                .poll()
-                .unwrap_or_else(|e| {
+        // Executes one task if possible. Pushes it back to the queue if it's not ready yet.
+        if let Some(mut future) = self.unimportant_tasks.pop_front() {
+            let retried_task = match future.poll() {
+                Ok(Async::Ready(_)) => None,
+                Ok(Async::NotReady) => Some(future),
+                Err(e) => {
                     // Ignores an error because frugalos can keep running.
-                    warn!(self.logger, "Inspect error: {:?}", e);
-                    Async::Ready(())
-                }).is_not_ready()
-            {}
+                    warn!(self.logger, "Unimportant task failed: {:?}", e);
+                    None
+                }
+            };
+            retried_task
+                .into_iter()
+                .for_each(|task| self.unimportant_tasks.push_front(task));
         }
 
         Ok(Async::NotReady)
