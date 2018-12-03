@@ -21,7 +21,7 @@ use rustracing::sampler::{PassiveSampler, ProbabilisticSampler, Sampler};
 use rustracing_jaeger;
 use rustracing_jaeger::span::SpanContextState;
 use slog::{self, Drain, Logger};
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::VecDeque;
 use std::mem;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -483,44 +483,4 @@ fn rpc_write_timeout() -> Duration {
     } else {
         Duration::from_secs(5)
     }
-}
-
-/// Deletes objects by the given `ObjectId`s.
-pub fn delete_objects_by_ids(
-    logger: &Logger,
-    rpc_addr: SocketAddr,
-    bucket_id: entity::bucket::BucketId,
-    device_id: entity::device::DeviceId,
-    object_ids: BTreeSet<entity::object::ObjectId>,
-) -> Result<()> {
-    info!(
-        logger,
-        "Starts deleting objects: bucket={:?}, device={}, object_ids={:?}",
-        bucket_id,
-        device_id,
-        object_ids
-    );
-
-    let mut executor = track!(ThreadPoolExecutor::with_thread_count(1).map_err(Error::from))?;
-    let rpc_service = RpcServiceBuilder::new()
-        .logger(logger.clone())
-        .finish(executor.handle());
-    let rpc_service_handle = rpc_service.handle();
-    executor.spawn(rpc_service.map_err(|e| panic!("{}", e)));
-
-    let client = libfrugalos::client::frugalos::Client::new(rpc_addr, rpc_service_handle);
-    let fiber = executor
-        .spawn_monitor(client.delete_from_device_by_object_ids(bucket_id, device_id, object_ids));
-    track!(
-        executor
-            .run_fiber(fiber)
-            .unwrap()
-            .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected")))
-    )?;
-
-    info!(
-        logger,
-        "The FrugalOS server has deleted the given ObjectIds."
-    );
-    Ok(())
 }
