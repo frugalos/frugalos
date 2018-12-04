@@ -30,6 +30,7 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use config_server::ConfigServer;
+use object::SegmentedObject;
 use rpc_server::RpcServer;
 use server::{spawn_report_spans_thread, Server};
 use service;
@@ -241,12 +242,12 @@ impl DaemonRunner {
                 reply,
                 bucket,
                 device,
-                versions,
+                objects,
                 ..
             } => {
                 self.unimportant_tasks.push_back(Box::new(
                     self.service
-                        .delete_objects_from_device(bucket, device, versions)
+                        .delete_objects_from_device(bucket, device, objects)
                         .then(|result| {
                             reply.exit(result);
                             futures::future::ok(())
@@ -320,14 +321,14 @@ impl FrugalosDaemonHandle {
         &self,
         bucket: entity::bucket::BucketId,
         device: entity::device::DeviceId,
-        versions: Vec<(entity::object::ObjectVersion, u16)>,
+        objects: Vec<SegmentedObject>,
     ) -> impl Future<Item = (), Error = Error> {
         let (reply_tx, reply_rx) = oneshot::monitor();
         let command = DaemonCommand::DeleteObjectsByVersions {
             reply: reply_tx,
             bucket,
             device,
-            versions,
+            objects,
         };
         let _ = self.command_tx.send(command);
         DeleteObjectsByVersions(reply_rx)
@@ -344,7 +345,7 @@ enum DaemonCommand {
         reply: oneshot::Monitored<(), Error>,
         bucket: entity::bucket::BucketId,
         device: entity::device::DeviceId,
-        versions: Vec<(entity::object::ObjectVersion, u16)>,
+        objects: Vec<SegmentedObject>,
     },
 }
 

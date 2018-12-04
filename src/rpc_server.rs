@@ -148,8 +148,8 @@ impl HandleCall<rpc::DeleteObjectSetFromDeviceRpc> for RpcServer {
         let future = self
             .client
             .request(bucket_id.clone())
-            .head_by_ids(request.object_ids)
-            .and_then(move |versions| daemon.delete_by_versions(bucket_id, device_id, versions));
+            .list_objects_by_ids(request.object_ids)
+            .and_then(move |objects| daemon.delete_by_versions(bucket_id, device_id, objects));
         Reply::future(future.map_err(into_rpc_error).then(Ok))
     }
 }

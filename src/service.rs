@@ -23,7 +23,6 @@ use libfrugalos::entity::device::{
     Device as DeviceConfig, DeviceNo, FileDevice as FileDeviceConfig,
     MemoryDevice as MemoryDeviceConfig,
 };
-use libfrugalos::entity::object::ObjectVersion;
 use libfrugalos::entity::server::{Server, ServerId};
 use prometrics::metrics::MetricBuilder;
 use slog::Logger;
@@ -34,6 +33,7 @@ use trackable::error::ErrorKindExt;
 use bucket::Bucket;
 use client::FrugalosClient;
 use frugalos_segment::config;
+use object::SegmentedObject;
 use {Error, ErrorKind, Result};
 
 pub struct PhysicalDevice {
@@ -114,14 +114,14 @@ where
         &mut self,
         bucket_id: BucketId,
         device_id: entity::device::DeviceId,
-        versions: Vec<(ObjectVersion, u16)>,
+        objects: Vec<SegmentedObject>,
     ) -> impl Future<Item = (), Error = Error> {
         debug!(
             self.logger,
-            "delete_objects_from_device: bucket={}, device={}, versions={:?}",
+            "delete_objects_from_device: bucket={}, device={}, objects={:?}",
             bucket_id,
             device_id,
-            versions
+            objects
         );
 
         let future = self
@@ -145,17 +145,17 @@ where
         let future = future.and_then(move |handle| {
             let mut futures = Vec::new();
 
-            for (version, segment_no) in versions {
+            for object in objects {
                 if let Some(node_id) =
-                    local_nodes.get(&(bucket_id.clone(), segment_no, device_id.clone()))
+                    local_nodes.get(&(bucket_id.clone(), object.segment, device_id.clone()))
                 {
-                    let lump_id = config::make_lump_id(node_id, version.clone());
+                    let lump_id = config::make_lump_id(node_id, object.version.clone());
                     debug!(
                         logger,
                         "lump deleting : node_id={:?}, lump={:?}, version={:?}",
                         node_id,
                         lump_id,
-                        version
+                        object.version
                     );
                     futures.push(
                         handle
