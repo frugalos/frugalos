@@ -1,5 +1,5 @@
 //! Raftに発行されたコマンド列を処理する状態機械.
-#![cfg_attr(feature = "cargo-clippy", allow(ptr_arg))]
+#![allow(clippy::ptr_arg)]
 use libfrugalos::entity::object::{Metadata, ObjectId, ObjectPrefix, ObjectSummary, ObjectVersion};
 use libfrugalos::expect::Expect;
 use libfrugalos::time::Seconds;

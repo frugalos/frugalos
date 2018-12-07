@@ -1,4 +1,4 @@
-#![cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
+#![allow(clippy::needless_pass_by_value)]
 use adler32;
 use byteorder::{BigEndian, ByteOrder};
 use cannyls::deadline::Deadline;
@@ -745,7 +745,7 @@ pub enum MaybeFragment {
     NotParticipant,
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
+#[allow(clippy::large_enum_variant)]
 pub enum GetFragment {
     Failed(future::Failed<Vec<u8>, Error>),
     Replicated(GetReplicatedFragment),
