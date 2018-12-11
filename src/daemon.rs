@@ -24,7 +24,6 @@ use std::mem;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::process::Command;
-use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use config_server::ConfigServer;
@@ -42,6 +41,9 @@ pub struct FrugalosDaemonBuilder {
 
     /// Jaegerのトレースのサンプリング確率。
     pub sampling_rate: f64,
+
+    /// RPC 通信のオプション。
+    pub rpc_client_channel_options: ChannelOptions,
 }
 impl FrugalosDaemonBuilder {
     /// 新しい`FrugalosDaemonBuilder`インスタンスを生成する。
@@ -50,6 +52,7 @@ impl FrugalosDaemonBuilder {
             logger,
             executor_threads: num_cpus::get(),
             sampling_rate: 0.001,
+            rpc_client_channel_options: Default::default(),
         }
     }
 
@@ -96,11 +99,8 @@ impl FrugalosDaemon {
             ThreadPoolExecutor::with_thread_count(builder.executor_threads).map_err(Error::from)
         )?;
         let rpc_service = RpcServiceBuilder::new()
-            .logger(logger.clone())
-            .channel_options(ChannelOptions {
-                tcp_write_timeout: rpc_write_timeout(),
-                ..Default::default()
-            }).finish(executor.handle());
+            .channel_options(builder.rpc_client_channel_options.clone())
+            .finish(executor.handle());
 
         let raft_service = frugalos_raft::Service::new(logger.clone(), &mut rpc_server_builder);
         let config_service = track!(frugalos_config::Service::new(
@@ -391,12 +391,4 @@ pub fn take_snapshot(logger: &Logger, rpc_addr: SocketAddr) -> Result<()> {
 
     info!(logger, "The frugalos server has taken snapshot");
     Ok(())
-}
-
-fn rpc_write_timeout() -> Duration {
-    if let Some(x) = option_env!("FRUGALOS_RPC_WRITE_TIMEOUT_SEC").and_then(|s| s.parse().ok()) {
-        Duration::from_secs(x)
-    } else {
-        Duration::from_secs(5)
-    }
 }
