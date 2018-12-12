@@ -28,6 +28,7 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use config_server::ConfigServer;
+use frugalos_segment;
 use rpc_server::RpcServer;
 use server::{spawn_report_spans_thread, Server};
 use service;
@@ -42,6 +43,9 @@ pub struct FrugalosDaemonBuilder {
 
     /// Jaegerのトレースのサンプリング確率。
     pub sampling_rate: f64,
+
+    /// `MdsClient` に与える Configuration。
+    pub mds_client_config: frugalos_segment::config::MdsClientConfig,
 }
 impl FrugalosDaemonBuilder {
     /// 新しい`FrugalosDaemonBuilder`インスタンスを生成する。
@@ -50,6 +54,7 @@ impl FrugalosDaemonBuilder {
             logger,
             executor_threads: num_cpus::get(),
             sampling_rate: 0.001,
+            mds_client_config: Default::default(),
         }
     }
 
@@ -118,6 +123,7 @@ impl FrugalosDaemon {
             config_service,
             &mut rpc_server_builder,
             rpc_service.handle(),
+            builder.mds_client_config.clone(),
         ))?;
 
         let sampler = Sampler::<SpanContextState>::or(

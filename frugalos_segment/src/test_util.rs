@@ -199,6 +199,7 @@ pub mod tests {
                 ClientConfig {
                     cluster: self.cluster_config.clone(),
                     storage: self.make_dispersed_storage(),
+                    mds: MdsClientConfig::default(),
                 },
                 None,
             )
@@ -222,6 +223,7 @@ pub mod tests {
                 ClientConfig {
                     cluster: self.cluster_config.clone(),
                     storage: self.make_dispersed_storage(),
+                    mds: MdsClientConfig::default(),
                 },
                 self.rpc_service_handle.clone(),
                 None,

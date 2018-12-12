@@ -1,6 +1,6 @@
 #![allow(clippy::ptr_arg)]
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
-use frugalos_segment::config::ClusterMember;
+use frugalos_segment::config::{ClusterMember, MdsClientConfig};
 use frugalos_segment::Client as Segment;
 use frugalos_segment::{self, ErasureCoder};
 use libfrugalos::entity::bucket::Bucket as BucketConfig;
@@ -15,10 +15,16 @@ pub struct Bucket {
     rpc_service: RpcServiceHandle,
     ec: Option<ErasureCoder>,
     storage_config: frugalos_segment::config::Storage,
+    mds_client_config: MdsClientConfig,
     segments: Vec<Segment>,
 }
 impl Bucket {
-    pub fn new(logger: Logger, rpc_service: RpcServiceHandle, config: &BucketConfig) -> Self {
+    pub fn new(
+        logger: Logger,
+        rpc_service: RpcServiceHandle,
+        config: &BucketConfig,
+        mds_client_config: MdsClientConfig,
+    ) -> Self {
         let ec = match config {
             BucketConfig::Metadata(_) => None,
             BucketConfig::Replicated(_) => None,
@@ -50,6 +56,7 @@ impl Bucket {
                 members: Vec::new(),
             },
             storage: storage_config.clone(),
+            mds: mds_client_config.clone(),
         };
         let segment = Segment::new(
             logger.clone(),
@@ -66,12 +73,14 @@ impl Bucket {
             ec,
             storage_config,
             segments,
+            mds_client_config,
         }
     }
     pub fn update_segment(&mut self, segment_no: u16, members: Vec<ClusterMember>) {
         let segment_config = frugalos_segment::config::ClientConfig {
             cluster: frugalos_segment::config::ClusterConfig { members },
             storage: self.storage_config.clone(),
+            mds: self.mds_client_config.clone(),
         };
         let segment = Segment::new(
             self.logger.clone(),
