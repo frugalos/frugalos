@@ -57,7 +57,7 @@ fn main() {
                         .takes_value(true)
                         .default_value("0.0.0.0:3000"),
                 ).arg(data_dir_arg())
-                .arg(minimum_put_content_timeout_arg()),
+                .arg(put_content_timeout_arg()),
         ).subcommand(
             SubCommand::with_name("stop").arg(
                 Arg::with_name("RPC_ADDR")
@@ -256,10 +256,10 @@ fn data_dir_arg<'a, 'b>() -> Arg<'a, 'b> {
         .takes_value(true)
 }
 
-fn minimum_put_content_timeout_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("MINIMUM_PUT_CONTENT_TIMEOUT")
-        .help("Sets the minimum timeout in seconds on putting a content.")
-        .long("minimum-put-content-timeout")
+fn put_content_timeout_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("PUT_CONTENT_TIMEOUT")
+        .help("Sets timeout in seconds on putting a content.")
+        .long("put-content-timeout")
         .takes_value(true)
         .default_value("60")
 }
@@ -282,15 +282,13 @@ fn get_data_dir(matches: &ArgMatches) -> String {
 /// Gets `MdsClientConfig` from CLI arguments.
 fn get_mds_client_config(matches: &ArgMatches) -> Result<MdsClientConfig> {
     let mut config = MdsClientConfig::default();
-    config.minimum_put_content_timeout = matches
-        .value_of("MINIMUM_PUT_CONTENT_TIMEOUT")
-        .map_or_else(
-            || Ok(config.minimum_put_content_timeout),
-            |v| {
-                v.parse::<u64>()
-                    .map(Seconds)
-                    .map_err(|e| track!(Error::from(e)))
-            },
-        )?;
+    config.put_content_timeout = matches.value_of("PUT_CONTENT_TIMEOUT").map_or_else(
+        || Ok(config.put_content_timeout),
+        |v| {
+            v.parse::<u64>()
+                .map(Seconds)
+                .map_err(|e| track!(Error::from(e)))
+        },
+    )?;
     Ok(config)
 }

@@ -171,9 +171,9 @@ impl MdsClient {
     ) -> impl Future<Item = (ObjectVersion, bool), Error = Error> {
         debug!(self.logger, "Starts PUT: id={:?}", id);
         let put_content_timeout = Seconds(if let Deadline::Within(d) = deadline {
-            d.as_secs() + self.client_config.minimum_put_content_timeout.0
+            d.as_secs() + self.client_config.put_content_timeout.0
         } else {
-            self.client_config.minimum_put_content_timeout.0
+            self.client_config.put_content_timeout.0
         });
         Request::new(self.clone(), parent, move |client| {
             Box::new(

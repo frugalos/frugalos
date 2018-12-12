@@ -41,15 +41,15 @@ pub(crate) fn make_lump_id(node: &NodeId, version: ObjectVersion) -> LumpId {
 /// Configuration for `MdsClient`.
 #[derive(Debug, Clone)]
 pub struct MdsClientConfig {
-    /// Timeout in seconds, which is added to `Deadline::Within`.
-    pub minimum_put_content_timeout: Seconds,
+    /// Timeout in seconds, which is used to determine an actual `Deadline` on putting a content.
+    pub put_content_timeout: Seconds,
 }
 
 impl Default for MdsClientConfig {
     fn default() -> Self {
         MdsClientConfig {
             // This default value is a heuristic.
-            minimum_put_content_timeout: Seconds(60),
+            put_content_timeout: Seconds(60),
         }
     }
 }
