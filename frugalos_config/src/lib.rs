@@ -2,6 +2,7 @@
 //!
 //! [frugalos]: https://githug.com/frugalos/frugalos
 #![warn(missing_docs)]
+#![allow(clippy::new_ret_no_self)]
 extern crate bytecodec;
 extern crate byteorder;
 extern crate cannyls;

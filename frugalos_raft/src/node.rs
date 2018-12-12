@@ -241,7 +241,7 @@ mod hex_node_id {
 
     const NODE_ID_SIZE: usize = 7;
 
-    #[cfg_attr(feature = "cargo-clippy", allow(trivially_copy_pass_by_ref))]
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn serialize<S>(value: &[u8; NODE_ID_SIZE], serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,

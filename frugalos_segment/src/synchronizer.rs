@@ -222,7 +222,7 @@ impl TodoItem {
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
+#[allow(clippy::large_enum_variant)]
 enum Task {
     Idle,
     Wait(Timeout),

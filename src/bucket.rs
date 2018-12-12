@@ -1,4 +1,4 @@
-#![cfg_attr(feature = "cargo-clippy", allow(ptr_arg))]
+#![allow(clippy::ptr_arg)]
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_segment::config::{ClusterMember, MdsClientConfig};
 use frugalos_segment::Client as Segment;

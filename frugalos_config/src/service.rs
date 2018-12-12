@@ -392,7 +392,7 @@ impl Service {
             reply.exit(Ok(bucket.clone()));
         }
     }
-    #[cfg_attr(feature = "cargo-clippy", allow(ptr_arg))]
+    #[allow(clippy::ptr_arg)]
     fn handle_delete_bucket(&mut self, proposal_id: ProposalId, id: &BucketId) {
         let deleted = if let Some(bucket) = self.buckets.remove(id) {
             info!(self.logger, "Bucket is deleted: {}", dump!(id, bucket));
@@ -638,7 +638,7 @@ impl Service {
         Ok(())
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(ptr_arg))]
+    #[allow(clippy::ptr_arg)]
     fn update_segment_table(&mut self, bucket_id: &BucketId) {
         info!(self.logger, "[START] update_segment_table: {:?}", bucket_id);
         // TODO: 登録数が多くなるとそこそこ時間が掛かる可能性があるので
@@ -675,7 +675,7 @@ impl Service {
         self.segment_tables.remove(bucket.id());
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(ptr_arg))]
+    #[allow(clippy::ptr_arg)]
     fn is_device_referred(&self, id: &DeviceId) -> bool {
         self.buckets.values().any(|b| {
             b.device() == id || {
@@ -685,7 +685,7 @@ impl Service {
         })
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(ptr_arg))]
+    #[allow(clippy::ptr_arg)]
     fn is_device_included(&self, parent: &Device, id: &DeviceId) -> bool {
         if let Device::Virtual(ref d) = *parent {
             d.children.iter().any(|child_id| {

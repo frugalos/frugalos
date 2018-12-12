@@ -2,6 +2,7 @@
 //!
 //! ストレージとしては`cannyls`を、RPCとしては`fibers_rpc`を使用している.
 #![warn(missing_docs)]
+#![allow(clippy::new_ret_no_self)]
 extern crate adler32;
 extern crate atomic_immut;
 extern crate bytecodec;

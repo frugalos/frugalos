@@ -21,7 +21,7 @@ use trackable::error::Failure;
 use frugalos::{Error, Result};
 use frugalos_segment::config::MdsClientConfig;
 
-#[cfg_attr(feature = "cargo-clippy", allow(cyclomatic_complexity))]
+#[allow(clippy::cyclomatic_complexity)]
 fn main() {
     let matches = App::new("frugalos")
         .version(env!("CARGO_PKG_VERSION"))
