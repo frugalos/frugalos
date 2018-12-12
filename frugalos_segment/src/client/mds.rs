@@ -241,7 +241,7 @@ impl Inner {
 }
 
 // TODO: timeout
-#[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
+#[allow(clippy::type_complexity)]
 pub struct Request<F, V> {
     client: MdsClient,
     max_retry: usize,

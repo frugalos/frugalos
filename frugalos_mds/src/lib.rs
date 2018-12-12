@@ -6,6 +6,7 @@
 //! - バージョン番号
 //! - ユーザ定義の任意のメタデータ(バイト列)
 #![warn(missing_docs)]
+#![allow(clippy::new_ret_no_self)]
 extern crate atomic_immut;
 extern crate bytecodec;
 extern crate byteorder;

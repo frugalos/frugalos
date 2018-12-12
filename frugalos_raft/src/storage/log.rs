@@ -21,7 +21,7 @@ impl Future for SaveLog {
 }
 
 // #[derive(Debug)]
-#[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
+#[allow(clippy::large_enum_variant)]
 pub enum SaveLogInner {
     Suffix(SaveLogSuffix),
     Prefix(SaveLogPrefix),
@@ -54,7 +54,7 @@ impl Future for LoadLog {
 }
 
 // #[derive(Debug)]
-#[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum LoadLogInner {
     LoadLogPrefix {
         next: Option<LoadLogSuffix>,
