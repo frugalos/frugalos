@@ -173,7 +173,7 @@ impl MdsClient {
         let put_content_timeout = Seconds(if let Deadline::Within(d) = deadline {
             d.as_secs() + self.client_config.minimum_put_content_timeout.0
         } else {
-            self.client_config.default_put_content_timeout.0
+            self.client_config.minimum_put_content_timeout.0
         });
         Request::new(self.clone(), parent, move |client| {
             Box::new(
