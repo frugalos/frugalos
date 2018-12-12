@@ -195,7 +195,7 @@ struct SegmentNode {
     synchronizer: Synchronizer,
 }
 impl SegmentNode {
-    #[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
+    #[allow(clippy::too_many_arguments)]
     pub fn new<S>(
         // TODO: service: &Service<S>,
         logger: &Logger,

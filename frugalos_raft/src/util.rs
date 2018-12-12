@@ -38,7 +38,7 @@ where
     D: Future<Error = Error>,
     E: Future<Error = Error>,
 {
-    #[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
+    #[allow(clippy::type_complexity)]
     type Item = Phase5<A::Item, B::Item, C::Item, D::Item, E::Item>;
     type Error = Error;
 

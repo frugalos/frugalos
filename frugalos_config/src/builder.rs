@@ -175,14 +175,14 @@ impl<'a> SegmentsBuilder<'a> {
         }
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(mut_from_ref))]
+    #[allow(clippy::mut_from_ref)]
     fn get_device<'b, 'c>(&'b self, device_no: DeviceNo) -> &'c Device {
         // NOTE: 現状のRustの借用チェックの制約を回避するためのワークアラウンド
         let device = self.device_states[&device_no].device;
         unsafe { &*(device as *const _) }
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(mut_from_ref))]
+    #[allow(clippy::mut_from_ref)]
     fn get_ring(&self, device_no: DeviceNo) -> &mut HashRing {
         // NOTE: 現状のRustの借用チェックの制約を回避するためのワークアラウンド
         let ring = &self.device_states[&device_no].ring;
