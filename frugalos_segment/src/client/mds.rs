@@ -18,7 +18,7 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use trackable::error::ErrorKindExt;
 
-use config::ClusterConfig;
+use config::{ClusterConfig, MdsClientConfig};
 use {Error, ErrorKind, ObjectValue, Result};
 
 #[derive(Debug, Clone)]
@@ -26,15 +26,22 @@ pub struct MdsClient {
     logger: Logger,
     rpc_service: RpcServiceHandle,
     inner: Arc<Mutex<Inner>>,
+    client_config: MdsClientConfig,
 }
 impl MdsClient {
-    pub fn new(logger: Logger, rpc_service: RpcServiceHandle, config: ClusterConfig) -> Self {
+    pub fn new(
+        logger: Logger,
+        rpc_service: RpcServiceHandle,
+        cluster_config: ClusterConfig,
+        client_config: MdsClientConfig,
+    ) -> Self {
         // TODO: 以下のassertionは復活させたい
         // assert!(!config.members.is_empty());
         MdsClient {
             logger,
             rpc_service,
-            inner: Arc::new(Mutex::new(Inner::new(config))),
+            inner: Arc::new(Mutex::new(Inner::new(cluster_config))),
+            client_config,
         }
     }
 
@@ -164,9 +171,9 @@ impl MdsClient {
     ) -> impl Future<Item = (ObjectVersion, bool), Error = Error> {
         debug!(self.logger, "Starts PUT: id={:?}", id);
         let put_content_timeout = Seconds(if let Deadline::Within(d) = deadline {
-            d.as_secs() + 60 // XXX: hard-coding
+            d.as_secs() + self.client_config.put_content_timeout.0
         } else {
-            60
+            self.client_config.put_content_timeout.0
         });
         Request::new(self.clone(), parent, move |client| {
             Box::new(

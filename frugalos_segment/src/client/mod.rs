@@ -33,7 +33,12 @@ impl Client {
         config: ClientConfig,
         ec: Option<ErasureCoder>,
     ) -> Self {
-        let mds = MdsClient::new(logger.clone(), rpc_service.clone(), config.cluster.clone());
+        let mds = MdsClient::new(
+            logger.clone(),
+            rpc_service.clone(),
+            config.cluster.clone(),
+            config.mds.clone(),
+        );
         let storage = StorageClient::new(logger, config, rpc_service, ec);
         Client { mds, storage }
     }
