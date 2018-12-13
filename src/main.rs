@@ -1,4 +1,5 @@
 extern crate clap;
+extern crate fibers_rpc;
 extern crate frugalos;
 extern crate frugalos_config;
 extern crate frugalos_segment;
@@ -16,6 +17,7 @@ use libfrugalos::time::Seconds;
 use sloggers::Build;
 use std::env;
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::time::Duration;
 use trackable::error::Failure;
 
 use frugalos::{Error, Result};
@@ -56,6 +58,16 @@ fn main() {
                         .long("http-server-bind-addr")
                         .takes_value(true)
                         .default_value("0.0.0.0:3000"),
+                ).arg(
+                    Arg::with_name("RPC_CONNECT_TIMEOUT_MILLIS")
+                        .long("rpc-connect-timeout-millis")
+                        .takes_value(true)
+                        .default_value("5000"),
+                ).arg(
+                    Arg::with_name("RPC_WRITE_TIMEOUT_MILLIS")
+                        .long("rpc-write-timeout-millis")
+                        .takes_value(true)
+                        .default_value("5000"),
                 ).arg(data_dir_arg())
                 .arg(put_content_timeout_arg()),
         ).subcommand(
@@ -181,6 +193,8 @@ fn main() {
             matches.value_of("SAMPLING_RATE").unwrap().parse()
         ));
         daemon.sampling_rate = sampling_rate;
+        daemon.rpc_client_channel_options =
+            track_try_unwrap!(get_rpc_client_channel_options(&matches));
         daemon.mds_client_config =
             track_try_unwrap!(track_any_err!(get_mds_client_config(&matches)));
 
@@ -277,6 +291,30 @@ fn get_data_dir(matches: &ArgMatches) -> String {
         );
         std::process::exit(1);
     }
+}
+
+/// Gets `ChannelOptions` for RPC clients.
+fn get_rpc_client_channel_options(
+    matches: &ArgMatches,
+) -> Result<fibers_rpc::channel::ChannelOptions> {
+    let mut options: fibers_rpc::channel::ChannelOptions = Default::default();
+    options.tcp_connect_timeout = matches.value_of("RPC_CONNECT_TIMEOUT_MILLIS").map_or_else(
+        || Ok(Duration::from_millis(5000)),
+        |v| {
+            v.parse::<u64>()
+                .map(Duration::from_millis)
+                .map_err(|e| track!(Error::from(e)))
+        },
+    )?;
+    options.tcp_write_timeout = matches.value_of("RPC_WRITE_TIMEOUT_MILLIS").map_or_else(
+        || Ok(Duration::from_millis(5000)),
+        |v| {
+            v.parse::<u64>()
+                .map(Duration::from_millis)
+                .map_err(|e| track!(Error::from(e)))
+        },
+    )?;
+    Ok(options)
 }
 
 /// Gets `MdsClientConfig` from CLI arguments.
