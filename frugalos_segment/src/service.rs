@@ -87,7 +87,7 @@ where
     }
 
     /// Repairs objects.
-    pub fn repair_objects(&mut self, object_ids: BTreeSet<ObjectId>) {
+    pub fn repair_objects(&mut self, object_ids: &BTreeSet<ObjectId>) {
         self.mds_service.repair_objects(object_ids);
     }
 

@@ -72,7 +72,7 @@ impl Service {
     }
 
     /// Repairs objects.
-    pub fn repair_objects(&mut self, object_ids: BTreeSet<ObjectId>) {
+    pub fn repair_objects(&mut self, object_ids: &BTreeSet<ObjectId>) {
         info!(
             self.logger,
             "Sends repairing objects request: {:?}", object_ids

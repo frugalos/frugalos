@@ -230,7 +230,7 @@ impl DaemonRunner {
             DaemonCommand::TakeSnapshot => {
                 self.service.take_snapshot();
             }
-            DaemonCommand::RepairObjects(object_ids) => {
+            DaemonCommand::RepairObjects(ref object_ids) => {
                 self.service.repair_objects(object_ids);
             }
         }
