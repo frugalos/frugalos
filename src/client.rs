@@ -206,7 +206,7 @@ impl<'a> Request<'a> {
         let mut futures = Vec::new();
 
         for object_id in object_ids {
-            let segment = bucket.segment_no(&object_id).clone();
+            let segment = bucket.segment_no(&object_id);
             futures.push(self.head(object_id).map(move |version| {
                 version.map(move |version| SegmentedObject { segment, version })
             }));
@@ -215,7 +215,7 @@ impl<'a> Request<'a> {
         Box::new(
             futures::future::join_all(futures)
                 .map(|versions| versions.into_iter().filter_map(|v| v).collect())
-                .map_err(|e| track!(Error::from(e))),
+                .map_err(|e| track!(e)),
         )
     }
     pub fn latest(&self, segment: usize) -> BoxFuture<Option<ObjectSummary>> {

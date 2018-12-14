@@ -149,14 +149,15 @@ where
 
         let logger = self.logger.clone();
         let local_nodes = self.local_nodes.clone();
-        let future = future.and_then(move |handle| {
+
+        future.and_then(move |handle| {
             let mut futures = Vec::new();
 
             for object in objects {
                 if let Some(node_id) =
                     local_nodes.get(&(bucket_id.clone(), object.segment, device_id.clone()))
                 {
-                    let lump_id = config::make_lump_id(node_id, object.version.clone());
+                    let lump_id = config::make_lump_id(node_id, object.version);
                     debug!(
                         logger,
                         "lump deleting : node_id={:?}, lump={:?}, version={:?}",
@@ -167,7 +168,7 @@ where
                     futures.push(
                         handle
                             .request()
-                            .delete(lump_id.clone())
+                            .delete(lump_id)
                             .map(|_| ()) // we don't need any return value, so discard it.
                             .map_err(|e| track!(Error::from(e))),
                     );
@@ -175,9 +176,7 @@ where
             }
 
             futures::future::join_all(futures).map(|_| ())
-        });
-
-        future
+        })
     }
 
     fn handle_config_event(&mut self, event: ConfigEvent) -> Result<()> {
@@ -266,9 +265,9 @@ where
                 let bucket_id = self.bucket_no_to_id[&bucket_no].clone();
                 let device_id = self.seqno_to_device[device_no].id.as_str().to_owned();
 
-                if self.is_local_device(device_no) {
+                if self.is_local_device(*device_no) {
                     self.local_nodes
-                        .entry((bucket_id, segment_no.clone(), device_id))
+                        .entry((bucket_id, segment_no, device_id))
                         .or_insert(node);
                 }
                 members.push(node);
@@ -338,13 +337,14 @@ where
     }
 
     /// Removes all local nodes tied with the given `DeviceId`.
+    #[allow(clippy::ptr_arg)]
     fn remove_all_local_nodes(&mut self, device: &entity::device::DeviceId) {
         self.local_nodes.retain(|(_, _, d), _| d != device);
     }
 
     /// Returns true if the given device is a local device.
-    fn is_local_device(&self, device_no: &DeviceNo) -> bool {
-        self.local_server.id == self.seqno_to_device[device_no].server
+    fn is_local_device(&self, device_no: DeviceNo) -> bool {
+        self.local_server.id == self.seqno_to_device[&device_no].server
     }
 }
 impl<S> Future for Service<S>
