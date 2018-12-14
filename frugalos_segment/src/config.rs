@@ -3,6 +3,7 @@ use byteorder::{BigEndian, ByteOrder};
 use cannyls::lump::LumpId;
 use frugalos_raft::NodeId;
 use libfrugalos::entity::object::ObjectVersion;
+use libfrugalos::time::Seconds;
 use raftlog::cluster::ClusterMembers;
 use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
@@ -37,13 +38,30 @@ pub fn make_lump_id(node: &NodeId, version: ObjectVersion) -> LumpId {
     LumpId::new(BigEndian::read_u128(&id[..]))
 }
 
+/// Configuration for `MdsClient`.
+#[derive(Debug, Clone)]
+pub struct MdsClientConfig {
+    /// Timeout in seconds, which is used to determine an actual `Deadline` on putting a content.
+    pub put_content_timeout: Seconds,
+}
+
+impl Default for MdsClientConfig {
+    fn default() -> Self {
+        MdsClientConfig {
+            // This default value is a heuristic.
+            put_content_timeout: Seconds(60),
+        }
+    }
+}
+
 // FIXME: rename
 /// クライアントがセグメントにアクセスする際に使用する構成情報。
 #[allow(missing_docs)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ClientConfig {
     pub cluster: ClusterConfig,
     pub storage: Storage,
+    pub mds: MdsClientConfig,
 }
 impl ClientConfig {
     /// 対象のセグメントに属しているメンバ一覧を返す。

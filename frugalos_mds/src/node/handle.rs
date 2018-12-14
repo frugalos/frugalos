@@ -149,20 +149,21 @@ impl NodeHandle {
                         id: "dummy".to_string(),
                         version: v,
                     })
-                }).collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
         })
 
         /*
-            // 本当は以下のようにしたいが
-            // node.rs の handle_command の return type の制約
-            // (Vec型ではなくOption型を返す)
-            // のため、現状は上のように個別リクエストをまとめあげている
-            let (monitored, monitor) = oneshot::monitor();
-            let request = Request::DeleteByRange(version_from, version_to, expect.clone(), monitored);
-            future_try!(self.request_tx.send(request));
-            let future = monitor.map_err(|e| track!(Error::from(e)));
-            Either::A(future)
-         */
+           // 本当は以下のようにしたいが
+           // node.rs の handle_command の return type の制約
+           // (Vec型ではなくOption型を返す)
+           // のため、現状は上のように個別リクエストをまとめあげている
+           let (monitored, monitor) = oneshot::monitor();
+           let request = Request::DeleteByRange(version_from, version_to, expect.clone(), monitored);
+           future_try!(self.request_tx.send(request));
+           let future = monitor.map_err(|e| track!(Error::from(e)));
+           Either::A(future)
+        */
     }
 
     pub fn delete_by_prefix(
@@ -217,7 +218,8 @@ mod tests {
                 .and_then(move |summary| {
                     assert_eq!(summary.total, 3);
                     Ok(handle.stop())
-                }).map_err(|e| {
+                })
+                .map_err(|e| {
                     let _ = track!(e);
                 }),
         );

@@ -120,7 +120,8 @@ where
                             client,
                             cluster,
                         ))
-                    }).map_err(move |e| crit!(logger, "Error: {}", e))
+                    })
+                    .map_err(move |e| crit!(logger, "Error: {}", e))
                     .and_then(|node| node);
                 self.spawner.spawn(future);
             }
@@ -174,11 +175,10 @@ impl ServiceHandle {
         cluster: ClusterMembers,
     ) -> Result<()> {
         let command = Command::AddNode(node_id, device, client.storage, cluster);
-        track!(
-            self.command_tx
-                .send(command,)
-                .map_err(|_| ErrorKind::Other.error(),)
-        )?;
+        track!(self
+            .command_tx
+            .send(command,)
+            .map_err(|_| ErrorKind::Other.error(),))?;
         Ok(())
     }
 }
@@ -195,7 +195,7 @@ struct SegmentNode {
     synchronizer: Synchronizer,
 }
 impl SegmentNode {
-    #[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
+    #[allow(clippy::too_many_arguments)]
     pub fn new<S>(
         // TODO: service: &Service<S>,
         logger: &Logger,

@@ -1,4 +1,4 @@
-#![cfg_attr(feature = "cargo-clippy", allow(module_inception))]
+#![allow(clippy::module_inception)]
 use fibers::sync::oneshot::Monitored;
 use frugalos_raft::NodeId;
 use libfrugalos::entity::object::{
