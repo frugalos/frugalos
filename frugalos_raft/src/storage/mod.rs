@@ -188,7 +188,7 @@ impl Storage {
         SaveLog(inner)
     }
 
-    #[cfg_attr(feature = "cargo-clippy", allow(wrong_self_convention))]
+    #[allow(clippy::wrong_self_convention)]
     pub(crate) fn is_busy(&mut self) -> bool {
         if self.phase == Phase::Started {
             if acquire_initialization_lock() {

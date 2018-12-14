@@ -1,5 +1,5 @@
-#![cfg_attr(feature = "cargo-clippy", allow(ptr_arg))]
-#![cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
+#![allow(clippy::ptr_arg)]
+#![allow(clippy::needless_pass_by_value)]
 use atomic_immut::AtomicImmut;
 use cannyls::deadline::Deadline;
 use frugalos_segment::ObjectValue;

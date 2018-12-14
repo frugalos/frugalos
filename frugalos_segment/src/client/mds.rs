@@ -18,7 +18,7 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use trackable::error::ErrorKindExt;
 
-use config::ClusterConfig;
+use config::{ClusterConfig, MdsClientConfig};
 use {Error, ErrorKind, ObjectValue, Result};
 
 #[derive(Debug, Clone)]
@@ -26,15 +26,22 @@ pub struct MdsClient {
     logger: Logger,
     rpc_service: RpcServiceHandle,
     inner: Arc<Mutex<Inner>>,
+    client_config: MdsClientConfig,
 }
 impl MdsClient {
-    pub fn new(logger: Logger, rpc_service: RpcServiceHandle, config: ClusterConfig) -> Self {
+    pub fn new(
+        logger: Logger,
+        rpc_service: RpcServiceHandle,
+        cluster_config: ClusterConfig,
+        client_config: MdsClientConfig,
+    ) -> Self {
         // TODO: 以下のassertionは復活させたい
         // assert!(!config.members.is_empty());
         MdsClient {
             logger,
             rpc_service,
-            inner: Arc::new(Mutex::new(Inner::new(config))),
+            inner: Arc::new(Mutex::new(Inner::new(cluster_config))),
+            client_config,
         }
     }
 
@@ -164,9 +171,9 @@ impl MdsClient {
     ) -> impl Future<Item = (ObjectVersion, bool), Error = Error> {
         debug!(self.logger, "Starts PUT: id={:?}", id);
         let put_content_timeout = Seconds(if let Deadline::Within(d) = deadline {
-            d.as_secs() + 60 // XXX: hard-coding
+            d.as_secs() + self.client_config.put_content_timeout.0
         } else {
-            60
+            self.client_config.put_content_timeout.0
         });
         Request::new(self.clone(), parent, move |client| {
             Box::new(
@@ -176,7 +183,8 @@ impl MdsClient {
                         content.clone(),
                         expect.clone(),
                         put_content_timeout.into(),
-                    ).map(|(leader, (versoin, old))| (leader, (versoin, old.is_none())))
+                    )
+                    .map(|(leader, (versoin, old))| (leader, (versoin, old.is_none())))
                     .map_err(MdsError::from),
             )
         })
@@ -241,7 +249,7 @@ impl Inner {
 }
 
 // TODO: timeout
-#[cfg_attr(feature = "cargo-clippy", allow(type_complexity))]
+#[allow(clippy::type_complexity)]
 pub struct Request<F, V> {
     client: MdsClient,
     max_retry: usize,
@@ -253,8 +261,9 @@ pub struct Request<F, V> {
 impl<F, V> Request<F, V>
 where
     V: Send + 'static,
-    F: Fn(RaftMdsClient)
-        -> Box<Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>,
+    F: Fn(
+        RaftMdsClient,
+    ) -> Box<Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>,
 {
     pub fn new(client: MdsClient, parent: SpanHandle, request: F) -> Self {
         let max_retry = client.max_retry();
@@ -300,8 +309,9 @@ where
 }
 impl<F, V> Future for Request<F, V>
 where
-    F: Fn(RaftMdsClient)
-        -> Box<Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>,
+    F: Fn(
+        RaftMdsClient,
+    ) -> Box<Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>,
     V: Send + 'static,
 {
     type Item = V;
@@ -328,7 +338,8 @@ where
                         ErrorKind::Busy.takes_over(e),
                         "node={:?}",
                         self.client.leader()
-                    ).into());
+                    )
+                    .into());
                 }
                 track!(self.request_once())?;
                 debug!(

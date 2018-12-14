@@ -222,7 +222,7 @@ impl TodoItem {
     }
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
+#[allow(clippy::large_enum_variant)]
 enum Task {
     Idle,
     Wait(Timeout),
@@ -263,7 +263,8 @@ impl DeleteContent {
                     .deadline(Deadline::Infinity)
                     .delete(lump_id);
                 into_box_future(future)
-            }).collect();
+            })
+            .collect();
         DeleteContent { futures }
     }
 }

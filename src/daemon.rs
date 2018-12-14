@@ -26,10 +26,10 @@ use std::mem;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::process::Command;
-use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use config_server::ConfigServer;
+use frugalos_segment;
 use rpc_server::RpcServer;
 use server::{spawn_report_spans_thread, Server};
 use service;
@@ -44,6 +44,12 @@ pub struct FrugalosDaemonBuilder {
 
     /// Jaegerのトレースのサンプリング確率。
     pub sampling_rate: f64,
+
+    /// RPC 通信のオプション。
+    pub rpc_client_channel_options: ChannelOptions,
+
+    /// `MdsClient` に与える Configuration。
+    pub mds_client_config: frugalos_segment::config::MdsClientConfig,
 }
 impl FrugalosDaemonBuilder {
     /// 新しい`FrugalosDaemonBuilder`インスタンスを生成する。
@@ -52,6 +58,8 @@ impl FrugalosDaemonBuilder {
             logger,
             executor_threads: num_cpus::get(),
             sampling_rate: 0.001,
+            rpc_client_channel_options: Default::default(),
+            mds_client_config: Default::default(),
         }
     }
 
@@ -98,11 +106,8 @@ impl FrugalosDaemon {
             ThreadPoolExecutor::with_thread_count(builder.executor_threads).map_err(Error::from)
         )?;
         let rpc_service = RpcServiceBuilder::new()
-            .logger(logger.clone())
-            .channel_options(ChannelOptions {
-                tcp_write_timeout: rpc_write_timeout(),
-                ..Default::default()
-            }).finish(executor.handle());
+            .channel_options(builder.rpc_client_channel_options.clone())
+            .finish(executor.handle());
 
         let raft_service = frugalos_raft::Service::new(logger.clone(), &mut rpc_server_builder);
         let config_service = track!(frugalos_config::Service::new(
@@ -120,14 +125,13 @@ impl FrugalosDaemon {
             config_service,
             &mut rpc_server_builder,
             rpc_service.handle(),
+            builder.mds_client_config.clone(),
         ))?;
 
         let sampler = Sampler::<SpanContextState>::or(
             PassiveSampler,
-            track!(
-                ProbabilisticSampler::new(builder.sampling_rate)
-                    .map_err(|e| ErrorKind::InvalidInput.takes_over(e))
-            )?,
+            track!(ProbabilisticSampler::new(builder.sampling_rate)
+                .map_err(|e| ErrorKind::InvalidInput.takes_over(e)))?,
         );
         let (tracer, span_rx) = rustracing_jaeger::Tracer::new(sampler);
         spawn_report_spans_thread(span_rx);
@@ -162,14 +166,12 @@ impl FrugalosDaemon {
     fn register_prometheus_metrics(&self) -> Result<()> {
         prometrics::default_registry()
             .register(prometrics::metrics::ProcessMetricsCollector::new());
-        let mut version = track!(
-            prometrics::metrics::GaugeBuilder::new("build")
-                .namespace("frugalos")
-                .label("version", env!("CARGO_PKG_VERSION"))
-                .initial_value(1.0)
-                .default_registry()
-                .finish()
-        )?;
+        let mut version = track!(prometrics::metrics::GaugeBuilder::new("build")
+            .namespace("frugalos")
+            .label("version", env!("CARGO_PKG_VERSION"))
+            .initial_value(1.0)
+            .default_registry()
+            .finish())?;
         if let Some(commit) = Command::new("git")
             .arg("rev-parse")
             .arg("HEAD")
@@ -300,11 +302,12 @@ impl Future for StopDaemon {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        track!(self.0.poll().map_err(|e| e.unwrap_or_else(|| {
-            ErrorKind::Other
+        track!(self
+            .0
+            .poll()
+            .map_err(|e| e.unwrap_or_else(|| ErrorKind::Other
                 .cause("Monitoring channel disconnected")
-                .into()
-        })))
+                .into())))
     }
 }
 
@@ -319,13 +322,11 @@ struct LogMetrics {
 impl LogMetrics {
     pub fn new() -> Result<Self> {
         fn counter(level: &str) -> Result<prometrics::metrics::Counter> {
-            let counter = track!(
-                prometrics::metrics::CounterBuilder::new("records_total")
-                    .namespace("log")
-                    .label("level", level)
-                    .default_registry()
-                    .finish()
-            )?;
+            let counter = track!(prometrics::metrics::CounterBuilder::new("records_total")
+                .namespace("log")
+                .label("level", level)
+                .default_registry()
+                .finish())?;
             Ok(counter)
         }
         Ok(LogMetrics {
@@ -371,12 +372,10 @@ pub fn stop(logger: &Logger, rpc_addr: SocketAddr) -> Result<()> {
 
     let client = libfrugalos::client::frugalos::Client::new(rpc_addr, rpc_service_handle);
     let fiber = executor.spawn_monitor(client.stop());
-    track!(
-        executor
-            .run_fiber(fiber)
-            .unwrap()
-            .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected")))
-    )?;
+    track!(executor
+        .run_fiber(fiber)
+        .unwrap()
+        .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected"))))?;
 
     info!(logger, "The frugalos server has stopped");
     Ok(())
@@ -395,23 +394,13 @@ pub fn take_snapshot(logger: &Logger, rpc_addr: SocketAddr) -> Result<()> {
 
     let client = libfrugalos::client::frugalos::Client::new(rpc_addr, rpc_service_handle);
     let fiber = executor.spawn_monitor(client.take_snapshot());
-    track!(
-        executor
-            .run_fiber(fiber)
-            .unwrap()
-            .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected")))
-    )?;
+    track!(executor
+        .run_fiber(fiber)
+        .unwrap()
+        .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected"))))?;
 
     info!(logger, "The frugalos server has taken snapshot");
     Ok(())
-}
-
-fn rpc_write_timeout() -> Duration {
-    if let Some(x) = option_env!("FRUGALOS_RPC_WRITE_TIMEOUT_SEC").and_then(|s| s.parse().ok()) {
-        Duration::from_secs(x)
-    } else {
-        Duration::from_secs(5)
-    }
 }
 
 /// Repairs objects by the given `ObjectId`s.

@@ -1,4 +1,4 @@
-#![cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
+#![allow(clippy::needless_pass_by_value)]
 use adler32;
 use byteorder::{BigEndian, ByteOrder};
 use cannyls::deadline::Deadline;
@@ -217,11 +217,10 @@ impl Future for ReplicatedGet {
                     self.future = Box::new(futures::finished(None))
                 }
                 Ok(Async::Ready(None)) => {
-                    let m = track!(
-                        self.candidates
-                            .pop()
-                            .ok_or_else(|| ErrorKind::Corrupted.error(),)
-                    )?;
+                    let m = track!(self
+                        .candidates
+                        .pop()
+                        .ok_or_else(|| ErrorKind::Corrupted.error(),))?;
                     let client = CannyLsClient::new(m.node.addr, self.rpc_service.clone());
                     let mut request = client.request();
                     request.rpc_options(RpcOptions {
@@ -570,7 +569,8 @@ impl Future for DispersedGet {
                             .tag(Tag::new(
                                 "fragments.bytes",
                                 fragments.iter().map(|f| f.len()).sum::<usize>() as i64,
-                            )).start()
+                            ))
+                            .start()
                     });
                     let future: BoxFuture<_> = Box::new(
                         self.ec
@@ -625,11 +625,10 @@ impl CollectFragments {
         while force || self.futures.len() + self.fragments.len() < self.data_fragments {
             force = false;
 
-            let m = track!(
-                self.spares
-                    .pop()
-                    .ok_or_else(|| ErrorKind::Corrupted.error(),)
-            )?;
+            let m = track!(self
+                .spares
+                .pop()
+                .ok_or_else(|| ErrorKind::Corrupted.error(),))?;
             let client = CannyLsClient::new(m.node.addr, self.rpc_service.clone());
             let lump_id = m.make_lump_id(self.version);
             debug!(
@@ -745,7 +744,7 @@ pub enum MaybeFragment {
     NotParticipant,
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(large_enum_variant))]
+#[allow(clippy::large_enum_variant)]
 pub enum GetFragment {
     Failed(future::Failed<Vec<u8>, Error>),
     Replicated(GetReplicatedFragment),

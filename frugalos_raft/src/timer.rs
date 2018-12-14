@@ -58,10 +58,9 @@ impl Future for Timeout {
     type Item = ();
     type Error = RaftError;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        track!(
-            self.0
-                .poll()
-                .map_err(|e| RaftErrorKind::Other.cause(e).into(),)
-        )
+        track!(self
+            .0
+            .poll()
+            .map_err(|e| RaftErrorKind::Other.cause(e).into(),))
     }
 }
