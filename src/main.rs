@@ -12,18 +12,15 @@ extern crate sloggers;
 extern crate trackable;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
-use trackable::error::{ErrorKindExt, Failure};
-use libfrugalos::entity::bucket::BucketId;
-use libfrugalos::entity::object::ObjectId;
 use libfrugalos::entity::server::Server;
 use libfrugalos::time::Seconds;
 use sloggers::Build;
-use std::collections::BTreeSet;
 use std::env;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
+use trackable::error::Failure;
 
-use frugalos::{Error, ErrorKind, Result};
+use frugalos::{Error, Result};
 use frugalos_segment::config::MdsClientConfig;
 
 #[allow(clippy::cyclomatic_complexity)]
@@ -81,13 +78,6 @@ fn main() {
                 )
                 .arg(data_dir_arg())
                 .arg(put_content_timeout_arg()),
-        )
-            .subcommand(
-            SubCommand::with_name("repair-objects-by-ids")
-                .arg(rpc_addr_arg().required(true))
-                .arg(bucket_arg().required(true))
-                .arg(delimiter_arg())
-                .arg(object_ids_arg().required(true)),
         )
         .subcommand(SubCommand::with_name("stop").arg(rpc_addr_arg().required(true)))
         .subcommand(SubCommand::with_name("take-snapshot").arg(rpc_addr_arg().required(true)))
@@ -217,22 +207,6 @@ fn main() {
 
         // NOTE: ログ出力(非同期)用に少し待機
         std::thread::sleep(std::time::Duration::from_millis(100));
-    } else if let Some(matches) = matches.subcommand_matches("repair-objects-by-ids") {
-        // TAKE SNAPSHOT
-        let logger = track_try_unwrap!(logger_builder.build());
-        let bucket = track_try_unwrap!(track_any_err!(get_bucket(&matches)));
-        let objects = track_try_unwrap!(track_any_err!(get_object_ids(&matches)));
-        let mut rpc_addrs = track_try_unwrap!(track_any_err!(
-            matches.value_of("RPC_ADDR").unwrap().to_socket_addrs()
-        ));
-        let rpc_addr = rpc_addrs.nth(0).expect("No available TCP address");
-        let logger = logger.new(o!("rpc_addr" => rpc_addr.to_string()));
-        track_try_unwrap!(frugalos::daemon::repair_objects_by_ids(
-            &logger, rpc_addr, bucket, objects
-        ));
-
-        // NOTE: ログ出力(非同期)用に少し待機
-        std::thread::sleep(std::time::Duration::from_millis(100));
     } else if let Some(matches) = matches.subcommand_matches("stop") {
         // STOP SERVER
         let logger = track_try_unwrap!(logger_builder.build());
@@ -298,34 +272,12 @@ fn data_dir_arg<'a, 'b>() -> Arg<'a, 'b> {
         .takes_value(true)
 }
 
-fn bucket_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("BUCKET")
-        .help("Sets the bucket id")
-        .long("bucket")
-        .takes_value(true)
-}
-
 fn rpc_addr_arg<'a, 'b>() -> Arg<'a, 'b> {
     Arg::with_name("RPC_ADDR")
         .long("rpc-addr")
         .help("Sets the address of the RPC server(e.g. --rpc-addr 127.0.0.1:14279)")
         .takes_value(true)
         .default_value("127.0.0.1:14278")
-}
-
-fn delimiter_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("DELIMITER")
-        .long("delimiter")
-        .help("Sets the delimiter")
-        .takes_value(true)
-        .default_value(",")
-}
-
-fn object_ids_arg<'a, 'b>() -> Arg<'a, 'b> {
-    Arg::with_name("OBJECT_IDS")
-        .help("Sets the object ids")
-        .long("object-ids")
-        .takes_value(true)
 }
 
 fn put_content_timeout_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -349,35 +301,6 @@ fn get_data_dir(matches: &ArgMatches) -> String {
         );
         std::process::exit(1);
     }
-}
-
-/// Gets `ObjectVersion`s from `ArgMatches`.
-fn get_object_ids(matches: &ArgMatches) -> Result<BTreeSet<ObjectId>> {
-    let delimiter = matches
-        .value_of("DELIMITER")
-        .ok_or_else(|| ErrorKind::InvalidInput.cause("Must be specified"))?;
-    let ids = matches
-        .value_of("OBJECT_IDS")
-        .ok_or_else(|| ErrorKind::InvalidInput.cause("Must not be empty string"))?;
-    let mut result = BTreeSet::new();
-
-    for id in ids.split(delimiter) {
-        result.insert(id.to_owned());
-    }
-
-    Ok(result)
-}
-
-/// Gets a bucket name from `ArgMatches`.
-fn get_bucket(matches: &ArgMatches) -> Result<BucketId> {
-    track!(matches.value_of("BUCKET").map_or_else(
-        || {
-            Err(ErrorKind::InvalidInput
-                .cause("[ERROR] Must set bucket.")
-                .into())
-        },
-        |id| Ok(id.to_owned())
-    ))
 }
 
 /// Gets `ChannelOptions` for RPC clients.

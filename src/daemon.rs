@@ -402,38 +402,3 @@ pub fn take_snapshot(logger: &Logger, rpc_addr: SocketAddr) -> Result<()> {
     info!(logger, "The frugalos server has taken snapshot");
     Ok(())
 }
-
-/// Repairs objects by the given `ObjectId`s.
-pub fn repair_objects_by_ids(
-    logger: &Logger,
-    rpc_addr: SocketAddr,
-    bucket_id: entity::bucket::BucketId,
-    object_ids: BTreeSet<entity::object::ObjectId>,
-) -> Result<()> {
-    info!(
-        logger,
-        "Starts repairing objects: bucket={:?}, object_ids={:?}", bucket_id, object_ids
-    );
-
-    let mut executor = track!(ThreadPoolExecutor::with_thread_count(1).map_err(Error::from))?;
-    let rpc_service = RpcServiceBuilder::new()
-        .logger(logger.clone())
-        .finish(executor.handle());
-    let rpc_service_handle = rpc_service.handle();
-    executor.spawn(rpc_service.map_err(|e| panic!("{}", e)));
-
-    let client = libfrugalos::client::frugalos::Client::new(rpc_addr, rpc_service_handle);
-    let fiber = executor.spawn_monitor(client.repair_by_ids(bucket_id, object_ids));
-    track!(
-        executor
-            .run_fiber(fiber)
-            .unwrap()
-            .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected")))
-    )?;
-
-    info!(
-        logger,
-        "The FrugalOS server has repaired the given ObjectIds."
-    );
-    Ok(())
-}
