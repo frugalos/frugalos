@@ -29,8 +29,8 @@ use std::process::Command;
 use trackable::error::ErrorKindExt;
 
 use config_server::ConfigServer;
-use object::SegmentedObject;
 use frugalos_segment;
+use object::SegmentedObject;
 use rpc_server::RpcServer;
 use server::{spawn_report_spans_thread, Server};
 use service;
@@ -375,11 +375,12 @@ impl Future for DeleteObjectsByVersions {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        track!(self.0.poll().map_err(|e| e.unwrap_or_else(|| {
-            ErrorKind::Other
+        track!(self
+            .0
+            .poll()
+            .map_err(|e| e.unwrap_or_else(|| ErrorKind::Other
                 .cause("Monitoring channel disconnected")
-                .into()
-        })))
+                .into())))
     }
 }
 

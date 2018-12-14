@@ -137,13 +137,15 @@ where
                 ErrorKind::InvalidInput
                     .cause("the device is not registered as a local device")
                     .into()
-            }).and_then(|local_device| {
+            })
+            .and_then(|local_device| {
                 local_device.handle().ok_or_else(|| {
                     ErrorKind::Other
                         .cause("the device is not running yet")
                         .into()
                 })
-            }).into_future();
+            })
+            .into_future();
 
         let logger = self.logger.clone();
         let local_nodes = self.local_nodes.clone();
@@ -256,12 +258,11 @@ where
 
             for (member_no, device_no) in (0..group.members.len()).zip(group.members.iter()) {
                 let owner = &self.servers[&self.seqno_to_device[device_no].server];
-                let node: NodeId = track!(
-                    format!(
-                        "00{:06x}{:04x}{:02x}.{:x}@{}:{}",
-                        bucket_no, segment_no, member_no, device_no, owner.host, owner.port
-                    ).parse()
-                )?;
+                let node: NodeId = track!(format!(
+                    "00{:06x}{:04x}{:02x}.{:x}@{}:{}",
+                    bucket_no, segment_no, member_no, device_no, owner.host, owner.port
+                )
+                .parse())?;
                 let bucket_id = self.bucket_no_to_id[&bucket_no].clone();
                 let device_id = self.seqno_to_device[device_no].id.as_str().to_owned();
 
