@@ -183,7 +183,8 @@ impl MdsClient {
                         content.clone(),
                         expect.clone(),
                         put_content_timeout.into(),
-                    ).map(|(leader, (versoin, old))| (leader, (versoin, old.is_none())))
+                    )
+                    .map(|(leader, (versoin, old))| (leader, (versoin, old.is_none())))
                     .map_err(MdsError::from),
             )
         })
@@ -260,8 +261,9 @@ pub struct Request<F, V> {
 impl<F, V> Request<F, V>
 where
     V: Send + 'static,
-    F: Fn(RaftMdsClient)
-        -> Box<Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>,
+    F: Fn(
+        RaftMdsClient,
+    ) -> Box<Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>,
 {
     pub fn new(client: MdsClient, parent: SpanHandle, request: F) -> Self {
         let max_retry = client.max_retry();
@@ -307,8 +309,9 @@ where
 }
 impl<F, V> Future for Request<F, V>
 where
-    F: Fn(RaftMdsClient)
-        -> Box<Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>,
+    F: Fn(
+        RaftMdsClient,
+    ) -> Box<Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>,
     V: Send + 'static,
 {
     type Item = V;
@@ -335,7 +338,8 @@ where
                         ErrorKind::Busy.takes_over(e),
                         "node={:?}",
                         self.client.leader()
-                    ).into());
+                    )
+                    .into());
                 }
                 track!(self.request_once())?;
                 debug!(

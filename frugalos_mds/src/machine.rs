@@ -59,7 +59,8 @@ impl Machine {
                     let object_id = String::from_utf8(object_id).unwrap();
                     let data = self.get_data(&object_id);
                     (object_id.clone(), Metadata { version, data })
-                }).collect();
+                })
+                .collect();
             Snapshot::Assoc(assoc)
         }
     }
@@ -278,31 +279,27 @@ mod tests {
         machine.put(id.clone(), meta.clone(), &Expect::None)?;
 
         // すでにバージョンが1つ以上ある
-        assert!(
-            machine
-                .put(id.clone(), meta.clone(), &Expect::None)
-                .is_err()
-        );
+        assert!(machine
+            .put(id.clone(), meta.clone(), &Expect::None)
+            .is_err());
 
         // バージョンが異なる
-        assert!(
-            machine
-                .put(
-                    id.clone(),
-                    meta.clone(),
-                    &Expect::IfMatch(vec![UNKNOWN_OBJECT_VERSION])
-                ).is_err()
-        );
+        assert!(machine
+            .put(
+                id.clone(),
+                meta.clone(),
+                &Expect::IfMatch(vec![UNKNOWN_OBJECT_VERSION])
+            )
+            .is_err());
 
         // バージョンが存在している
-        assert!(
-            machine
-                .put(
-                    id.clone(),
-                    meta.clone(),
-                    &Expect::IfNoneMatch(vec![DEFAULT_OBJECT_VERSION])
-                ).is_err()
-        );
+        assert!(machine
+            .put(
+                id.clone(),
+                meta.clone(),
+                &Expect::IfNoneMatch(vec![DEFAULT_OBJECT_VERSION])
+            )
+            .is_err());
 
         Ok(())
     }
@@ -317,13 +314,12 @@ mod tests {
 
         assert_eq!(machine.len(), metadata_size);
 
-        assert!(
-            machine
-                .get(
-                    &make_object_id(0, MetadataKind::MUSIC),
-                    &Expect::IfMatch(vec![DEFAULT_OBJECT_VERSION])
-                )?.is_some()
-        );
+        assert!(machine
+            .get(
+                &make_object_id(0, MetadataKind::MUSIC),
+                &Expect::IfMatch(vec![DEFAULT_OBJECT_VERSION])
+            )?
+            .is_some());
 
         Ok(())
     }
@@ -337,11 +333,9 @@ mod tests {
 
         assert_eq!(machine.len(), metadata_size);
 
-        assert!(
-            machine
-                .delete(&make_object_id(0, MetadataKind::MUSIC), &Expect::Any)?
-                .is_some()
-        );
+        assert!(machine
+            .delete(&make_object_id(0, MetadataKind::MUSIC), &Expect::Any)?
+            .is_some());
 
         assert_eq!(machine.len(), metadata_size - 1);
 
@@ -357,13 +351,12 @@ mod tests {
 
         assert_eq!(machine.len(), metadata_size);
 
-        assert!(
-            machine
-                .delete(
-                    &make_object_id(metadata_size + 30, MetadataKind::MUSIC),
-                    &Expect::Any
-                )?.is_none()
-        );
+        assert!(machine
+            .delete(
+                &make_object_id(metadata_size + 30, MetadataKind::MUSIC),
+                &Expect::Any
+            )?
+            .is_none());
 
         assert_eq!(machine.len(), metadata_size);
 
@@ -378,31 +371,28 @@ mod tests {
         setup_metadata(&mut machine, metadata_size, MetadataKind::MUSIC);
 
         // expect が指定されていない
-        assert!(
-            machine
-                .delete(
-                    &make_object_id(0, MetadataKind::MUSIC),
-                    &Expect::IfMatch(vec![])
-                ).is_err()
-        );
+        assert!(machine
+            .delete(
+                &make_object_id(0, MetadataKind::MUSIC),
+                &Expect::IfMatch(vec![])
+            )
+            .is_err());
 
         // 存在しないバージョンを指定している
-        assert!(
-            machine
-                .delete(
-                    &make_object_id(0, MetadataKind::MUSIC),
-                    &Expect::IfMatch(vec![UNKNOWN_OBJECT_VERSION])
-                ).is_err()
-        );
+        assert!(machine
+            .delete(
+                &make_object_id(0, MetadataKind::MUSIC),
+                &Expect::IfMatch(vec![UNKNOWN_OBJECT_VERSION])
+            )
+            .is_err());
 
         // 存在するバージョンを指定している
-        assert!(
-            machine
-                .delete(
-                    &make_object_id(0, MetadataKind::MUSIC),
-                    &Expect::IfNoneMatch(vec![DEFAULT_OBJECT_VERSION])
-                ).is_err()
-        );
+        assert!(machine
+            .delete(
+                &make_object_id(0, MetadataKind::MUSIC),
+                &Expect::IfNoneMatch(vec![DEFAULT_OBJECT_VERSION])
+            )
+            .is_err());
 
         Ok(())
     }
@@ -439,11 +429,9 @@ mod tests {
 
         assert_eq!(machine.len(), music_metadata_size + lyric_metadata_size);
 
-        assert!(
-            machine
-                .delete_by_prefix(&ObjectPrefix("music".to_owned()))
-                .is_ok()
-        );
+        assert!(machine
+            .delete_by_prefix(&ObjectPrefix("music".to_owned()))
+            .is_ok());
 
         // MetadataKind::LYRIC は消えていない
         assert_eq!(machine.len(), lyric_metadata_size);
@@ -461,11 +449,9 @@ mod tests {
 
         assert_eq!(machine.len(), metadata_size);
 
-        assert!(
-            machine
-                .delete_by_prefix(&ObjectPrefix("metadata".to_owned()))
-                .is_ok()
-        );
+        assert!(machine
+            .delete_by_prefix(&ObjectPrefix("metadata".to_owned()))
+            .is_ok());
 
         // プレフィックスが一致していないので削除しない
         assert_eq!(machine.len(), metadata_size);

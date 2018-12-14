@@ -101,9 +101,12 @@ impl Future for DeleteOldLogEntries {
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         // handle をスレッドを跨がせるのは面倒なのでログは poll() 内で出す
-        track!(self.future.poll().map(|result| {
-            result.map(|_| info!(self.handle.logger, "[FINISH] DeleteOldLogEntries"))
-        }))
+        track!(
+            self.future
+                .poll()
+                .map(|result| result
+                    .map(|_| info!(self.handle.logger, "[FINISH] DeleteOldLogEntries")))
+        )
     }
 }
 
@@ -144,7 +147,8 @@ mod tests {
                         .request()
                         .deadline(Deadline::Infinity)
                         .get(lump_id)
-                }).collect::<Vec<_>>(),
+                })
+                .collect::<Vec<_>>(),
         )
     }
 

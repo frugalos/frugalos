@@ -136,7 +136,8 @@ impl<'a> SegmentsBuilder<'a> {
                 let device_no = *item.node;
                 let d = &self.device_states[&device_no];
                 d.allocated <= d.capacity && !self.is_same_device_group(key.segment_no, device_no)
-            }).map(|item| *item.node);
+            })
+            .map(|item| *item.node);
         if let Some(child) = child {
             child
         } else {
@@ -145,7 +146,8 @@ impl<'a> SegmentsBuilder<'a> {
                 .find(|item| {
                     let device_no = *item.node;
                     !self.is_same_device_group(key.segment_no, device_no)
-                }).map(|item| *item.node)
+                })
+                .map(|item| *item.node)
                 .expect("Never fails")
         }
     }
@@ -156,7 +158,8 @@ impl<'a> SegmentsBuilder<'a> {
             .find(|item| {
                 let d = &self.device_states[&*item.node];
                 d.allocated <= d.capacity
-            }).map(|item| *item.node);
+            })
+            .map(|item| *item.node);
         if let Some(child) = child {
             child
         } else {

@@ -128,10 +128,8 @@ impl FrugalosDaemon {
 
         let sampler = Sampler::<SpanContextState>::or(
             PassiveSampler,
-            track!(
-                ProbabilisticSampler::new(builder.sampling_rate)
-                    .map_err(|e| ErrorKind::InvalidInput.takes_over(e))
-            )?,
+            track!(ProbabilisticSampler::new(builder.sampling_rate)
+                .map_err(|e| ErrorKind::InvalidInput.takes_over(e)))?,
         );
         let (tracer, span_rx) = rustracing_jaeger::Tracer::new(sampler);
         spawn_report_spans_thread(span_rx);
@@ -166,14 +164,12 @@ impl FrugalosDaemon {
     fn register_prometheus_metrics(&self) -> Result<()> {
         prometrics::default_registry()
             .register(prometrics::metrics::ProcessMetricsCollector::new());
-        let mut version = track!(
-            prometrics::metrics::GaugeBuilder::new("build")
-                .namespace("frugalos")
-                .label("version", env!("CARGO_PKG_VERSION"))
-                .initial_value(1.0)
-                .default_registry()
-                .finish()
-        )?;
+        let mut version = track!(prometrics::metrics::GaugeBuilder::new("build")
+            .namespace("frugalos")
+            .label("version", env!("CARGO_PKG_VERSION"))
+            .initial_value(1.0)
+            .default_registry()
+            .finish())?;
         if let Some(commit) = Command::new("git")
             .arg("rev-parse")
             .arg("HEAD")
@@ -293,11 +289,12 @@ impl Future for StopDaemon {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        track!(self.0.poll().map_err(|e| e.unwrap_or_else(|| {
-            ErrorKind::Other
+        track!(self
+            .0
+            .poll()
+            .map_err(|e| e.unwrap_or_else(|| ErrorKind::Other
                 .cause("Monitoring channel disconnected")
-                .into()
-        })))
+                .into())))
     }
 }
 
@@ -312,13 +309,11 @@ struct LogMetrics {
 impl LogMetrics {
     pub fn new() -> Result<Self> {
         fn counter(level: &str) -> Result<prometrics::metrics::Counter> {
-            let counter = track!(
-                prometrics::metrics::CounterBuilder::new("records_total")
-                    .namespace("log")
-                    .label("level", level)
-                    .default_registry()
-                    .finish()
-            )?;
+            let counter = track!(prometrics::metrics::CounterBuilder::new("records_total")
+                .namespace("log")
+                .label("level", level)
+                .default_registry()
+                .finish())?;
             Ok(counter)
         }
         Ok(LogMetrics {
@@ -364,12 +359,10 @@ pub fn stop(logger: &Logger, rpc_addr: SocketAddr) -> Result<()> {
 
     let client = libfrugalos::client::frugalos::Client::new(rpc_addr, rpc_service_handle);
     let fiber = executor.spawn_monitor(client.stop());
-    track!(
-        executor
-            .run_fiber(fiber)
-            .unwrap()
-            .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected")))
-    )?;
+    track!(executor
+        .run_fiber(fiber)
+        .unwrap()
+        .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected"))))?;
 
     info!(logger, "The frugalos server has stopped");
     Ok(())
@@ -388,12 +381,10 @@ pub fn take_snapshot(logger: &Logger, rpc_addr: SocketAddr) -> Result<()> {
 
     let client = libfrugalos::client::frugalos::Client::new(rpc_addr, rpc_service_handle);
     let fiber = executor.spawn_monitor(client.take_snapshot());
-    track!(
-        executor
-            .run_fiber(fiber)
-            .unwrap()
-            .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected")))
-    )?;
+    track!(executor
+        .run_fiber(fiber)
+        .unwrap()
+        .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected"))))?;
 
     info!(logger, "The frugalos server has taken snapshot");
     Ok(())

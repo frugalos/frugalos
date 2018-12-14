@@ -177,12 +177,11 @@ where
         for (member_no, device_no) in (0..group.members.len()).zip(group.members.iter()) {
             use frugalos_raft::NodeId;
             let owner = &self.servers[&self.seqno_to_device[device_no].server];
-            let node: NodeId = track!(
-                format!(
-                    "00{:06x}{:04x}{:02x}.{:x}@{}:{}",
-                    bucket_no, segment_no, member_no, device_no, owner.host, owner.port
-                ).parse()
-            )?;
+            let node: NodeId = track!(format!(
+                "00{:06x}{:04x}{:02x}.{:x}@{}:{}",
+                bucket_no, segment_no, member_no, device_no, owner.host, owner.port
+            )
+            .parse())?;
             members.push(node);
         }
 
@@ -200,7 +199,8 @@ where
                     .map(|(&node, device_no)| ClusterMember {
                         node,
                         device: self.seqno_to_device[&device_no].id.clone().into_string(),
-                    }).collect();
+                    })
+                    .collect();
                 bucket.update_segment(segment_no, members);
                 segment = bucket.segments()[segment_no as usize].clone();
             }
@@ -223,18 +223,15 @@ where
                 );
 
                 let device_handle = self.local_devices.get_mut(&device_no).unwrap().watch();
-                track!(
-                    self.frugalos_segment_service.handle().add_node(
-                        node.clone(),
-                        Box::new(
-                            device_handle.map_err(|e| frugalos_segment::ErrorKind::Other
-                                .takes_over(e)
-                                .into())
-                        ),
-                        segment.clone(),
-                        members.iter().map(|n| n.to_raft_node_id()).collect(),
-                    )
-                )?;
+                track!(self.frugalos_segment_service.handle().add_node(
+                    node.clone(),
+                    Box::new(
+                        device_handle
+                            .map_err(|e| frugalos_segment::ErrorKind::Other.takes_over(e).into())
+                    ),
+                    segment.clone(),
+                    members.iter().map(|n| n.to_raft_node_id()).collect(),
+                ))?;
             }
         } else {
             // 既に削除されているバケツのセグメント

@@ -131,7 +131,8 @@ impl HandleCall<rpc::PutObjectRpc> for Server {
                 request.metadata,
                 request.expect,
                 request.put_content_timeout.into(),
-            ).map_err(to_rpc_error)
+            )
+            .map_err(to_rpc_error)
             .then(Ok),
         )
     }
