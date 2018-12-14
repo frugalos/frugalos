@@ -190,7 +190,8 @@ impl HandleRequest for GetBucketStatistics {
                 request
                     .object_count(segment as usize)
                     .map_err(|e| track!(e))
-            }).fold(0, |total, objects| -> Result<_> { Ok(total + objects) })
+            })
+            .fold(0, |total, objects| -> Result<_> { Ok(total + objects) })
             .then(|result| match track!(result) {
                 Err(e) => Ok(make_json_response(Status::InternalServerError, Err(e))),
                 Ok(objects) => {
@@ -660,14 +661,13 @@ fn get_object_prefix(url: &Url) -> String {
 }
 
 fn get_segment_num(url: &Url) -> Result<u16> {
-    let n = track!(
-        url.path_segments()
-            .expect("Never fails")
-            .nth(4)
-            .expect("Never fails")
-            .parse()
-            .map_err(Error::from)
-    )?;
+    let n = track!(url
+        .path_segments()
+        .expect("Never fails")
+        .nth(4)
+        .expect("Never fails")
+        .parse()
+        .map_err(Error::from))?;
     Ok(n)
 }
 

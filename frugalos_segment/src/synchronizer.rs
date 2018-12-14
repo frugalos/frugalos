@@ -263,7 +263,8 @@ impl DeleteContent {
                     .deadline(Deadline::Infinity)
                     .delete(lump_id);
                 into_box_future(future)
-            }).collect();
+            })
+            .collect();
         DeleteContent { futures }
     }
 }

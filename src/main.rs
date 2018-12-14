@@ -32,71 +32,84 @@ fn main() {
                 .arg(server_id_arg())
                 .arg(server_addr_arg())
                 .arg(data_dir_arg()),
-        ).subcommand(
+        )
+        .subcommand(
             SubCommand::with_name("join")
                 .arg(server_id_arg())
                 .arg(server_addr_arg())
                 .arg(contact_server_addr_arg())
                 .arg(data_dir_arg()),
-        ).subcommand(
+        )
+        .subcommand(
             SubCommand::with_name("leave")
                 .arg(contact_server_addr_arg())
                 .arg(data_dir_arg()),
-        ).subcommand(
+        )
+        .subcommand(
             SubCommand::with_name("start")
                 .arg(
                     Arg::with_name("SAMPLING_RATE")
                         .long("sampling-rate")
                         .takes_value(true)
                         .default_value("0.001"),
-                ).arg(
+                )
+                .arg(
                     Arg::with_name("EXECUTOR_THREADS")
                         .long("threads")
                         .takes_value(true),
-                ).arg(
+                )
+                .arg(
                     Arg::with_name("HTTP_SERVER_BIND_ADDR")
                         .long("http-server-bind-addr")
                         .takes_value(true)
                         .default_value("0.0.0.0:3000"),
-                ).arg(
+                )
+                .arg(
                     Arg::with_name("RPC_CONNECT_TIMEOUT_MILLIS")
                         .long("rpc-connect-timeout-millis")
                         .takes_value(true)
                         .default_value("5000"),
-                ).arg(
+                )
+                .arg(
                     Arg::with_name("RPC_WRITE_TIMEOUT_MILLIS")
                         .long("rpc-write-timeout-millis")
                         .takes_value(true)
                         .default_value("5000"),
-                ).arg(data_dir_arg())
+                )
+                .arg(data_dir_arg())
                 .arg(put_content_timeout_arg()),
-        ).subcommand(
+        )
+        .subcommand(
             SubCommand::with_name("stop").arg(
                 Arg::with_name("RPC_ADDR")
                     .long("rpc-addr")
                     .takes_value(true)
                     .default_value("127.0.0.1:14278"),
             ),
-        ).subcommand(
+        )
+        .subcommand(
             SubCommand::with_name("take-snapshot").arg(
                 Arg::with_name("RPC_ADDR")
                     .long("rpc-addr")
                     .takes_value(true)
                     .default_value("127.0.0.1:14278"),
             ),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("LOGLEVEL")
                 .short("l")
                 .long("loglevel")
                 .takes_value(true)
                 .possible_values(&["debug", "info", "warning"])
                 .default_value("info"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("MAX_CONCURRENT_LOGS")
                 .long("max_concurrent_logs")
                 .takes_value(true)
                 .default_value("4096"),
-        ).get_matches();
+        )
+        .get_matches();
 
     // Logger
     let loglevel = match matches.value_of("LOGLEVEL").unwrap() {
@@ -105,13 +118,11 @@ fn main() {
         "warning" => sloggers::types::Severity::Warning,
         _ => unreachable!(),
     };
-    let max_concurrent_logs = track_try_unwrap!(
-        matches
-            .value_of("MAX_CONCURRENT_LOGS")
-            .unwrap()
-            .parse()
-            .map_err(Failure::from_error)
-    );
+    let max_concurrent_logs = track_try_unwrap!(matches
+        .value_of("MAX_CONCURRENT_LOGS")
+        .unwrap()
+        .parse()
+        .map_err(Failure::from_error));
     let logger_builder = if let Some(filepath) = matches.value_of("LOGFILE") {
         let mut builder = sloggers::file::FileLoggerBuilder::new(filepath);
         builder.level(loglevel);
@@ -186,12 +197,14 @@ fn main() {
         let mut daemon = frugalos::daemon::FrugalosDaemonBuilder::new(logger);
 
         let data_dir = get_data_dir(&matches);
-        let http_addr: SocketAddr = track_try_unwrap!(track_any_err!(
-            matches.value_of("HTTP_SERVER_BIND_ADDR").unwrap().parse()
-        ));
-        let sampling_rate: f64 = track_try_unwrap!(track_any_err!(
-            matches.value_of("SAMPLING_RATE").unwrap().parse()
-        ));
+        let http_addr: SocketAddr = track_try_unwrap!(track_any_err!(matches
+            .value_of("HTTP_SERVER_BIND_ADDR")
+            .unwrap()
+            .parse()));
+        let sampling_rate: f64 = track_try_unwrap!(track_any_err!(matches
+            .value_of("SAMPLING_RATE")
+            .unwrap()
+            .parse()));
         daemon.sampling_rate = sampling_rate;
         daemon.rpc_client_channel_options =
             track_try_unwrap!(get_rpc_client_channel_options(&matches));
@@ -211,9 +224,10 @@ fn main() {
     } else if let Some(matches) = matches.subcommand_matches("stop") {
         // STOP SERVER
         let logger = track_try_unwrap!(logger_builder.build());
-        let mut rpc_addrs = track_try_unwrap!(track_any_err!(
-            matches.value_of("RPC_ADDR").unwrap().to_socket_addrs()
-        ));
+        let mut rpc_addrs = track_try_unwrap!(track_any_err!(matches
+            .value_of("RPC_ADDR")
+            .unwrap()
+            .to_socket_addrs()));
         let rpc_addr = rpc_addrs.nth(0).expect("No available TCP address");
         let logger = logger.new(o!("rpc_addr" => rpc_addr.to_string()));
         track_try_unwrap!(frugalos::daemon::stop(&logger, rpc_addr));
@@ -223,9 +237,10 @@ fn main() {
     } else if let Some(matches) = matches.subcommand_matches("take-snapshot") {
         // TAKE SNAPSHOT
         let logger = track_try_unwrap!(logger_builder.build());
-        let mut rpc_addrs = track_try_unwrap!(track_any_err!(
-            matches.value_of("RPC_ADDR").unwrap().to_socket_addrs()
-        ));
+        let mut rpc_addrs = track_try_unwrap!(track_any_err!(matches
+            .value_of("RPC_ADDR")
+            .unwrap()
+            .to_socket_addrs()));
         let rpc_addr = rpc_addrs.nth(0).expect("No available TCP address");
         let logger = logger.new(o!("rpc_addr" => rpc_addr.to_string()));
         track_try_unwrap!(frugalos::daemon::take_snapshot(&logger, rpc_addr));
@@ -266,7 +281,8 @@ fn data_dir_arg<'a, 'b>() -> Arg<'a, 'b> {
         .help(
             "Sets the data directory of this server \
              (the default is the value of FRUGALOS_DATA_DIR environment variable)",
-        ).long("data-dir")
+        )
+        .long("data-dir")
         .takes_value(true)
 }
 
