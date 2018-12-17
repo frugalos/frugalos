@@ -726,9 +726,18 @@ impl Stream for Node {
             let request = polled.expect("Never fails");
             self.handle_request(request);
         }
+
         while let Async::Ready(polled) = track!(self.rlog.poll())? {
             if let Some(event) = polled {
-                track!(self.handle_raft_event(event))?;
+                match event {
+                    raftlog::Event::SnapshotLoaded { .. } => {
+                        track!(self.handle_raft_event(event))?;
+                        break;
+                    }
+                    _ => {
+                        track!(self.handle_raft_event(event))?;
+                    }
+                }
             } else {
                 track_panic!(
                     ErrorKind::Other,
