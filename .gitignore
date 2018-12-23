@@ -4,3 +4,7 @@ node_modules
 # vagrant
 .vagrant
 Vagrantfile
+
+# emacs
+*~
+\#*\#

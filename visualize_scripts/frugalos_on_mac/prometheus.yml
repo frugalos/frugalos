@@ -1,0 +1,15 @@
+global:
+  scrape_interval:     15s 
+  evaluation_interval: 15s 
+  external_labels:
+      monitor: 'codelab-monitor'
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: 
+        - 'localhost:9090'
+  - job_name: 'frugalos'
+    static_configs:
+      - targets:
+        - 'host.docker.internal:3000' # デフォルトではfrugalosはポート3000を使う
