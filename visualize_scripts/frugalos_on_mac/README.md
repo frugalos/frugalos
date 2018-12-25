@@ -5,9 +5,10 @@
 some/path/visualize_scripts/frugalos_on_mac$ docker-compose -f docker-compose.yml up
 ```
 を実行する。この段階で次のようになっている:
-- `localhost:3001` で Grafana（ユーザとパスワードはなんでも良いはず　ダメなら `admin/admin`)
-- `localhost:9000` で Prometheus
--　（既にfrugalosを動かしているなら） `localhost:3000` で frugalos（これはデフォルト設定の場合で、自分でポートを変えた場合は適宜そのように）
+* `localhost:3001` で Grafana（ユーザとパスワードはなんでも良いはず　ダメなら `admin/admin`)  
+* `localhost:9090` で Prometheus  
+* （既にfrugalosを動かしているなら） `localhost:3000` で frugalos
+    * これはデフォルト設定の場合で、自分でポートを変えた場合は適宜そのように
 
 ## Frugalosを動かす
 次にfrugalosを実行してみる。例えば付属の`example.sh`を使うと便利である。
