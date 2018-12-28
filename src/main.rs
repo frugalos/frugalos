@@ -80,6 +80,27 @@ fn main() {
                 .arg(put_content_timeout_arg()),
         )
         .subcommand(
+            SubCommand::with_name("stop-node")
+                .arg(
+                    Arg::with_name("REMOTE_ADDR")
+                        .long("remote-addr")
+                        .takes_value(true)
+                        .default_value("127.0.0.1:14278"),
+                )
+                .arg(
+                    Arg::with_name("LOCAL_NODE_ID")
+                        .long("local-node-id")
+                        .takes_value(true)
+                        .default_value("0"),
+                )
+                .arg(
+                    Arg::with_name("RPC_ADDR")
+                        .long("rpc-addr")
+                        .takes_value(true)
+                        .default_value("127.0.0.1:14278"),
+                ),
+        )
+        .subcommand(
             SubCommand::with_name("stop").arg(
                 Arg::with_name("RPC_ADDR")
                     .long("rpc-addr")
@@ -231,6 +252,28 @@ fn main() {
         let rpc_addr = rpc_addrs.nth(0).expect("No available TCP address");
         let logger = logger.new(o!("rpc_addr" => rpc_addr.to_string()));
         track_try_unwrap!(frugalos::daemon::stop(&logger, rpc_addr));
+
+        // NOTE: ログ出力(非同期)用に少し待機
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    } else if let Some(matches) = matches.subcommand_matches("stop-node") {
+        let logger = track_try_unwrap!(logger_builder.build());
+        let mut rpc_addrs = track_try_unwrap!(track_any_err!(matches
+            .value_of("RPC_ADDR")
+            .unwrap()
+            .to_socket_addrs()));
+        let rpc_addr = rpc_addrs.nth(0).expect("No available TCP address");
+        let mut remote_addrs = track_try_unwrap!(track_any_err!(matches
+            .value_of("REMOTE_ADDR")
+            .unwrap()
+            .to_socket_addrs()));
+        let remote_addr = remote_addrs.nth(0).expect("No available TCP address");
+        //matches.value_of("LOCAL_NODE_ID").ok_or
+        let local_node_id = matches
+            .value_of("LOCAL_NODE_ID")
+            .unwrap()
+            .to_owned();
+        let logger = logger.new(o!("rpc_addr" => rpc_addr.to_string(), "remote_addr" => remote_addr.to_string()));
+        track_try_unwrap!(frugalos::daemon::stop_node(&logger, rpc_addr, (remote_addr, local_node_id.to_owned())));
 
         // NOTE: ログ出力(非同期)用に少し待機
         std::thread::sleep(std::time::Duration::from_millis(100));

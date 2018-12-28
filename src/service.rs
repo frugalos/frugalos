@@ -11,6 +11,7 @@ use fibers_tasque;
 use fibers_tasque::TaskQueueExt;
 use frugalos_config::{DeviceGroup, Event as ConfigEvent, Service as ConfigService};
 use frugalos_raft::Service as RaftService;
+use frugalos_raft::NodeId;
 use frugalos_segment;
 use frugalos_segment::config::MdsClientConfig;
 use frugalos_segment::Service as SegmentService;
@@ -20,6 +21,7 @@ use libfrugalos::entity::bucket::{Bucket as BucketConfig, BucketId};
 use libfrugalos::entity::device::{
     Device as DeviceConfig, FileDevice as FileDeviceConfig, MemoryDevice as MemoryDeviceConfig,
 };
+use libfrugalos::entity::node::RemoteNodeId;
 use libfrugalos::entity::server::{Server, ServerId};
 use prometrics::metrics::MetricBuilder;
 use slog::Logger;
@@ -55,6 +57,8 @@ pub struct Service<S> {
     bucket_no_to_id: HashMap<u32, BucketId>,
 
     servers: HashMap<ServerId, Server>,
+
+    nodes: Vec<NodeId>,
 
     mds_client_config: MdsClientConfig,
 }
@@ -92,6 +96,7 @@ where
             bucket_no_to_id: HashMap::new(),
             servers: HashMap::new(),
             mds_client_config,
+            nodes: Vec::new(),
         })
     }
     pub fn client(&self) -> FrugalosClient {
@@ -99,6 +104,17 @@ where
     }
     pub fn stop(&mut self) {
         self.frugalos_segment_service.stop();
+    }
+    pub fn stop_node(&mut self, node_id: RemoteNodeId) {
+        info!(self.logger, "Stop node: {:?}", node_id);
+
+        let (addr, local_id) = node_id;
+        let local_node_id = local_id.parse().expect("never fails");
+        if let Some(node_id) = self.nodes.iter().find(|id| id.addr == addr && id.local_id == local_node_id) {
+            self.frugalos_segment_service.stop_node(node_id.clone());
+        } else {
+            warn!(self.logger, "Node is not found: addr = {:?}, local_id: {:?}", addr, local_id);
+        }
     }
     pub fn take_snapshot(&mut self) {
         self.frugalos_segment_service.take_snapshot();
@@ -221,6 +237,8 @@ where
                     "Add a node: {}",
                     dump!(bucket_no, segment_no, device_no, device_id, node)
                 );
+
+                self.nodes.push(node.clone());
 
                 let device_handle = self.local_devices.get_mut(&device_no).unwrap().watch();
                 track!(self.frugalos_segment_service.handle().add_node(

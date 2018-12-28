@@ -61,6 +61,15 @@ impl Service {
         }
     }
 
+    pub fn stop_node(&mut self, node_id: NodeId) {
+        if let Some(node) = self.nodes.load().get(&node_id.local_id) {
+            info!(self.logger, "Sends stop request: {:?}", node_id);
+            node.stop();
+        } else {
+            warn!(self.logger, "Sends stop request but the node is not found: {:?}", node_id);
+        }
+    }
+
     /// スナップショットを取得する.
     pub fn take_snapshot(&mut self) {
         self.do_stop = true;

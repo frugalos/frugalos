@@ -29,6 +29,7 @@ impl RpcServer {
         builder.add_call_handler::<rpc::PutObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::ListObjectsRpc, _>(this.clone());
         builder.add_call_handler::<rpc::StopRpc, _>(this.clone());
+        builder.add_call_handler::<rpc::StopNodeRpc, _>(this.clone());
         builder.add_call_handler::<rpc::TakeSnapshotRpc, _>(this.clone());
 
         builder.add_call_handler::<rpc::GetLatestVersionRpc, _>(this.clone());
@@ -139,6 +140,12 @@ impl HandleCall<rpc::GetLatestVersionRpc> for RpcServer {
 impl HandleCall<rpc::StopRpc> for RpcServer {
     fn handle_call(&self, (): ()) -> Reply<rpc::StopRpc> {
         Reply::future(self.daemon.stop().map_err(into_rpc_error2).then(Ok))
+    }
+}
+impl HandleCall<rpc::StopNodeRpc> for RpcServer {
+    fn handle_call(&self, node_id: libfrugalos::entity::node::RemoteNodeId) -> Reply<rpc::StopNodeRpc> {
+        self.daemon.stop_node(node_id);
+        Reply::done(Ok(()))
     }
 }
 impl HandleCall<rpc::TakeSnapshotRpc> for RpcServer {

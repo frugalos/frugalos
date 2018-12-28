@@ -225,6 +225,9 @@ impl DaemonRunner {
                 self.service.stop();
                 self.stop_notifications.push(reply);
             }
+            DaemonCommand::StopNode(node_id) => {
+                self.service.stop_node(node_id);
+            }
             DaemonCommand::TakeSnapshot => {
                 self.service.take_snapshot();
             }
@@ -267,6 +270,11 @@ impl FrugalosDaemonHandle {
         StopDaemon(reply_rx)
     }
 
+    pub fn stop_node(&self, node_id: libfrugalos::entity::node::RemoteNodeId) {
+        let command = DaemonCommand::StopNode(node_id);
+        let _ = self.command_tx.send(command);
+    }
+
     /// スナップショット取得を依頼する。
     pub fn take_snapshot(&self) {
         let command = DaemonCommand::TakeSnapshot;
@@ -279,6 +287,7 @@ enum DaemonCommand {
     StopDaemon {
         reply: oneshot::Monitored<(), Error>,
     },
+    StopNode(libfrugalos::entity::node::RemoteNodeId),
     TakeSnapshot,
 }
 
@@ -365,6 +374,28 @@ pub fn stop(logger: &Logger, rpc_addr: SocketAddr) -> Result<()> {
         .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected"))))?;
 
     info!(logger, "The frugalos server has stopped");
+    Ok(())
+}
+
+/// TODO
+pub fn stop_node(logger: &Logger, rpc_addr: SocketAddr, node_id: libfrugalos::entity::node::RemoteNodeId) -> Result<()> {
+    info!(logger, "Starts stopping the node");
+
+    let mut executor = track!(ThreadPoolExecutor::with_thread_count(1).map_err(Error::from))?;
+    let rpc_service = RpcServiceBuilder::new()
+        .logger(logger.clone())
+        .finish(executor.handle());
+    let rpc_service_handle = rpc_service.handle();
+    executor.spawn(rpc_service.map_err(|e| panic!("{}", e)));
+
+    let client = libfrugalos::client::frugalos::Client::new(rpc_addr, rpc_service_handle);
+    let fiber = executor.spawn_monitor(client.stop_node(node_id));
+    track!(executor
+        .run_fiber(fiber)
+        .unwrap()
+        .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected"))))?;
+
+    info!(logger, "The node has stopped");
     Ok(())
 }
 

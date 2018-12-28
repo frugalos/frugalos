@@ -79,6 +79,10 @@ where
         self.mds_service.stop();
     }
 
+    pub fn stop_node(&mut self, node_id: NodeId) {
+        self.mds_service.stop_node(node_id);
+    }
+
     /// Raftのスナップショット取得要求を発行する。
     pub fn take_snapshot(&mut self) {
         self.mds_service.take_snapshot();
