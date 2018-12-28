@@ -393,7 +393,7 @@ fn spawn_memory_device(device: &MemoryDeviceConfig) -> fibers_tasque::AsyncCall<
 }
 
 fn spawn_file_device(device: &FileDeviceConfig) -> fibers_tasque::AsyncCall<Result<Device>> {
-    use cannyls::nvm::FileNvm;
+    use cannyls::nvm::FileNvmBuilder;
     let metrics = MetricBuilder::new()
         .label("device", device.id.as_ref())
         .clone();
@@ -403,7 +403,7 @@ fn spawn_file_device(device: &FileDeviceConfig) -> fibers_tasque::AsyncCall<Resu
     storage.metrics(metrics.clone());
     fibers_tasque::DefaultIoTaskQueue.async_call(move || {
         let (nvm, created) =
-            track!(FileNvm::create_if_absent(filepath, capacity).map_err(Error::from))?;
+            track!(FileNvmBuilder::new().exclusive_lock(false).create_if_absent(filepath, capacity).map_err(Error::from))?;
         let storage = if created {
             track!(storage.create(nvm).map_err(Error::from))?
         } else {
