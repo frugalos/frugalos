@@ -729,14 +729,18 @@ impl Stream for Node {
 
         while let Async::Ready(polled) = track!(self.rlog.poll())? {
             if let Some(event) = polled {
-                match event {
-                    raftlog::Event::SnapshotLoaded { .. } => {
-                        track!(self.handle_raft_event(event))?;
-                        break;
-                    }
-                    _ => {
-                        track!(self.handle_raft_event(event))?;
-                    }
+                if let raftlog::Event::SnapshotLoaded { .. } = event {
+                    track!(self.handle_raft_event(event))?;
+
+                    // We need the following `break` since
+                    // if we meet a SnapshotLoaded event
+                    // then we need to decode the loaded snapshot before handle events that follow the SnapshotLoaded event.
+                    //
+                    // Indeed, by this break, we skip the subsequent events and decode the loaded snapshot
+                    // at the above `match track!(self.decoding_snapshot.poll().map_err(Error::from))? { ... }`-part.
+                    break;
+                } else {
+                    track!(self.handle_raft_event(event))?;
                 }
             } else {
                 track_panic!(
