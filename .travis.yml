@@ -1,3 +1,6 @@
+services:
+- docker
+
 language: rust
 
 rust:
@@ -20,3 +23,32 @@ matrix:
 env:
   global:
   - RUSTFLAGS="-D warnings"
+  - DOCKER_REPO="frugalos"
+  - DOCKER_IMAGE="frugalos:$TRAVIS_TAG"
+
+jobs:
+  include:
+  - stage: deploy-to-github
+    if: tag =~ ^[0-9]\.[0-9].*$
+    env:
+    - FRUGALOS_IMAGE_NAME=frugalos-$TRAVIS_BUILD_ID-$TRAVIS_BUILD_NUMBER
+    - FRUGALOS_EXECUTABLE=$TRAVIS_BUILD_DIR/frugalos-$TRAVIS_TAG.linux-amd64
+    script:
+    - echo "Deploying to GitHub releases ..."
+    - docker build -t $DOCKER_REPO/$DOCKER_IMAGE --build-arg FRUGALOS_VERSION=$TRAVIS_TAG docker/frugalos-release
+    - docker run --name $FRUGALOS_IMAGE_NAME -d $DOCKER_REPO/$DOCKER_IMAGE /bin/sh -c "tail -f /dev/null"
+    - docker ps -a
+    - docker cp "$FRUGALOS_IMAGE_NAME:/bin/frugalos" "$FRUGALOS_EXECUTABLE"
+    deploy:
+      provider: releases
+      api_key:
+        secure: DtdJskLCG3Ff4RL/ONxUN4Qgg8CnLl1sztEppmpk2EN5GkMSk1bA99DihQdmor3r3HMWxkEWrk87OPXJF9oSVqA0AFo9lsi4+qd+FObTKSk3JADLh2ihErJv5hHqHmcHi2Tl4sfPp516Bc4Ku8RQk5aD0TsLlGelU6QT8GQSCn40YVrN94FaR8yZtORSJ2o15PqE58KsmzybugZWFyOiqOqo38HzTnF/jS8y9Jq5FgsKG38qzSkR3dzKOQ/D1CBOhRILlJHcAQyIGdkOK7bHDhnMxrzzGoiql6XFpnOGGv4Ez7fe2DqIZh9XC63oDSKo9kULi44pGk4QFwaT7HelJCtNsRI0KT/p2/RIoBKVInwTZALo9FZfx5CvexWSLmUdXI7oq1/5ZtR8lACWsDOxKo9sxZLgdpWTf9E8UXnaDW3vKvQVGB0Ifk6yAfGuEn+lVSp81OuMIfII1Po/nTAfjqIMK12TMYGEAYgdMnIFauKQTOMVdLcKPNNWQ2NH4gChWazJoILUw9drSx01ZxgyGrMulHQy483Mdr0awlAG8OsXW1GiqIrXJq2l7qmQCZGsOWSHDIlBzolta1TFGH0zB73CqQSWu+SD36GcJT8cLTzXA/r7aXYqw4XQ4PrjCBAf2vxZ7gs3Q3SEFWxu4ZU7VCfLenxNecsNgdfF9kFHhkw=
+      file: "$FRUGALOS_EXECUTABLE"
+      skip_cleanup: true
+      on:
+        tags: true
+        repo: frugalos/frugalos
+
+stages:
+- test
+- deploy-to-github
