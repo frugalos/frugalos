@@ -1,6 +1,6 @@
 [package]
 name = "frugalos"
-version = "0.10.0"
+version = "0.10.1"
 authors = ["The FrugalOS Developers"]
 description = "Frugal Object Storage"
 homepage = "https://github.com/frugalos/frugalos"
