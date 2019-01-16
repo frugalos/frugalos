@@ -1,12 +1,13 @@
 # 使い方
 
-## Prometheus&Grafana in Dockerを起動
+## Prometheus, Node Exporter, and Grafana in Dockerを起動
 ```
 some/path/visualize_scripts/frugalos_on_mac$ docker-compose -f docker-compose.yml up
 ```
 を実行する。この段階で次のようになっている:
 * `localhost:3001` で Grafana（ユーザとパスワードはなんでも良いはず　ダメなら `admin/admin`)  
 * `localhost:9090` で Prometheus  
+* `localhost:9100` で Node Exporter
 * （既にfrugalosを動かしているなら） `localhost:3000` で frugalos
     * これはデフォルト設定の場合で、自分でポートを変えた場合は適宜そのように
 
