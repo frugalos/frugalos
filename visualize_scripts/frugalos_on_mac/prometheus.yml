@@ -13,3 +13,10 @@ scrape_configs:
     static_configs:
       - targets:
         - 'host.docker.internal:3000' # デフォルトではfrugalosはポート3000を使う
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+    relabel_configs:
+      - source_labels: ['instance']
+        replacement: 'frugalos'
+        target_label: 'instance'

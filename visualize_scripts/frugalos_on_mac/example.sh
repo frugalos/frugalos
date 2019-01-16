@@ -2,7 +2,10 @@
 
 set -eux
 
-DATADIR='frugalos_data_dir'
+DATADIR='frugalos_temporary_data_dir'
+
+rm -rf 'frugalos_temporary_data_dir'
+
 EXAMPLE='example'
 FRUGALOS="../../target/debug/frugalos"
 
