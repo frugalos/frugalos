@@ -264,7 +264,7 @@ dependencies = [
 
 [[package]]
 name = "frugalos"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "atomic_immut 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytecodec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
