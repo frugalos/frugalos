@@ -104,6 +104,7 @@ impl FrugalosDaemon {
             ThreadPoolExecutor::with_thread_count(builder.executor_threads).map_err(Error::from)
         )?;
         let rpc_service = RpcServiceBuilder::new()
+            .logger(logger.clone())
             .channel_options(builder.rpc_client_channel_options.clone())
             .finish(executor.handle());
 
