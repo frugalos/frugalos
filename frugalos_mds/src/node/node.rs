@@ -17,6 +17,7 @@ use slog::Logger;
 use std::collections::VecDeque;
 use std::env;
 use std::time::Duration;
+use trackable::error::ErrorKindExt;
 
 use super::{Event, NodeHandle, Proposal, Request, Seconds};
 use codec;
@@ -210,6 +211,12 @@ impl Node {
                     return;
                 }
             }
+        }
+
+        // NOTE: `check_available` should come after `check_leader` because we may save some requests from a failure
+        //        when this node is not a leader.
+        if let Err(e) = self.check_available(&request) {
+            return request.failed(track!(e));
         }
 
         match request {
@@ -421,6 +428,25 @@ impl Node {
             self.commit_timeout = Some(30); // TODO: parameter
         }
     }
+    /// Ensures that this node is available.
+    ///
+    /// Sends a shutting down notification to a client so that we can prevent an inconsistency between
+    /// mds and storage(disk) as hard as possible.
+    fn check_available(&self, request: &Request) -> Result<()> {
+        if !self.is_available() {
+            match request {
+                Request::TakeSnapshot | Request::Stop => {}
+                _ => {
+                    let e: Error = ErrorKind::Unavailable
+                        .cause("node is not available(stopping or stopped)".to_owned())
+                        .into();
+                    return Err(track!(e));
+                }
+            }
+        }
+
+        Ok(())
+    }
     fn check_leader(&self) -> Result<()> {
         track_assert_eq!(
             self.rlog.local_node().role,
@@ -625,6 +651,11 @@ impl Node {
                 client.recommend_to_leader();
             }
         }
+    }
+
+    /// Returns `true` if this node can handle a new request from clients.
+    fn is_available(&self) -> bool {
+        self.phase == Phase::Running
     }
 }
 impl Drop for Node {

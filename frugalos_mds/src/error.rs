@@ -25,6 +25,9 @@ pub enum ErrorKind {
     /// リーダ以外に対して要求が発行された.
     NotLeader,
 
+    /// リクエストを受け付けられる状態ではない.
+    Unavailable,
+
     /// その他のエラー.
     Other,
 }
@@ -40,9 +43,8 @@ impl From<libfrugalos::Error> for Error {
             libfrugalos::ErrorKind::InvalidInput => ErrorKind::InvalidInput,
             libfrugalos::ErrorKind::NotLeader => ErrorKind::NotLeader,
             libfrugalos::ErrorKind::Unexpected(v) => ErrorKind::Unexpected(v),
-            libfrugalos::ErrorKind::Unavailable
-            | libfrugalos::ErrorKind::Timeout
-            | libfrugalos::ErrorKind::Other => ErrorKind::Other,
+            libfrugalos::ErrorKind::Unavailable => ErrorKind::Unavailable,
+            libfrugalos::ErrorKind::Timeout | libfrugalos::ErrorKind::Other => ErrorKind::Other,
         };
         kind.takes_over(f).into()
     }
@@ -124,6 +126,7 @@ impl From<fibers_tasque::AsyncCallError> for Error {
 pub fn to_rpc_error(e: Error) -> libfrugalos::Error {
     let kind = match *e.kind() {
         ErrorKind::InvalidInput => libfrugalos::ErrorKind::InvalidInput,
+        ErrorKind::Unavailable => libfrugalos::ErrorKind::Unavailable,
         ErrorKind::NotLeader => libfrugalos::ErrorKind::NotLeader,
         ErrorKind::Unexpected(v) => libfrugalos::ErrorKind::Unexpected(v),
         ErrorKind::Other => libfrugalos::ErrorKind::Other,
