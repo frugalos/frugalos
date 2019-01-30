@@ -201,9 +201,6 @@ impl MdsClient {
     fn max_retry(&self) -> usize {
         self.inner.lock().expect("TODO").config.members.len()
     }
-    fn leader(&self) -> Option<NodeId> {
-        self.inner.lock().expect("TODO").leader
-    }
     fn clear_leader(&self) {
         self.inner.lock().expect("TODO").leader = None;
     }
@@ -221,7 +218,7 @@ impl MdsClient {
             .expect("Never fails");
         inner.leader = Some(leader);
     }
-    fn leader2(&self) -> NodeId {
+    fn leader(&self) -> NodeId {
         let mut inner = self.inner.lock().expect("TODO");
         if inner.leader.is_none() {
             inner.leader = rand::thread_rng()
@@ -255,6 +252,7 @@ pub struct Request<F, V> {
     max_retry: usize,
     request: F,
     parent: SpanHandle,
+    peer: Option<NodeId>,
     future:
         Option<Box<Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>>,
 }
@@ -272,6 +270,7 @@ where
             max_retry,
             request,
             parent,
+            peer: None,
             future: None,
         }
     }
@@ -279,7 +278,7 @@ where
         track_assert_ne!(self.max_retry, 0, ErrorKind::Busy);
         self.max_retry -= 1;
 
-        let leader = self.client.leader2();
+        let leader = self.client.leader();
         let mut span = self.parent.child("mds_request", |span| {
             span.tag(StdTag::component(module_path!()))
                 .tag(StdTag::span_kind("client"))
@@ -303,6 +302,7 @@ where
             }
             result
         });
+        self.peer = Some(leader);
         self.future = Some(Box::new(future));
         Ok(())
     }
@@ -321,9 +321,7 @@ where
             Err(e) => {
                 debug!(
                     self.client.logger,
-                    "Error: node={:?}, reason={}",
-                    self.client.leader(),
-                    e
+                    "Error: node={:?}, reason={}", self.peer, e
                 );
                 if let MdsErrorKind::Unexpected(current) = *e.kind() {
                     return Err(
@@ -334,19 +332,12 @@ where
                 }
                 if self.max_retry == 0 {
                     use trackable::error::ErrorKindExt;
-                    return Err(track!(
-                        ErrorKind::Busy.takes_over(e),
-                        "node={:?}",
-                        self.client.leader()
-                    )
-                    .into());
+                    return Err(
+                        track!(ErrorKind::Busy.takes_over(e), "node={:?}", self.peer).into(),
+                    );
                 }
                 track!(self.request_once())?;
-                debug!(
-                    self.client.logger,
-                    "Tries next node: {:?}",
-                    self.client.leader()
-                );
+                debug!(self.client.logger, "Tries next node: {:?}", self.peer);
                 self.poll()
             }
             Ok(Async::NotReady) => Ok(Async::NotReady),
