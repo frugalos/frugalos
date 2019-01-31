@@ -435,7 +435,7 @@ impl Node {
     fn check_available(&self, request: &Request) -> Result<()> {
         if !self.is_available() {
             match request {
-                Request::TakeSnapshot | Request::Stop => {}
+                Request::TakeSnapshot | Request::Stop | Request::StartElection => {}
                 _ => {
                     let e: Error = ErrorKind::Unavailable
                         .cause("node is not available(stopping or stopped)".to_owned())
