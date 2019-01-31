@@ -114,6 +114,7 @@ pub struct Node {
     large_queue_threshold: usize,
     reelection_threshold: usize,
     commit_timeout: Option<usize>,
+    stop_timeout: Option<usize>,
 }
 impl Node {
     /// 新しい`Node`インスタンスを生成する.
@@ -178,6 +179,7 @@ impl Node {
             large_queue_threshold,
             reelection_threshold,
             commit_timeout: None,
+            stop_timeout: None,
             rpc_service,
         })
     }
@@ -342,6 +344,8 @@ impl Node {
             Request::Stop => {
                 if self.phase == Phase::Running {
                     info!(self.logger, "Starts stopping the node");
+                    // Triggers re-election so that we can quickly change the leader of the joining cluster.
+                    self.retire_leader();
                     match track!(self.take_snapshot()) {
                         Err(e) => {
                             error!(self.logger, "Cannot take snapshot: {}", e);
@@ -349,12 +353,7 @@ impl Node {
                             // スナップショットが取得できないなら即座に終了
                             self.phase = Phase::Stopped;
                         }
-                        Ok(false) => {
-                            self.phase = Phase::Stopped;
-                        }
-                        Ok(true) => {
-                            self.phase = Phase::Stopping;
-                        }
+                        Ok(_) => self.try_stopping(),
                     }
                 }
             }
@@ -362,8 +361,17 @@ impl Node {
                 if let Err(e) = track!(self.take_snapshot()) {
                     error!(self.logger, "Cannot take snapshot: {}", e);
                 }
+                self.try_stopping();
             }
         }
+    }
+    fn try_stopping(&mut self) {
+        if self.phase != Phase::Running {
+            return;
+        }
+        self.phase = Phase::Stopping;
+        // TODO parameterize
+        self.stop_timeout = Some(30);
     }
     fn take_snapshot(&mut self) -> Result<bool> {
         let commit = if let Some(commit) = self.last_commit {
@@ -467,9 +475,6 @@ impl Node {
                     self.logger,
                     "New snapshot is installed: new_head={:?}, phase={:?}", new_head, self.phase
                 );
-                if self.phase == Phase::Stopping {
-                    self.phase = Phase::Stopped;
-                }
             }
         }
         Ok(())
@@ -626,6 +631,62 @@ impl Node {
             }
         }
     }
+
+    /// Triggers re-election only when this node is a leader node.
+    fn retire_leader(&mut self) {
+        if !self.is_leader() {
+            return;
+        }
+        self.start_reelection();
+    }
+
+    /// Stops this node gracefully so that the node minimizes the dropped proposals using timeout.
+    /// Though the node will be elected as a leader again while stopping, we ignores the case.
+    /// Calling `start_election` frequently is harmful to the cluster because leader election may not converge.
+    ///
+    /// Note that the node should keep handling new requests until a new leader is elected or finishes
+    /// handle all remaining proposals.
+    fn update_stopping_state(&mut self) {
+        if self.phase != Phase::Stopping {
+            return;
+        }
+        assert!(self.stop_timeout.is_some());
+        let timeout = self.stop_timeout.expect("never fails");
+        debug!(
+            self.logger,
+            "Waiting stop: timeout={}, proposals.len={}",
+            timeout,
+            self.proposals.len()
+        );
+        if self.can_stop_immediately() {
+            self.stop_timeout = None;
+            self.phase = Phase::Stopped;
+            return;
+        }
+        if timeout == 0 {
+            warn!(
+                self.logger,
+                "Stop timeout: proposals.len={}",
+                self.proposals.len()
+            );
+            self.stop_timeout = None;
+            self.phase = Phase::Stopped;
+            return;
+        }
+        self.stop_timeout = Some(timeout - 1);
+    }
+
+    /// Returns `true` if this node is the leader of the joining cluster.
+    fn is_leader(&self) -> bool {
+        self.rlog.local_node().role == Role::Leader
+    }
+
+    /// Returns `true` if this node can stop now.
+    fn can_stop_immediately(&self) -> bool {
+        self.proposals.is_empty()
+            && self.decoding_snapshot.is_none()
+            && self.ready_snapshot.is_none()
+    }
 }
 impl Drop for Node {
     fn drop(&mut self) {
@@ -683,6 +744,8 @@ impl Stream for Node {
                 warn!(self.logger, "Leader waiting timeout (cleared)");
                 self.leader_waitings.clear();
             }
+
+            self.update_stopping_state();
         }
 
         match track!(self.decoding_snapshot.poll().map_err(Error::from))? {
@@ -722,6 +785,16 @@ impl Stream for Node {
             self.ready_snapshot = None;
         }
 
+        // Stops before handling new requests. Dropping proposed requests may cause an inconsistency between mds and storage(device).
+        if self.phase == Phase::Stopped {
+            info!(
+                self.logger,
+                "Stopped: proposals.len={}",
+                self.proposals.len()
+            );
+            return Ok(Async::Ready(None));
+        }
+
         while let Async::Ready(polled) = self.request_rx.poll().expect("Never fails") {
             let request = polled.expect("Never fails");
             self.handle_request(request);
@@ -748,12 +821,6 @@ impl Stream for Node {
                     "Unexpected termination of the Raft event stream"
                 );
             }
-        }
-
-        // FIXME: もっと適切な場所に移動
-        if self.phase == Phase::Stopped {
-            info!(self.logger, "Stopped");
-            return Ok(Async::Ready(None));
         }
 
         if let Some(event) = self.events.pop_front() {
