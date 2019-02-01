@@ -625,17 +625,18 @@ impl CollectFragments {
         while force || self.futures.len() + self.fragments.len() < self.data_fragments {
             force = false;
 
-            let m = if let Some(m) = self.spares.pop() {
-                m
-            } else {
-                let there_are_not_enough_fragments_error =
-                        ErrorKind::Corrupted
-                        .cause(format!("There are no enough fragments (Detail: futures.len({}) + fragments.len({}) < data_fragments({}))",
-                                       self.futures.len(),
-                                       self.fragments.len(),
-                                       self.data_fragments));
-                track!(Err(there_are_not_enough_fragments_error))?
-            };
+            let m = track!(self
+                           .spares
+                           .pop()
+                           .ok_or_else(|| {
+                               let cause = format!(
+                                   "There are no enough fragments (Detail: futures.len({}) + fragments.len({}) < data_fragments({}))",
+                                   self.futures.len(),
+                                   self.fragments.len(),
+                                   self.data_fragments
+                               );
+                               Error::from(ErrorKind::Corrupted.cause(cause))
+                           }))?;
 
             let client = CannyLsClient::new(m.node.addr, self.rpc_service.clone());
             let lump_id = m.make_lump_id(self.version);
