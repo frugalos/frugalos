@@ -17,6 +17,7 @@ use slog::Logger;
 use std::collections::VecDeque;
 use std::env;
 use std::time::Duration;
+use trackable::error::ErrorKindExt;
 
 use super::{Event, NodeHandle, Proposal, Request, Seconds};
 use codec;
@@ -233,7 +234,7 @@ impl Node {
                         // NOTE: リーダが収束しない状態で無限にメモリを消費してしまうことがないようにする
                         // TODO: もう少しちゃんと制御（e.g., timeout)
                         warn!(self.logger, "Too many waitings (cleared)");
-                        self.leader_waitings.clear();
+                        self.clear_leader_waitings();
                     }
                 }
             }
@@ -658,9 +659,8 @@ impl Node {
             timeout,
             self.proposals.len()
         );
-        if self.can_stop_immediately() {
-            self.stop_timeout = None;
-            self.phase = Phase::Stopped;
+        if self.can_stop_now() {
+            self.stop_now();
             return;
         }
         if timeout == 0 {
@@ -669,8 +669,7 @@ impl Node {
                 "Stop timeout: proposals.len={}",
                 self.proposals.len()
             );
-            self.stop_timeout = None;
-            self.phase = Phase::Stopped;
+            self.stop_now();
             return;
         }
         self.stop_timeout = Some(timeout - 1);
@@ -682,10 +681,33 @@ impl Node {
     }
 
     /// Returns `true` if this node can stop now.
-    fn can_stop_immediately(&self) -> bool {
+    fn can_stop_now(&self) -> bool {
         self.proposals.is_empty()
+            && self.rlog.proposal_queue_len() == 0
             && self.decoding_snapshot.is_none()
             && self.ready_snapshot.is_none()
+    }
+
+    /// Transits to `Stopped` state and cleans up.
+    fn stop_now(&mut self) {
+        assert_eq!(
+            self.phase,
+            Phase::Stopping,
+            "the current phase must be `Stopping`"
+        );
+        self.stop_timeout = None;
+        self.phase = Phase::Stopped;
+        self.clear_leader_waitings();
+    }
+
+    /// Clears the active waiters.
+    fn clear_leader_waitings(&mut self) {
+        for mut monitored in self.leader_waitings.drain(..) {
+            monitored.exit(Err(track!(Error::from(
+                ErrorKind::Other.cause("leader waitings timeout")
+            ))));
+        }
+        self.leader_waiting_timeout = 0;
     }
 }
 impl Drop for Node {
@@ -742,7 +764,7 @@ impl Stream for Node {
             self.leader_waiting_timeout = self.leader_waiting_timeout.saturating_sub(1);
             if self.leader_waiting_timeout == 0 && !self.leader_waitings.is_empty() {
                 warn!(self.logger, "Leader waiting timeout (cleared)");
-                self.leader_waitings.clear();
+                self.clear_leader_waitings();
             }
 
             self.update_stopping_state();
@@ -789,8 +811,9 @@ impl Stream for Node {
         if self.phase == Phase::Stopped {
             info!(
                 self.logger,
-                "Stopped: proposals.len={}",
-                self.proposals.len()
+                "Stopped: node.proposals.len={}, rlog.proposal_queue.len={}",
+                self.proposals.len(),
+                self.rlog.proposal_queue_len()
             );
             return Ok(Async::Ready(None));
         }
