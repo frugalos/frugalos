@@ -40,7 +40,7 @@ HOST: http://example.com
 
 + One Of
   + dispersed (DispersedBucket)
-  + replcated (ReplicatedBucket)
+  + replicated (ReplicatedBucket)
   + metadata (MetadataBucket)
 
 ### BucketListItem
