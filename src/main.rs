@@ -104,7 +104,7 @@ fn main() {
                 .short("l")
                 .long("loglevel")
                 .takes_value(true)
-                .possible_values(&["debug", "info", "warning"])
+                .possible_values(&["debug", "info", "warning", "error", "critical"])
                 .default_value("info"),
         )
         .arg(
@@ -120,6 +120,8 @@ fn main() {
         "debug" => sloggers::types::Severity::Debug,
         "info" => sloggers::types::Severity::Info,
         "warning" => sloggers::types::Severity::Warning,
+        "error" => sloggers::types::Severity::Error,
+        "critical" => sloggers::types::Severity::Critical,
         _ => unreachable!(),
     };
     let max_concurrent_logs = track_try_unwrap!(matches
