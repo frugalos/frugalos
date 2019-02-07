@@ -48,3 +48,6 @@ url = "1"
 
 [workspace]
 members = ["frugalos_config", "frugalos_mds", "frugalos_raft", "frugalos_segment"]
+
+[patch.crates-io]
+fibers_http_server = { path = "../fibers_http_server" }
