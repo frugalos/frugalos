@@ -26,6 +26,7 @@ impl RpcServer {
         builder.add_call_handler::<rpc::DeleteObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::GetObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::HeadObjectRpc, _>(this.clone());
+        builder.add_call_handler::<rpc::MdsHeadObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::PutObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::ListObjectsRpc, _>(this.clone());
         builder.add_call_handler::<rpc::StopRpc, _>(this.clone());
@@ -102,6 +103,17 @@ impl HandleCall<rpc::HeadObjectRpc> for RpcServer {
             .deadline(into_cannyls_deadline(request.deadline))
             .expect(request.expect)
             .head(request.object_id);
+        Reply::future(future.map_err(into_rpc_error).then(Ok))
+    }
+}
+impl HandleCall<rpc::MdsHeadObjectRpc> for RpcServer {
+    fn handle_call(&self, request: rpc::ObjectRequest) -> Reply<rpc::MdsHeadObjectRpc> {
+        let future = self
+            .client
+            .request(request.bucket_id)
+            .deadline(into_cannyls_deadline(request.deadline))
+            .expect(request.expect)
+            .mds_head(request.object_id);
         Reply::future(future.map_err(into_rpc_error).then(Ok))
     }
 }

@@ -32,7 +32,8 @@ jemallocator = "0.1.8"
 jemalloc-ctl = "0.2"
 hostname = "0.1"
 httpcodec = "0.2"
-libfrugalos = "0.2"
+libfrugalos = { path = "../lib_alternative_head" }
+# libfrugalos = "0.2"
 num_cpus = "1"
 prometrics = "0.1"
 raftlog = "0.4"
@@ -48,3 +49,6 @@ url = "1"
 
 [workspace]
 members = ["frugalos_config", "frugalos_mds", "frugalos_raft", "frugalos_segment"]
+
+[patch.crates-io]
+libfrugalos = { path = "../lib_alternative_head"}

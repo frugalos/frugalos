@@ -2,7 +2,7 @@
 use adler32;
 use byteorder::{BigEndian, ByteOrder};
 use cannyls::deadline::Deadline;
-use cannyls::lump::LumpData;
+use cannyls::lump::{LumpData, LumpHeader};
 use cannyls_rpc::Client as CannyLsClient;
 use cannyls_rpc::DeviceId;
 use ecpool::liberasurecode::LibErasureCoderBuilder;
@@ -94,6 +94,17 @@ impl StorageClient {
             StorageClient::Dispersed(c) => c.get(object.version, deadline, parent),
         }
     }
+    pub fn head(
+        self,
+        version: ObjectVersion,
+        parent: SpanHandle,
+    ) -> BoxFuture<bool> {
+        match self {
+            StorageClient::Metadata => Box::new(futures::finished(true)),
+            StorageClient::Replicated(c) => c.head(version),
+            StorageClient::Dispersed(c) => c.head(version, parent),
+        }
+    }
     pub fn put(
         self,
         version: ObjectVersion,
@@ -154,6 +165,23 @@ impl ReplicatedClient {
         };
         Box::new(future)
     }
+    pub fn head(self, version: ObjectVersion) -> BoxFuture<bool> {
+        let replica = self.config.tolerable_faults as usize + 1;
+        let mut candidates = self
+            .cluster
+            .candidates(version)
+            .take(replica)
+            .cloned()
+            .collect::<Vec<_>>();
+        candidates.reverse();
+        let future = ReplicatedHead {
+            version,
+            candidates,
+            rpc_service: self.rpc_service,
+            future: Box::new(futures::finished(None)),
+        };
+        Box::new(future)
+    }
     pub fn put(
         self,
         version: ObjectVersion,
@@ -194,6 +222,65 @@ impl ReplicatedClient {
                 future
             });
         Box::new(PutAll::new(futures, 1))
+    }
+}
+
+// candidatesをcannyls_rpc::headを用いて訪問する。
+// どこからのnodeがhead rpcに対してtrueを返すなら、このfutureもtrueを返す。
+// すべてのnodeがfalseを返すなら、このfutureもfalseを返す。
+//
+// エラー:
+// どこかのnodeがtrueを返すまで処理を続けるため、このfutureがエラーを返すのは
+// candidatesの最後に位置するnodeの直前までfalseまたはerrorが返り続け、
+// かつ最後のnodeがエラーを返すときに限る。
+pub struct ReplicatedHead {
+    version: ObjectVersion,
+    candidates: Vec<ClusterMember>,
+    future: BoxFuture<Option<LumpHeader>>,
+    rpc_service: RpcServiceHandle,
+}
+impl Future for ReplicatedHead {
+    type Item = bool;
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        loop {
+            match self.future.poll() {
+                Err(e) => {
+                    if self.candidates.is_empty() {
+                        return Err(track!(e));
+                    }
+                    self.future = Box::new(futures::finished(None))
+                }
+                Ok(Async::Ready(None)) => {
+                    let m = track!(self
+                        .candidates
+                        .pop()
+                        .ok_or_else(|| ErrorKind::Corrupted.error(),))?;
+                    let client = CannyLsClient::new(m.node.addr, self.rpc_service.clone());
+                    let mut request = client.request();
+                    request.rpc_options(RpcOptions {
+                        max_queue_len: Some(RPC_MAX_QUEUE_LEN),
+                        ..Default::default()
+                    });
+
+                    let lump_id = m.make_lump_id(self.version);
+
+                    // !! ここやりたいことができているか？
+                    let future = request
+                        .head_lump(DeviceId::new(m.device), lump_id)
+                        .map_err(|e| track!(Error::from(e)));
+                        
+                    self.future = Box::new(future);
+                }
+                Ok(Async::Ready(Some(summary))) => {
+                    // Getの場合は、cannylsへのgetで得られたコンテンツに対して
+                    // チェックサムを用いた検証を行うが、HEADではその手の検証をすることはできない。
+                    return Ok(Async::Ready(true));
+                }
+                Ok(Async::NotReady) => break,
+            }
+        }
+        Ok(Async::NotReady)
     }
 }
 
@@ -424,6 +511,34 @@ impl DispersedClient {
             span,
         })
     }
+    pub fn head(
+        self,
+        version: ObjectVersion,
+        parent: SpanHandle,
+    ) -> BoxFuture<bool> {
+        let mut spares = self
+            .cluster
+            .candidates(version)
+            .cloned()
+            .collect::<Vec<_>>();
+        spares.reverse();
+        let span = parent.child("head_content", |span| {
+            span.tag(StdTag::component(module_path!()))
+                .tag(Tag::new("object.version", version.0 as i64))
+                .tag(Tag::new("storage.type", "dispersed"))
+                .start()
+        });
+        let future = DispersedHead {
+            spares,
+            version,
+            data_fragments: self.data_fragments,
+            num_of_presence: 0,
+            rpc_service: self.rpc_service,
+            parent: span,
+            future: None,
+        };
+        Box::new(future)
+    }
     pub fn put(
         self,
         version: ObjectVersion,
@@ -465,7 +580,62 @@ impl DispersedClient {
         })
     }
 }
-
+pub struct DispersedHead {
+    spares: Vec<ClusterMember>,
+    version: ObjectVersion,
+    data_fragments: usize,
+    num_of_presence: usize,
+    rpc_service: RpcServiceHandle,
+    parent: Span,
+    future: Option<BoxFuture<bool>>,
+}
+impl Future for DispersedHead {
+    type Item = bool;
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        // 順番にheadしていって、十分な数あればtrue
+        // これ以上は無駄ということが分かればfalse
+        loop {
+            match self.future.poll() { // このパターンで書けるかしら？
+                Err(e) => {
+                    if self.spares.is_empty() {
+                        return Err(track!(e));
+                    }
+                    self.future = None;
+                }
+                Ok(Async::Ready(result)) => {
+                    if let Some(result) = result {
+                        if result {
+                            self.num_of_presence += 1;
+                        }
+                        if self.num_of_presence >= self.data_fragments {
+                            return Ok(Async::Ready(true));
+                        }
+                    }
+                    let m = track!(self
+                                   .spares
+                                   .pop()
+                                   .ok_or_else(|| ErrorKind::Corrupted.error(),))?;
+                    let client = CannyLsClient::new(m.node.addr, self.rpc_service.clone());
+                    let mut request = client.request();
+                    request.rpc_options(RpcOptions {
+                        max_queue_len: Some(RPC_MAX_QUEUE_LEN),
+                        ..Default::default()
+                    });
+                    let lump_id = m.make_lump_id(self.version);
+                    let future = request
+                        .head_lump(DeviceId::new(m.device), lump_id)
+                        .map(|summary| summary.is_some())
+                        .map_err(|e| track!(Error::from(e)));
+                    self.future = Some(Box::new(future));
+                }
+                Ok(Async::NotReady) => {
+                    return Ok(Async::NotReady);
+                }
+            }
+        }
+    }
+}
 pub struct DispersedPut {
     cluster: Arc<ClusterConfig>,
     version: ObjectVersion,

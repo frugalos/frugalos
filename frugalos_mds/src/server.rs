@@ -40,6 +40,7 @@ impl Server {
         builder.add_call_handler::<rpc::ListObjectsRpc, _>(this.clone());
         builder.add_call_handler::<rpc::GetObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::HeadObjectRpc, _>(this.clone());
+        builder.add_call_handler::<rpc::MdsHeadObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::PutObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::GetLatestVersionRpc, _>(this.clone());
@@ -116,6 +117,17 @@ impl HandleCall<rpc::HeadObjectRpc> for Server {
         let node = rpc_try!(self.get_node(node_id));
         Reply::future(
             node.head_object(request.object_id, request.expect)
+                .map_err(to_rpc_error)
+                .then(Ok),
+        )
+    }
+}
+impl HandleCall<rpc::MdsHeadObjectRpc> for Server {
+    fn handle_call(&self, request: rpc::ObjectRequest) -> Reply<rpc::MdsHeadObjectRpc> {
+        let node_id = rpc_try!(request.node_id.parse().map_err(Error::from));
+        let node = rpc_try!(self.get_node(node_id));
+        Reply::future(
+            node.mds_head_object(request.object_id, request.expect)
                 .map_err(to_rpc_error)
                 .then(Ok),
         )

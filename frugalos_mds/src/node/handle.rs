@@ -97,6 +97,18 @@ impl NodeHandle {
         Either::A(future)
     }
 
+    pub fn mds_head_object(
+        &self,
+        object_id: ObjectId,
+        expect: Expect,
+    ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
+        let (monitored, monitor) = oneshot::monitor();
+        let request = Request::MdsHead(object_id, expect, monitored);
+        future_try!(self.request_tx.send(request));
+        let future = monitor.map_err(|e| track!(Error::from(e)));
+        Either::A(future)
+    }
+    
     pub fn delete_object(
         &self,
         object_id: ObjectId,

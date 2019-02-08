@@ -256,6 +256,12 @@ impl Node {
                     .and_then(|()| self.machine.head(&object_id, &expect));
                 monitored.exit(result);
             }
+            Request::MdsHead(object_id, expect, monitored) => {
+                let result = self
+                    .check_leader()
+                    .and_then(|()| self.machine.head(&object_id, &expect));
+                monitored.exit(result);
+            }
             Request::Put(object_id, data, expect, put_content_timeout, monitored) => {
                 let command = Command::Put {
                     object_id,

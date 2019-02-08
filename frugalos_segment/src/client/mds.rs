@@ -82,6 +82,21 @@ impl MdsClient {
         })
     }
 
+    pub fn mds_head(
+        &self,
+        id: ObjectId,
+        parent: SpanHandle,
+    ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
+        debug!(self.logger, "Starts MDS HEAD: id={:?}", id);
+        Request::new(self.clone(), parent, move |client| {
+            Box::new(
+                client
+                    .mds_head_object(id.clone(), Expect::Any)
+                    .map_err(MdsError::from),
+            )
+        })
+    }
+
     pub fn head(
         &self,
         id: ObjectId,
@@ -96,7 +111,7 @@ impl MdsClient {
             )
         })
     }
-
+    
     pub fn delete(
         &self,
         id: ObjectId,

@@ -90,6 +90,7 @@ enum Request {
     ObjectCount(Reply<u64>),
     Get(ObjectId, Expect, Reply<Option<Metadata>>),
     Head(ObjectId, Expect, Reply<Option<ObjectVersion>>),
+    MdsHead(ObjectId, Expect, Reply<Option<ObjectVersion>>),
     Put(
         ObjectId,
         Vec<u8>,
@@ -114,6 +115,7 @@ impl Request {
             Request::ObjectCount(tx) => tx.exit(Err(track!(e))),
             Request::Get(_, _, tx) => tx.exit(Err(track!(e))),
             Request::Head(_, _, tx) => tx.exit(Err(track!(e))),
+            Request::MdsHead(_, _, tx) => tx.exit(Err(track!(e))),
             Request::Put(_, _, _, _, tx) => tx.exit(Err(track!(e))),
             Request::Delete(_, _, tx) => tx.exit(Err(track!(e))),
             Request::DeleteByVersion(_, tx) => tx.exit(Err(track!(e))),
