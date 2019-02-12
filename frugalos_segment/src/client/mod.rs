@@ -69,19 +69,19 @@ impl Client {
     pub fn head(
         &self,
         id: ObjectId,
+        deadline: Deadline,
         parent: SpanHandle,
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
         let storage = self.storage.clone();
         self.mds.head(id, parent.clone()).and_then(move |version| {
             if let Some(version) = version {
-                let future = storage
-                    .head(version, parent)
-                    .map(move |on_disk|
-                         if on_disk {
-                             Some(version)
-                         } else {
-                             None
-                         });
+                let future = storage.head(version, deadline, parent).map(move |on_disk| {
+                    if on_disk {
+                        Some(version)
+                    } else {
+                        None
+                    }
+                });
                 Either::A(future)
             } else {
                 Either::B(futures::finished(None))
@@ -97,7 +97,7 @@ impl Client {
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
         self.mds.mds_head(id, parent)
     }
-    
+
     /// オブジェクトを保存する。
     pub fn put(
         &self,

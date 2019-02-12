@@ -108,7 +108,7 @@ impl NodeHandle {
         let future = monitor.map_err(|e| track!(Error::from(e)));
         Either::A(future)
     }
-    
+
     pub fn delete_object(
         &self,
         object_id: ObjectId,

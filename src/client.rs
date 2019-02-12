@@ -99,7 +99,7 @@ impl<'a> Request<'a> {
         let buckets = self.client.buckets.load();
         let bucket = try_get_bucket!(buckets, self.bucket_id);
         let segment = bucket.get_segment(&object_id);
-        let future = segment.head(object_id, self.parent.clone());
+        let future = segment.head(object_id, self.deadline, self.parent.clone());
         Box::new(future.map_err(|e| track!(Error::from(e))))
     }
     pub fn mds_head(&self, object_id: ObjectId) -> BoxFuture<Option<ObjectVersion>> {

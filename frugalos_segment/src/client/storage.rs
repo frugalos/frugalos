@@ -97,12 +97,13 @@ impl StorageClient {
     pub fn head(
         self,
         version: ObjectVersion,
+        deadline: Deadline,
         parent: SpanHandle,
     ) -> BoxFuture<bool> {
         match self {
             StorageClient::Metadata => Box::new(futures::finished(true)),
-            StorageClient::Replicated(c) => c.head(version),
-            StorageClient::Dispersed(c) => c.head(version, parent),
+            StorageClient::Replicated(c) => c.head(version, deadline),
+            StorageClient::Dispersed(c) => c.head(version, deadline, parent),
         }
     }
     pub fn put(
@@ -165,7 +166,7 @@ impl ReplicatedClient {
         };
         Box::new(future)
     }
-    pub fn head(self, version: ObjectVersion) -> BoxFuture<bool> {
+    pub fn head(self, version: ObjectVersion, deadline: Deadline) -> BoxFuture<bool> {
         let replica = self.config.tolerable_faults as usize + 1;
         let mut candidates = self
             .cluster
@@ -176,6 +177,7 @@ impl ReplicatedClient {
         candidates.reverse();
         let future = ReplicatedHead {
             version,
+            deadline,
             candidates,
             rpc_service: self.rpc_service,
             future: Box::new(futures::finished(None)),
@@ -236,6 +238,7 @@ impl ReplicatedClient {
 pub struct ReplicatedHead {
     version: ObjectVersion,
     candidates: Vec<ClusterMember>,
+    deadline: Deadline,
     future: BoxFuture<Option<LumpHeader>>,
     rpc_service: RpcServiceHandle,
 }
@@ -265,16 +268,17 @@ impl Future for ReplicatedHead {
 
                     let lump_id = m.make_lump_id(self.version);
 
-                    // !! ここやりたいことができているか？
                     let future = request
+                        .deadline(self.deadline)
                         .head_lump(DeviceId::new(m.device), lump_id)
                         .map_err(|e| track!(Error::from(e)));
-                        
+
                     self.future = Box::new(future);
                 }
-                Ok(Async::Ready(Some(summary))) => {
+                Ok(Async::Ready(Some(_summary))) => {
                     // Getの場合は、cannylsへのgetで得られたコンテンツに対して
-                    // チェックサムを用いた検証を行うが、HEADではその手の検証をすることはできない。
+                    // チェックサムを用いた検証を行うが、HEADではそのような検証をすることはできず、
+                    // データがあるかどうかのみを考える。
                     return Ok(Async::Ready(true));
                 }
                 Ok(Async::NotReady) => break,
@@ -514,6 +518,7 @@ impl DispersedClient {
     pub fn head(
         self,
         version: ObjectVersion,
+        deadline: Deadline,
         parent: SpanHandle,
     ) -> BoxFuture<bool> {
         let mut spares = self
@@ -531,6 +536,7 @@ impl DispersedClient {
         let future = DispersedHead {
             spares,
             version,
+            deadline,
             data_fragments: self.data_fragments,
             num_of_presence: 0,
             rpc_service: self.rpc_service,
@@ -583,6 +589,7 @@ impl DispersedClient {
 pub struct DispersedHead {
     spares: Vec<ClusterMember>,
     version: ObjectVersion,
+    deadline: Deadline,
     data_fragments: usize,
     num_of_presence: usize,
     rpc_service: RpcServiceHandle,
@@ -593,10 +600,13 @@ impl Future for DispersedHead {
     type Item = bool;
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        // 順番にheadしていって、十分な数あればtrue
-        // これ以上は無駄ということが分かればfalse
+        // 順番にheadしていって、十分な数があればtrueとする。
+        // これ以上は無駄ということが分かればfalseとする。
+        //
+        // headにより生存が確認できた場合に、num_of_presenceメンバをインクリメントし、
+        // num_of_presence >= data_fragments となる場合を十分集まったとする。
         loop {
-            match self.future.poll() { // このパターンで書けるかしら？
+            match self.future.poll() {
                 Err(e) => {
                     if self.spares.is_empty() {
                         return Err(track!(e));
@@ -615,18 +625,48 @@ impl Future for DispersedHead {
                     let m = track!(self
                                    .spares
                                    .pop()
-                                   .ok_or_else(|| ErrorKind::Corrupted.error(),))?;
+                                   .ok_or_else(|| {
+                                       let cause = format!(
+                                           "There are no enough fragments (Detail: num_of_presence({}) < data_fragments({}))",
+                                           self.num_of_presence,
+                                           self.data_fragments
+                                       );
+                                       Error::from(ErrorKind::Corrupted.cause(cause))
+                                   }))?;
+                    let lump_id = m.make_lump_id(self.version);
+
+                    let mut span = self.parent.child("head_fragment", |span| {
+                        span.tag(StdTag::component(module_path!()))
+                            .tag(StdTag::span_kind("client"))
+                            .tag(StdTag::peer_ip(m.node.addr.ip()))
+                            .tag(StdTag::peer_port(m.node.addr.port()))
+                            .tag(Tag::new("node", m.node.local_id.to_string()))
+                            .tag(Tag::new("device", m.device.clone()))
+                            .tag(Tag::new("lump", format!("{:?}", lump_id)))
+                            .start()
+                    });
+
                     let client = CannyLsClient::new(m.node.addr, self.rpc_service.clone());
                     let mut request = client.request();
                     request.rpc_options(RpcOptions {
                         max_queue_len: Some(RPC_MAX_QUEUE_LEN),
                         ..Default::default()
                     });
-                    let lump_id = m.make_lump_id(self.version);
+
                     let future = request
+                        .deadline(self.deadline)
                         .head_lump(DeviceId::new(m.device), lump_id)
                         .map(|summary| summary.is_some())
-                        .map_err(|e| track!(Error::from(e)));
+                        .map_err(|e| track!(Error::from(e)))
+                        .then(move |result| {
+                            if let Err(ref e) = result {
+                                span.set_tag(StdTag::error);
+                                span.log(|log| {
+                                    log.error().message(e.to_string());
+                                });
+                            }
+                            result
+                        });
                     self.future = Some(Box::new(future));
                 }
                 Ok(Async::NotReady) => {
