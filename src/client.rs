@@ -106,7 +106,7 @@ impl<'a> Request<'a> {
         let buckets = self.client.buckets.load();
         let bucket = try_get_bucket!(buckets, self.bucket_id);
         let segment = bucket.get_segment(&object_id);
-        let future = segment.mds_head(object_id, self.parent.clone());
+        let future = segment.mds_head(object_id);
         Box::new(future.map_err(|e| track!(Error::from(e))))
     }
     pub fn put(&self, object_id: ObjectId, content: Vec<u8>) -> BoxFuture<(ObjectVersion, bool)> {

@@ -85,9 +85,9 @@ impl MdsClient {
     pub fn mds_head(
         &self,
         id: ObjectId,
-        parent: SpanHandle,
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
         debug!(self.logger, "Starts MDS HEAD: id={:?}", id);
+        let parent = Span::inactive().handle();
         Request::new(self.clone(), parent, move |client| {
             Box::new(
                 client

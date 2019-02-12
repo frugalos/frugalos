@@ -93,9 +93,8 @@ impl Client {
     pub fn mds_head(
         &self,
         id: ObjectId,
-        parent: SpanHandle,
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
-        self.mds.mds_head(id, parent)
+        self.mds.mds_head(id)
     }
 
     /// オブジェクトを保存する。
