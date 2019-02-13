@@ -63,6 +63,24 @@ pub mod tests {
         Ok((node_id, device_handle, storage_client))
     }
 
+    pub fn make_nodes_and_setup_system(
+        system: &mut System,
+        cluster_size: usize,
+    ) -> Result<(Vec<(NodeId, DeviceHandle)>, StorageClient)> {
+        let mut members = Vec::new();
+        let mut nodes = Vec::new();
+
+        // Decrements the size of this cluster because we've already created a node.
+        for _ in 0..cluster_size {
+            let (node, device, device_handle) = system.make_node()?;
+            nodes.push((node, device_handle));
+            members.push(ClusterMember { node, device });
+        }
+
+        let storage_client = system.boot(members)?;
+
+        Ok((nodes, storage_client))
+    }
     /// A cluster for testing.
     /// All implementations under this struct is unstable.
     pub struct System {

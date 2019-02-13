@@ -1054,7 +1054,7 @@ fn verify_and_remove_checksum(bytes: &mut Vec<u8>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use test_util::tests::{setup_system, wait, System};
+    use test_util::tests::{make_nodes_and_setup_system, setup_system, wait, System};
     use trackable::result::TestResult;
 
     #[test]
@@ -1143,6 +1143,138 @@ mod tests {
         )?;
 
         assert_eq!(result, MaybeFragment::NotParticipant);
+
+        Ok(())
+    }
+
+    #[test]
+    // 1. make a storage with the parameter data_fragments = 4, parity_fragments = 1
+    // 2. put an object
+    // 3. issue the head command for the object
+    // 4. it returns true
+    fn head_works() -> TestResult {
+        let fragments = 5;
+        let cluster_size = 5;
+        let mut system = System::new(fragments)?;
+        let (_, _, storage_client) = setup_system(&mut system, cluster_size)?;
+        let version = ObjectVersion(6);
+        let expected = vec![0x02];
+
+        let _ = wait(storage_client.clone().put(
+            version.clone(),
+            expected.clone(),
+            Deadline::Infinity,
+            Span::inactive().handle(),
+        ))?;
+
+        let result = wait(storage_client.clone().head(
+            version.clone(),
+            Deadline::Infinity,
+            Span::inactive().handle(),
+        ))?;
+
+        assert_eq!(result, true);
+
+        Ok(())
+    }
+
+    #[test]
+    // 1. make a storage with the parameter data_fragments = 4, parity_fragments = 1
+    // 2. put an object
+    // 3. delete a single fragment
+    // 4. issue the head command for the object
+    // 5. it returns true
+    fn head_work_when_delete_a_few_objects() -> TestResult {
+        let fragments = 5;
+        let cluster_size = 5;
+        let mut system = System::new(fragments)?;
+        let (nodes, storage_client) = make_nodes_and_setup_system(&mut system, cluster_size)?;
+        let version = ObjectVersion(6);
+        let expected = vec![0x02];
+
+        let _ = wait(storage_client.clone().put(
+            version.clone(),
+            expected.clone(),
+            Deadline::Infinity,
+            Span::inactive().handle(),
+        ))?;
+
+        for (_, device_handle) in &nodes[0..1] {
+            let mut result = wait(
+                device_handle
+                    .request()
+                    .list()
+                    .map_err(|e| track!(Error::from(e))),
+            )?;
+
+            if let Some(lump_id) = result.pop() {
+                let _ = wait(
+                    device_handle
+                        .request()
+                        .delete(lump_id)
+                        .map_err(|e| track!(Error::from(e))),
+                )?;
+                break;
+            }
+        }
+
+        let result = wait(storage_client.clone().head(
+            version.clone(),
+            Deadline::Infinity,
+            Span::inactive().handle(),
+        ))?;
+
+        assert_eq!(result, true);
+
+        Ok(())
+    }
+
+    #[test]
+    // 1. make a storage with the parameter data_fragments = 4, parity_fragments = 1
+    // 2. put an object
+    // 3. delete two fragments
+    // 4. issue the head command for the object
+    // 5. it returns error since we deleted two fragments (> parity_fragments)
+    fn head_fails_when_delete_many_object() -> TestResult {
+        let fragments = 5;
+        let cluster_size = 5;
+        let mut system = System::new(fragments)?;
+        let (nodes, storage_client) = make_nodes_and_setup_system(&mut system, cluster_size)?;
+        let version = ObjectVersion(6);
+        let expected = vec![0x02];
+
+        let _ = wait(storage_client.clone().put(
+            version.clone(),
+            expected.clone(),
+            Deadline::Infinity,
+            Span::inactive().handle(),
+        ))?;
+
+        for (_, device_handle) in &nodes[0..2] {
+            let mut result = wait(
+                device_handle
+                    .request()
+                    .list()
+                    .map_err(|e| track!(Error::from(e))),
+            )?;
+
+            if let Some(lump_id) = result.pop() {
+                let _ = wait(
+                    device_handle
+                        .request()
+                        .delete(lump_id)
+                        .map_err(|e| track!(Error::from(e))),
+                )?;
+            }
+        }
+
+        let result = wait(storage_client.clone().head(
+            version.clone(),
+            Deadline::Infinity,
+            Span::inactive().handle(),
+        ));
+
+        assert!(result.is_err());
 
         Ok(())
     }
