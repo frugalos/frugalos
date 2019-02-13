@@ -70,7 +70,6 @@ pub mod tests {
         let mut members = Vec::new();
         let mut nodes = Vec::new();
 
-        // Decrements the size of this cluster because we've already created a node.
         for _ in 0..cluster_size {
             let (node, device, device_handle) = system.make_node()?;
             nodes.push((node, device_handle));
