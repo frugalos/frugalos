@@ -218,11 +218,12 @@ impl FrugalosDaemon {
             config,
             service: self.service,
             rpc_server: self.rpc_server_builder.finish(self.executor.handle()),
-            http_server: self.http_server_builder.finish(self.executor.handle()),
+            http_server: StoppableHttpServer::new(
+                self.http_server_builder.finish(self.executor.handle()),
+            ),
             rpc_service: self.rpc_service,
             command_rx: self.command_rx,
             stop_notifications: Vec::new(),
-            stop_timer: None,
             do_stop: false,
         };
 
@@ -236,12 +237,11 @@ struct DaemonRunner {
     logger: Logger,
     config: FrugalosRunConfig,
     service: service::Service<ThreadPoolExecutorHandle>,
-    http_server: HttpServer,
+    http_server: StoppableHttpServer,
     rpc_server: fibers_rpc::server::Server<ThreadPoolExecutorHandle>,
     rpc_service: fibers_rpc::client::ClientService,
     command_rx: mpsc::Receiver<DaemonCommand>,
     stop_notifications: Vec<oneshot::Monitored<(), Error>>,
-    stop_timer: Option<timer::Timeout>,
     do_stop: bool,
 }
 impl DaemonRunner {
@@ -252,7 +252,7 @@ impl DaemonRunner {
                     self.logger,
                     "Begins stopping and waits for a while({:?})", self.config.stop_waiting_time
                 );
-                self.stop_timer = Some(timer::timeout(self.config.stop_waiting_time));
+                self.http_server.stop(self.config.stop_waiting_time);
                 self.service.stop();
                 self.stop_notifications.push(reply);
             }
@@ -267,17 +267,15 @@ impl Future for DaemonRunner {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        track!(self.http_server.poll())?;
+        if track!(self.http_server.poll())?.is_ready() && self.do_stop {
+            return Ok(Async::Ready(()));
+        }
         track!(self.rpc_server.poll())?;
         track!(self.rpc_service.poll())?;
         self.do_stop = self.do_stop || track!(self.service.poll())?.is_ready();
         if self.do_stop {
             for reply in self.stop_notifications.drain(..) {
                 reply.exit(Ok(()));
-            }
-            // NOTE: ensures that `service` is polled at least once after receiving a stop request
-            if let Async::Ready(Some(_)) = self.stop_timer.poll().expect("Broken timer") {
-                return Ok(Async::Ready(()));
             }
             return Ok(Async::NotReady);
         }
@@ -330,6 +328,36 @@ impl Future for StopDaemon {
             .map_err(|e| e.unwrap_or_else(|| ErrorKind::Other
                 .cause("Monitoring channel disconnected")
                 .into())))
+    }
+}
+
+struct StoppableHttpServer {
+    inner: Option<HttpServer>,
+    stop_timer: Option<timer::Timeout>,
+}
+impl StoppableHttpServer {
+    fn new(server: HttpServer) -> Self {
+        Self {
+            inner: Some(server),
+            stop_timer: None,
+        }
+    }
+    fn stop(&mut self, waiting_time: Duration) {
+        self.inner = None;
+        self.stop_timer = Some(timer::timeout(waiting_time));
+    }
+}
+impl Future for StoppableHttpServer {
+    type Item = ();
+    type Error = fibers_http_server::Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        if let Some(inner) = self.inner.as_mut() {
+            inner.poll()
+        } else if self.stop_timer.poll().expect("Broken timer").is_ready() {
+            Ok(Async::Ready(()))
+        } else {
+            Ok(Async::NotReady)
+        }
     }
 }
 
