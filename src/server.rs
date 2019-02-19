@@ -47,7 +47,7 @@ macro_rules! try_badarg {
                 return Box::new(futures::finished(Res::new(
                     Status::BadRequest,
                     HttpResult::Err(e),
-                )))
+                )));
             }
             Ok(v) => v,
         }

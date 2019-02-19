@@ -158,3 +158,66 @@ impl Client {
         self.mds.object_count()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fibers::executor::Executor;
+    use rustracing_jaeger::span::Span;
+    use std::{thread, time};
+    use test_util::tests::{setup_system, wait, System};
+    use trackable::result::TestResult;
+
+    #[test]
+    fn put_delete_and_get_work() -> TestResult {
+        let fragments = 3;
+        let cluster_size = 3;
+        let mut system = System::new(fragments, 1)?;
+        let (_members, client) = setup_system(&mut system, cluster_size)?;
+
+        thread::spawn(move || loop {
+            system.executor.run_once().unwrap();
+            thread::sleep(time::Duration::from_micros(100));
+        });
+
+        let expected = vec![0x03];
+        let object_id = "test_data".to_owned();
+
+        // wait until the segment becomes stable; for example, there is a raft leader.
+        // However, 5-secs is an ungrounded value.
+        thread::sleep(time::Duration::from_secs(5));
+
+        let _ = wait(client.put(
+            object_id.clone(),
+            expected.clone(),
+            Deadline::Infinity,
+            Expect::Any,
+            Span::inactive().handle(),
+        ))?;
+
+        let data = wait(client.get(
+            object_id.clone(),
+            Deadline::Infinity,
+            Span::inactive().handle(),
+        ))?;
+
+        assert_eq!(expected, data.unwrap().content);
+
+        let _ = wait(client.delete(
+            object_id.clone(),
+            Deadline::Infinity,
+            Expect::Any,
+            Span::inactive().handle(),
+        ))?;
+
+        let data = wait(client.get(
+            object_id.clone(),
+            Deadline::Infinity,
+            Span::inactive().handle(),
+        ))?;
+
+        assert!(data.is_none());
+
+        Ok(())
+    }
+}

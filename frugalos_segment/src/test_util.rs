@@ -5,20 +5,19 @@ pub mod tests {
     use cannyls::storage::StorageBuilder;
     use cannyls_rpc;
     use cannyls_rpc::DeviceRegistryHandle;
-    use client::storage::StorageClient;
     use client::Client;
     use config::*;
     use fibers::executor::Executor;
     use fibers::executor::ThreadPoolExecutor;
     use fibers_global;
-    use fibers_rpc::client::{ClientService, ClientServiceHandle};
+    use fibers_rpc::client::{ClientServiceBuilder, ClientServiceHandle};
     use fibers_rpc::server::ServerBuilder;
-    use frugalos_raft;
-    use frugalos_raft::{LocalNodeId, NodeId};
+    use frugalos_raft::{self, LocalNodeId, NodeId};
     use futures;
     use futures::future::Future;
     use futures::Async;
     use libfrugalos::entity::device::DeviceId;
+    use raftlog::cluster::ClusterMembers;
     use slog;
     use std::net::SocketAddr;
     use std::thread;
@@ -38,66 +37,63 @@ pub mod tests {
         }
     }
 
-    /// Adds `ClusterMember`s to the given cluster.
-    /// この関数は特定のテストシナリオに合わせて作られているので、他のユースケースでは別の関数を作る方がよい。
     pub fn setup_system(
         system: &mut System,
         cluster_size: usize,
-    ) -> Result<(NodeId, DeviceHandle, StorageClient)> {
-        let (node_id, device_id, device_handle) = system.make_node()?;
+    ) -> Result<(Vec<(NodeId, DeviceId, DeviceHandle)>, Client)> {
         let mut members = Vec::new();
 
-        members.push(ClusterMember {
-            node: node_id,
-            device: device_id,
-        });
-
-        // Decrements the size of this cluster because we've already created a node.
-        for _ in 0..(cluster_size - 1) {
-            let (node, device, _) = system.make_node()?;
-            members.push(ClusterMember { node, device });
+        for _ in 0..cluster_size {
+            let (node_id, device_id, device_handle) = system.make_node()?;
+            members.push((node_id, device_id, device_handle));
         }
 
-        let storage_client = system.boot(members)?;
+        let client = system.boot(members.clone())?;
 
-        Ok((node_id, device_handle, storage_client))
+        Ok((members, client))
     }
 
     /// A cluster for testing.
     /// All implementations under this struct is unstable.
     pub struct System {
-        fragments: u8,
+        data_fragments: u8,
+        parity_fragments: u8,
         logger: slog::Logger,
         device_registry_handle: DeviceRegistryHandle,
-        rpc_service_handle: ClientServiceHandle,
         service_handle: ServiceHandle,
+        #[allow(dead_code)]
+        raft_service_handle: frugalos_raft::ServiceHandle,
+        rpc_service_handle: ClientServiceHandle,
         rpc_server_addr: SocketAddr,
         node_seqno: u8,
         device_no: u8,
         cluster_config: ClusterConfig,
+        pub executor: ThreadPoolExecutor,
     }
 
     impl System {
         /// Returns a new cluster with no node.
-        pub fn new(fragments: u8) -> Result<Self> {
+        pub fn new(data_fragments: u8, parity_fragments: u8) -> Result<Self> {
             let logger = slog::Logger::root(slog::Discard, o!());
-            let executor = ThreadPoolExecutor::with_thread_count(10).expect("never fails");
+
             let mut rpc_server_builder = ServerBuilder::new(([127, 0, 0, 1], 0).into());
 
-            let rpc_service = ClientService::new(fibers_global::handle());
-            let rpc_service_handle = rpc_service.handle();
-            fibers_global::spawn(rpc_service.map_err(|e| panic!("{}", e)));
+            let executor = ThreadPoolExecutor::with_thread_count(10).expect("never fails");
 
             let raft_service = frugalos_raft::Service::new(logger.clone(), &mut rpc_server_builder);
             let raft_service_handle = raft_service.handle();
             fibers_global::spawn(raft_service.map_err(|e| panic!("{}", e)));
+
+            let rpc_service = ClientServiceBuilder::new().finish(fibers_global::handle());
+            let rpc_service_handle = rpc_service.handle();
+            fibers_global::spawn(rpc_service.map_err(|e| panic!("{}", e)));
 
             let service = Service::new(
                 logger.clone(),
                 executor.handle(),
                 rpc_service_handle.clone(),
                 &mut rpc_server_builder,
-                raft_service_handle,
+                raft_service_handle.clone(),
             )?;
             let service_handle = service.handle();
             let device_registry_handle = service.device_registry().handle();
@@ -108,23 +104,26 @@ pub mod tests {
             fibers_global::spawn(rpc_server.map_err(|e| panic!("{}", e)));
 
             Ok(System {
-                fragments,
+                data_fragments,
+                parity_fragments,
                 logger,
                 device_registry_handle,
                 rpc_service_handle,
                 service_handle,
+                raft_service_handle,
                 rpc_server_addr: bind_addr,
                 node_seqno: 0,
                 device_no: 0,
                 cluster_config: ClusterConfig {
                     members: Vec::new(),
                 },
+                executor,
             })
         }
 
         /// Returns the size of fragments(data_fragments + parity_fragments).
         pub fn fragments(&self) -> u8 {
-            self.fragments
+            self.data_fragments + self.parity_fragments
         }
 
         /// Returns a logger.
@@ -132,39 +131,51 @@ pub mod tests {
             self.logger.clone()
         }
 
-        /// Boots this cluster with the given members.
-        pub fn boot(&mut self, members: Vec<ClusterMember>) -> Result<StorageClient> {
+        fn setup_service_handle(&mut self, members: &Vec<(NodeId, DeviceId, DeviceHandle)>) {
+            let cluster: ClusterMembers = self
+                .cluster_config
+                .members
+                .iter()
+                .map(|m| m.node.to_raft_node_id())
+                .collect();
+
+            for (node_id, _, device_handle) in members {
+                self.service_handle
+                    .add_node(
+                        node_id.clone(),
+                        Box::new(
+                            futures::future::ok::<DeviceHandle, Error>(device_handle.clone())
+                                .map_err(|e| ErrorKind::Other.takes_over(e).into()),
+                        ),
+                        self.make_segment_client(),
+                        cluster.clone(),
+                    )
+                    .unwrap();
+            }
+        }
+
+        pub fn boot(&mut self, members: Vec<(NodeId, DeviceId, DeviceHandle)>) -> Result<Client> {
             // at least one cluster member is required
             if members.is_empty() {
                 return Err(ErrorKind::Other.into());
             }
 
-            for member in members {
-                self.cluster_config.members.push(member);
+            for member in &members {
+                self.cluster_config.members.push(ClusterMember {
+                    node: member.0.clone(),
+                    device: member.1.clone(),
+                });
             }
 
-            Ok(self.make_storage_client())
+            self.setup_service_handle(&members);
+
+            Ok(self.make_segment_client())
         }
 
         /// Returns a new node.
         pub fn make_node(&mut self) -> Result<(NodeId, DeviceId, DeviceHandle)> {
             let node_id = self.make_node_id();
             let (device_id, device_handle) = self.spawn_new_memory_device()?;
-
-            self.service_handle.add_node(
-                node_id.clone(),
-                Box::new(
-                    futures::future::ok::<DeviceHandle, Error>(device_handle.clone())
-                        .map_err(|e| ErrorKind::Other.takes_over(e).into()),
-                ),
-                self.make_segment_client(),
-                self.cluster_config
-                    .members
-                    .iter()
-                    .map(|m| m.node.to_raft_node_id())
-                    .collect(),
-            )?;
-
             Ok((node_id, device_id, device_handle))
         }
 
@@ -192,7 +203,7 @@ pub mod tests {
         }
 
         /// Creates a new SegmentClient.
-        fn make_segment_client(&self) -> Client {
+        pub fn make_segment_client(&self) -> Client {
             Client::new(
                 self.logger(),
                 self.rpc_service_handle.clone(),
@@ -216,25 +227,11 @@ pub mod tests {
             }
         }
 
-        /// Creates a new StorageClient.
-        fn make_storage_client(&mut self) -> StorageClient {
-            StorageClient::new(
-                self.logger(),
-                ClientConfig {
-                    cluster: self.cluster_config.clone(),
-                    storage: self.make_dispersed_storage(),
-                    mds: MdsClientConfig::default(),
-                },
-                self.rpc_service_handle.clone(),
-                None,
-            )
-        }
-
         /// It needs massive activities to change this function,
         /// because some tests depends on this configuration of `DispersedConfig`.
         fn make_dispersed_storage(&self) -> Storage {
             Storage::Dispersed(DispersedConfig {
-                tolerable_faults: 1,
+                tolerable_faults: self.parity_fragments,
                 fragments: self.fragments(),
             })
         }

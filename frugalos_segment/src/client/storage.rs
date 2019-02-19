@@ -849,10 +849,12 @@ mod tests {
 
     #[test]
     fn it_puts_data_correctly() -> TestResult {
-        let fragments = 5;
+        let data_fragments = 4;
+        let parity_fragments = 1;
         let cluster_size = 5;
-        let mut system = System::new(fragments)?;
-        let (_, _, storage_client) = setup_system(&mut system, cluster_size)?;
+        let mut system = System::new(data_fragments, parity_fragments)?;
+        let (_members, client) = setup_system(&mut system, cluster_size)?;
+        let storage_client = client.storage;
         let version = ObjectVersion(1);
         let expected = vec![0x03];
 
@@ -879,10 +881,13 @@ mod tests {
     #[test]
     fn get_fragment_works() -> TestResult {
         // fragments = 5 (data_fragments = 4, parity_fragments = 1)
-        let fragments = 5;
+        let data_fragments = 4;
+        let parity_fragments = 1;
         let cluster_size = 6;
-        let mut system = System::new(fragments)?;
-        let (node_id, _, storage_client) = setup_system(&mut system, cluster_size)?;
+        let mut system = System::new(data_fragments, parity_fragments)?;
+        let (members, client) = setup_system(&mut system, cluster_size)?;
+        let storage_client = client.storage;
+        let (ref node_id, _, _) = members[0];
         let version = ObjectVersion(4);
         let expected = vec![0x02];
 
@@ -912,10 +917,13 @@ mod tests {
     #[test]
     fn get_fragment_returns_not_participant() -> TestResult {
         // fragments = 5 (data_fragments = 4, parity_fragments = 1)
-        let fragments = 5;
+        let data_fragments = 4;
+        let parity_fragments = 1;
         let cluster_size = 6;
-        let mut system = System::new(fragments)?;
-        let (node_id, _, storage_client) = setup_system(&mut system, cluster_size)?;
+        let mut system = System::new(data_fragments, parity_fragments)?;
+        let (members, client) = setup_system(&mut system, cluster_size)?;
+        let storage_client = client.storage;
+        let (ref node_id, _, _) = members[0];
         let version = ObjectVersion(6);
         let expected = vec![0x02];
 

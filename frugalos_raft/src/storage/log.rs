@@ -72,7 +72,7 @@ impl Future for LoadLogInner {
         loop {
             let next = match *self {
                 LoadLogInner::LoadLogSuffix(ref mut f) => {
-                    return Ok(track!(f.poll())?.map(Log::Suffix))
+                    return Ok(track!(f.poll())?.map(Log::Suffix));
                 }
                 LoadLogInner::CopyLogSuffix(ref mut f) => {
                     let suffix = mem::replace(f, Default::default());
