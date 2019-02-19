@@ -223,6 +223,7 @@ impl FrugalosDaemon {
             command_rx: self.command_rx,
             stop_notifications: Vec::new(),
             stop_timer: None,
+            do_stop: false,
         };
 
         let monitor = self.executor.handle().spawn_monitor(runner);
@@ -241,6 +242,7 @@ struct DaemonRunner {
     command_rx: mpsc::Receiver<DaemonCommand>,
     stop_notifications: Vec<oneshot::Monitored<(), Error>>,
     stop_timer: Option<timer::Timeout>,
+    do_stop: bool,
 }
 impl DaemonRunner {
     fn handle_command(&mut self, command: DaemonCommand) {
@@ -268,13 +270,14 @@ impl Future for DaemonRunner {
         track!(self.http_server.poll())?;
         track!(self.rpc_server.poll())?;
         track!(self.rpc_service.poll())?;
-        if let Async::Ready(Some(_)) = self.stop_timer.poll().expect("Broken timer") {
-            return Ok(Async::Ready(()));
-        }
-        let ready = self.stop_timer.is_some() || track!(self.service.poll())?.is_ready();
-        if ready {
+        self.do_stop = self.do_stop || track!(self.service.poll())?.is_ready();
+        if self.do_stop {
             for reply in self.stop_notifications.drain(..) {
                 reply.exit(Ok(()));
+            }
+            // NOTE: ensures that `service` is polled at least once after receiving a stop request
+            if let Async::Ready(Some(_)) = self.stop_timer.poll().expect("Broken timer") {
+                return Ok(Async::Ready(()));
             }
             return Ok(Async::NotReady);
         }
