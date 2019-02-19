@@ -219,7 +219,8 @@ dependencies = [
 
 [[package]]
 name = "fibers_http_server"
-version = "0.1.8"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "atomic_immut 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytecodec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -271,7 +272,7 @@ dependencies = [
  "cannyls_rpc 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
- "fibers_http_server 0.1.8",
+ "fibers_http_server 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_rpc 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_tasque 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "frugalos_config 0.3.0",
@@ -1221,6 +1222,7 @@ dependencies = [
 "checksum factory 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "12035ccde1cff7c507200fd9e7ad0dbceda81d3cf6f68a265974a213d24acfde"
 "checksum fibers 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)" = "743ec3662c26777382f2ed1184fb917055dbf89dd1f5a8b13727618f0e516228"
 "checksum fibers_global 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "342af6a6f5bcb2fbd6a08178d7e1816af40ec94d38071eb8abd1ab60b0d44d2b"
+"checksum fibers_http_server 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)" = "3d80440cd8bc2dd19c96c2983aa3fed2283e8639d2af6ae2d16f3fbf4e416a49"
 "checksum fibers_rpc 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)" = "30b73b231614aabb528b07ca74bd4cf5b61c4da1aea4c201fd4dea545422ea14"
 "checksum fibers_tasque 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "ec69910a085e2be9327da6c3c82556b180e8be6d91bc4e0d18b49b4b0fbf32f9"
 "checksum fs_extra 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "5f2a4a2034423744d2cc7ca2068453168dcdb82c438419e639a26bd87839c674"

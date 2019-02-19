@@ -3,6 +3,7 @@
 use fibers::executor::ThreadPoolExecutorHandle;
 use fibers::sync::mpsc;
 use fibers::sync::oneshot;
+use fibers::time::timer;
 use fibers::{Executor, Spawn, ThreadPoolExecutor};
 use fibers_http_server::metrics::{MetricsHandler, WithMetrics};
 use fibers_http_server::{Server as HttpServer, ServerBuilder as HttpServerBuilder};
@@ -221,7 +222,7 @@ impl FrugalosDaemon {
             rpc_service: self.rpc_service,
             command_rx: self.command_rx,
             stop_notifications: Vec::new(),
-            do_stop: false,
+            stop_timer: None,
         };
 
         let monitor = self.executor.handle().spawn_monitor(runner);
@@ -239,7 +240,7 @@ struct DaemonRunner {
     rpc_service: fibers_rpc::client::ClientService,
     command_rx: mpsc::Receiver<DaemonCommand>,
     stop_notifications: Vec<oneshot::Monitored<(), Error>>,
-    do_stop: bool,
+    stop_timer: Option<timer::Timeout>,
 }
 impl DaemonRunner {
     fn handle_command(&mut self, command: DaemonCommand) {
@@ -247,9 +248,9 @@ impl DaemonRunner {
             DaemonCommand::StopDaemon { reply } => {
                 info!(
                     self.logger,
-                    "Stops HTTP Server and waits for a while({:?})", self.config.stop_waiting_time
+                    "Begins stopping and waits for a while({:?})", self.config.stop_waiting_time
                 );
-                self.http_server.stop(self.config.stop_waiting_time);
+                self.stop_timer = Some(timer::timeout(self.config.stop_waiting_time));
                 self.service.stop();
                 self.stop_notifications.push(reply);
             }
@@ -264,13 +265,14 @@ impl Future for DaemonRunner {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        if track!(self.http_server.poll())?.is_ready() && self.do_stop {
-            return Ok(Async::Ready(()));
-        }
+        track!(self.http_server.poll())?;
         track!(self.rpc_server.poll())?;
         track!(self.rpc_service.poll())?;
-        self.do_stop = self.do_stop || track!(self.service.poll())?.is_ready();
-        if self.do_stop {
+        if let Async::Ready(Some(_)) = self.stop_timer.poll().expect("Broken timer") {
+            return Ok(Async::Ready(()));
+        }
+        let ready = self.stop_timer.is_some() || track!(self.service.poll())?.is_ready();
+        if ready {
             for reply in self.stop_notifications.drain(..) {
                 reply.exit(Ok(()));
             }
