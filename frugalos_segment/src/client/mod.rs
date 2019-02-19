@@ -170,9 +170,10 @@ mod tests {
 
     #[test]
     fn put_delete_and_get_work() -> TestResult {
-        let fragments = 3;
+        let data_fragments = 2;
+        let parity_fragments = 1;
         let cluster_size = 3;
-        let mut system = System::new(fragments, 1)?;
+        let mut system = System::new(data_fragments, parity_fragments)?;
         let (_members, client) = setup_system(&mut system, cluster_size)?;
 
         thread::spawn(move || loop {

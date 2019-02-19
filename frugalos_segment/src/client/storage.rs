@@ -847,6 +847,17 @@ mod tests {
     use test_util::tests::{setup_system, wait, System};
     use trackable::result::TestResult;
 
+    fn candidate_position(
+        config: &ClusterConfig,
+        member: ClusterMember,
+        version: ObjectVersion,
+    ) -> usize {
+        config
+            .candidates(version.clone())
+            .position(|candidate| *candidate == member)
+            .unwrap()
+    }
+
     #[test]
     fn it_puts_data_correctly() -> TestResult {
         let data_fragments = 4;
@@ -887,9 +898,22 @@ mod tests {
         let mut system = System::new(data_fragments, parity_fragments)?;
         let (members, client) = setup_system(&mut system, cluster_size)?;
         let storage_client = client.storage;
-        let (ref node_id, _, _) = members[0];
+        let (node_id, device_id, _) = members[0].clone();
         let version = ObjectVersion(4);
         let expected = vec![0x02];
+
+        // This assersion means that
+        //  the node `node_id` is a member of participants that put a data to a dispersed device.
+        assert!(
+            candidate_position(
+                system.cluster_config(),
+                ClusterMember {
+                    node: node_id,
+                    device: device_id.clone()
+                },
+                version.clone()
+            ) < system.fragments() as usize
+        );
 
         let _ = wait(storage_client.clone().put(
             version.clone(),
@@ -923,9 +947,24 @@ mod tests {
         let mut system = System::new(data_fragments, parity_fragments)?;
         let (members, client) = setup_system(&mut system, cluster_size)?;
         let storage_client = client.storage;
-        let (ref node_id, _, _) = members[0];
+        let (node_id, device_id, _) = members[0].clone();
+
         let version = ObjectVersion(6);
         let expected = vec![0x02];
+
+        // This assersion means that
+        //  the node `node_id` is not a member of participants that put a data to a dispersed device
+        //  with high probability.
+        assert!(
+            candidate_position(
+                system.cluster_config(),
+                ClusterMember {
+                    node: node_id,
+                    device: device_id.clone()
+                },
+                version.clone()
+            ) >= system.fragments() as usize
+        );
 
         let _ = wait(storage_client.clone().put(
             version.clone(),

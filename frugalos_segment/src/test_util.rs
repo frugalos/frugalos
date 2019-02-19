@@ -10,7 +10,7 @@ pub mod tests {
     use fibers::executor::Executor;
     use fibers::executor::ThreadPoolExecutor;
     use fibers_global;
-    use fibers_rpc::client::{ClientServiceBuilder, ClientServiceHandle};
+    use fibers_rpc::client::{ClientService, ClientServiceHandle};
     use fibers_rpc::server::ServerBuilder;
     use frugalos_raft::{self, LocalNodeId, NodeId};
     use futures;
@@ -37,13 +37,18 @@ pub mod tests {
         }
     }
 
+    /// Make a frugalos segment where there are `segment_size`-nodes.
+    ///
+    /// This method needs `segment_size >= system.fragments()`.
     pub fn setup_system(
         system: &mut System,
-        cluster_size: usize,
+        segment_size: usize,
     ) -> Result<(Vec<(NodeId, DeviceId, DeviceHandle)>, Client)> {
+        assert!(segment_size >= system.fragments() as usize);
+
         let mut members = Vec::new();
 
-        for _ in 0..cluster_size {
+        for _ in 0..segment_size {
             let (node_id, device_id, device_handle) = system.make_node()?;
             members.push((node_id, device_id, device_handle));
         }
@@ -61,8 +66,6 @@ pub mod tests {
         logger: slog::Logger,
         device_registry_handle: DeviceRegistryHandle,
         service_handle: ServiceHandle,
-        #[allow(dead_code)]
-        raft_service_handle: frugalos_raft::ServiceHandle,
         rpc_service_handle: ClientServiceHandle,
         rpc_server_addr: SocketAddr,
         node_seqno: u8,
@@ -75,25 +78,23 @@ pub mod tests {
         /// Returns a new cluster with no node.
         pub fn new(data_fragments: u8, parity_fragments: u8) -> Result<Self> {
             let logger = slog::Logger::root(slog::Discard, o!());
-
+            let executor = ThreadPoolExecutor::with_thread_count(10).expect("never fails");
             let mut rpc_server_builder = ServerBuilder::new(([127, 0, 0, 1], 0).into());
 
-            let executor = ThreadPoolExecutor::with_thread_count(10).expect("never fails");
+            let rpc_service = ClientService::new(fibers_global::handle());
+            let rpc_service_handle = rpc_service.handle();
+            fibers_global::spawn(rpc_service.map_err(|e| panic!("{}", e)));
 
             let raft_service = frugalos_raft::Service::new(logger.clone(), &mut rpc_server_builder);
             let raft_service_handle = raft_service.handle();
             fibers_global::spawn(raft_service.map_err(|e| panic!("{}", e)));
-
-            let rpc_service = ClientServiceBuilder::new().finish(fibers_global::handle());
-            let rpc_service_handle = rpc_service.handle();
-            fibers_global::spawn(rpc_service.map_err(|e| panic!("{}", e)));
 
             let service = Service::new(
                 logger.clone(),
                 executor.handle(),
                 rpc_service_handle.clone(),
                 &mut rpc_server_builder,
-                raft_service_handle.clone(),
+                raft_service_handle,
             )?;
             let service_handle = service.handle();
             let device_registry_handle = service.device_registry().handle();
@@ -110,7 +111,6 @@ pub mod tests {
                 device_registry_handle,
                 rpc_service_handle,
                 service_handle,
-                raft_service_handle,
                 rpc_server_addr: bind_addr,
                 node_seqno: 0,
                 device_no: 0,
@@ -119,6 +119,11 @@ pub mod tests {
                 },
                 executor,
             })
+        }
+
+        /// Returns the immutable reference to the cluster configuration.
+        pub fn cluster_config(&self) -> &ClusterConfig {
+            &self.cluster_config
         }
 
         /// Returns the size of fragments(data_fragments + parity_fragments).
@@ -131,7 +136,8 @@ pub mod tests {
             self.logger.clone()
         }
 
-        fn setup_service_handle(&mut self, members: &Vec<(NodeId, DeviceId, DeviceHandle)>) {
+        /// Registers all the nodes in the `members`.
+        fn register_nodes(&mut self, members: &Vec<(NodeId, DeviceId, DeviceHandle)>) {
             let cluster: ClusterMembers = self
                 .cluster_config
                 .members
@@ -154,6 +160,7 @@ pub mod tests {
             }
         }
 
+        /// Boots this cluster with the given members.
         pub fn boot(&mut self, members: Vec<(NodeId, DeviceId, DeviceHandle)>) -> Result<Client> {
             // at least one cluster member is required
             if members.is_empty() {
@@ -167,7 +174,7 @@ pub mod tests {
                 });
             }
 
-            self.setup_service_handle(&members);
+            self.register_nodes(&members);
 
             Ok(self.make_segment_client())
         }
