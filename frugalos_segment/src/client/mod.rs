@@ -158,3 +158,139 @@ impl Client {
         self.mds.object_count()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fibers::executor::Executor;
+    use rustracing_jaeger::span::Span;
+    use std::{thread, time};
+    use test_util::tests::{setup_system, wait, System};
+    use trackable::result::TestResult;
+
+    #[test]
+    // This case reproduce the issue https://github.com/frugalos/frugalos/issues/78 .
+    // The issue says that:
+    //  For putting an object, when a frugalos server accidentally halts
+    //   after MdsClient::put but before finishing StorageClient::put,
+    //  we can head the object but cannot get the object.
+    fn head_work_but_get_doesnt() -> TestResult {
+        let data_fragments = 2;
+        let parity_fragments = 1;
+        let mut system = System::new(data_fragments, parity_fragments)?;
+        let segment_size = system.fragments() as usize;
+        let (members, client) = setup_system(&mut system, segment_size)?;
+        let object_id = "test_data";
+        let expected = vec![0x02];
+
+        thread::spawn(move || loop {
+            system.executor.run_once().unwrap();
+            thread::sleep(time::Duration::from_micros(100));
+        });
+
+        // wait until the segment becomes stable; for example, there is a raft leader.
+        // However, 5-secs is an ungrounded value.
+        thread::sleep(time::Duration::from_secs(5));
+
+        let (object_version, _) = wait(client.put(
+            object_id.to_owned(),
+            expected.clone(),
+            Deadline::Infinity,
+            Expect::Any,
+            Span::inactive().handle(),
+        ))?;
+
+        // Deletes all fragments the dispersed device.
+        for (_node_id, _device_id, device_handle) in members.clone() {
+            let mut result = wait(
+                device_handle
+                    .request()
+                    .list()
+                    .map_err(|e| track!(Error::from(e))),
+            )?;
+
+            for lump_id in result {
+                if lump_id.to_string().starts_with("01") {
+                    // then, lump_id is for a put data rather than a raft data
+                    let _ = wait(
+                        device_handle
+                            .request()
+                            .delete(lump_id)
+                            .map_err(|e| track!(Error::from(e))),
+                    )?;
+                }
+            }
+        }
+
+        // Heads return `object_version`
+        // since it only looks for the <ObjectId, ObjectVersion>-table in the MDS
+        // and does not visit the dispersed device.
+        let result = wait(client.head(object_id.to_owned(), Span::inactive().handle()))?;
+        assert_eq!(result, Some(object_version));
+
+        // Gets failed since there are no fragments in the dispersed device.
+        let result = wait(client.get(
+            object_id.to_owned(),
+            Deadline::Infinity,
+            Span::inactive().handle(),
+        ));
+
+        assert!(result.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn put_delete_and_get_work() -> TestResult {
+        let data_fragments = 2;
+        let parity_fragments = 1;
+        let cluster_size = 3;
+        let mut system = System::new(data_fragments, parity_fragments)?;
+        let (_members, client) = setup_system(&mut system, cluster_size)?;
+
+        thread::spawn(move || loop {
+            system.executor.run_once().unwrap();
+            thread::sleep(time::Duration::from_micros(100));
+        });
+
+        let expected = vec![0x03];
+        let object_id = "test_data".to_owned();
+
+        // wait until the segment becomes stable; for example, there is a raft leader.
+        // However, 5-secs is an ungrounded value.
+        thread::sleep(time::Duration::from_secs(5));
+
+        let _ = wait(client.put(
+            object_id.clone(),
+            expected.clone(),
+            Deadline::Infinity,
+            Expect::Any,
+            Span::inactive().handle(),
+        ))?;
+
+        let data = wait(client.get(
+            object_id.clone(),
+            Deadline::Infinity,
+            Span::inactive().handle(),
+        ))?;
+
+        assert_eq!(expected, data.unwrap().content);
+
+        let _ = wait(client.delete(
+            object_id.clone(),
+            Deadline::Infinity,
+            Expect::Any,
+            Span::inactive().handle(),
+        ))?;
+
+        let data = wait(client.get(
+            object_id.clone(),
+            Deadline::Infinity,
+            Span::inactive().handle(),
+        ))?;
+
+        assert!(data.is_none());
+
+        Ok(())
+    }
+}
