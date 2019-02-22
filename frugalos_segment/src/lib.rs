@@ -56,3 +56,18 @@ pub struct ObjectValue {
     /// 中身。
     pub content: Vec<u8>,
 }
+
+/// frugalos_segment の設定を表す struct。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FrugalosSegmentConfig {
+    /// A configuration for `MdsClient`.
+    pub mds_client: config::MdsClientConfig,
+}
+
+impl Default for FrugalosSegmentConfig {
+    fn default() -> Self {
+        Self {
+            mds_client: Default::default(),
+        }
+    }
+}

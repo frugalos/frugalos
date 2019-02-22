@@ -39,7 +39,7 @@ pub(crate) fn make_lump_id(node: &NodeId, version: ObjectVersion) -> LumpId {
 }
 
 /// Configuration for `MdsClient`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct MdsClientConfig {
     /// Timeout in seconds, which is used to determine an actual `Deadline` on putting a content.
     pub put_content_timeout: Seconds,

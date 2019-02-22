@@ -7,14 +7,12 @@ use fibers::{Executor, Spawn, ThreadPoolExecutor};
 use fibers_http_server::metrics::{MetricsHandler, WithMetrics};
 use fibers_http_server::{Server as HttpServer, ServerBuilder as HttpServerBuilder};
 use fibers_rpc;
-use fibers_rpc::channel::ChannelOptions;
 use fibers_rpc::client::{ClientService as RpcService, ClientServiceBuilder as RpcServiceBuilder};
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
 use frugalos_config;
 use frugalos_raft;
 use futures::{Async, Future, Poll, Stream};
 use libfrugalos;
-use num_cpus;
 use prometrics;
 use rustracing::sampler::{PassiveSampler, ProbabilisticSampler, Sampler};
 use rustracing_jaeger;
@@ -22,54 +20,14 @@ use rustracing_jaeger::span::SpanContextState;
 use slog::{self, Drain, Logger};
 use std::mem;
 use std::net::SocketAddr;
-use std::path::Path;
 use std::process::Command;
 use trackable::error::ErrorKindExt;
 
 use config_server::ConfigServer;
-use frugalos_segment;
 use rpc_server::RpcServer;
 use server::{spawn_report_spans_thread, Server};
 use service;
-use {Error, ErrorKind, Result};
-
-/// デーモンのビルダ。
-pub struct FrugalosDaemonBuilder {
-    logger: Logger,
-
-    /// 実行スレッド数。
-    pub executor_threads: usize,
-
-    /// Jaegerのトレースのサンプリング確率。
-    pub sampling_rate: f64,
-
-    /// RPC 通信のオプション。
-    pub rpc_client_channel_options: ChannelOptions,
-
-    /// `MdsClient` に与える Configuration。
-    pub mds_client_config: frugalos_segment::config::MdsClientConfig,
-}
-impl FrugalosDaemonBuilder {
-    /// 新しい`FrugalosDaemonBuilder`インスタンスを生成する。
-    pub fn new(logger: Logger) -> Self {
-        FrugalosDaemonBuilder {
-            logger,
-            executor_threads: num_cpus::get(),
-            sampling_rate: 0.001,
-            rpc_client_channel_options: Default::default(),
-            mds_client_config: Default::default(),
-        }
-    }
-
-    /// デーモンを起動する。
-    pub fn finish<P: AsRef<Path>>(
-        &self,
-        data_dir: P,
-        http_addr: SocketAddr,
-    ) -> Result<FrugalosDaemon> {
-        FrugalosDaemon::new(self, data_dir, http_addr)
-    }
-}
+use {Error, ErrorKind, FrugalosConfig, Result};
 
 /// Frugalosの各種機能を提供するためのデーモン。
 pub struct FrugalosDaemon {
@@ -81,13 +39,12 @@ pub struct FrugalosDaemon {
     command_rx: mpsc::Receiver<DaemonCommand>,
 }
 impl FrugalosDaemon {
-    fn new<P: AsRef<Path>>(
-        builder: &FrugalosDaemonBuilder,
-        data_dir: P,
-        http_addr: SocketAddr,
-    ) -> Result<Self> {
+    /// Creates a new `FrugalosDaemon`.
+    pub fn new(logger: Logger, config: FrugalosConfig) -> Result<Self> {
+        let data_dir = config.data_dir;
+        let http_addr = config.http_server.bind_addr;
         let logger = Logger::root(
-            slog::Duplicate::new(builder.logger.clone(), track!(LogMetrics::new())?).fuse(),
+            slog::Duplicate::new(logger.clone(), track!(LogMetrics::new())?).fuse(),
             o!(),
         );
 
@@ -100,12 +57,13 @@ impl FrugalosDaemon {
         let mut rpc_server_builder = RpcServerBuilder::new(rpc_addr);
         rpc_server_builder.logger(logger.clone());
 
-        let executor = track!(
-            ThreadPoolExecutor::with_thread_count(builder.executor_threads).map_err(Error::from)
-        )?;
+        let executor = track!(ThreadPoolExecutor::with_thread_count(
+            config.daemon.executor_threads
+        )
+        .map_err(Error::from))?;
         let rpc_service = RpcServiceBuilder::new()
             .logger(logger.clone())
-            .channel_options(builder.rpc_client_channel_options.clone())
+            .channel_options(config.rpc_server.channel_options())
             .finish(executor.handle());
 
         let raft_service = frugalos_raft::Service::new(logger.clone(), &mut rpc_server_builder);
@@ -124,12 +82,12 @@ impl FrugalosDaemon {
             config_service,
             &mut rpc_server_builder,
             rpc_service.handle(),
-            builder.mds_client_config.clone(),
+            config.segment.mds_client,
         ))?;
 
         let sampler = Sampler::<SpanContextState>::or(
             PassiveSampler,
-            track!(ProbabilisticSampler::new(builder.sampling_rate)
+            track!(ProbabilisticSampler::new(config.daemon.sampling_rate)
                 .map_err(|e| ErrorKind::InvalidInput.takes_over(e)))?,
         );
         let (tracer, span_rx) = rustracing_jaeger::Tracer::new(sampler);

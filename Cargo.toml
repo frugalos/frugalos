@@ -43,8 +43,16 @@ slog = "2"
 sloggers = "0.3"
 serde = "1"
 serde_derive = "1"
+serde_yaml = "0.8"
 trackable = "0.2"
 url = "1"
 
+[dev-dependencies]
+# TODO tempfile を使いたいが現状はコンパイルできないので諸々直す
+tempdir = "0.3"
+
 [workspace]
 members = ["frugalos_config", "frugalos_mds", "frugalos_raft", "frugalos_segment"]
+
+[patch.crates-io]
+libfrugalos = { path = "../libfrugalos" }
