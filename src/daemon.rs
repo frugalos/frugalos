@@ -267,7 +267,8 @@ impl Future for DaemonRunner {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        if track!(self.http_server.poll())?.is_ready() && self.do_stop {
+        let do_stop = track!(self.http_server.poll())?.is_ready() && self.do_stop;
+        if do_stop {
             return Ok(Async::Ready(()));
         }
         track!(self.rpc_server.poll())?;
