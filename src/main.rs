@@ -180,7 +180,7 @@ fn main() {
             .unwrap();
         let server_addr = config.rpc_server.bind_addr.to_string();
         let server_addr = matches.value_of("SERVER_ADDR").unwrap_or(&server_addr);
-        config.data_dir = get_data_dir(&matches);
+        set_data_dir(&matches, &mut config);
 
         let logger = track_try_unwrap!(logger_builder.build());
         let logger = logger.new(o!("server" => format!("{}@{}", server_id, server_addr)));
@@ -204,7 +204,7 @@ fn main() {
         let server_addr = config.rpc_server.bind_addr.to_string();
         let server_addr = matches.value_of("SERVER_ADDR").unwrap_or(&server_addr);
         let contact_server_addr = matches.value_of("CONTACT_SERVER_ADDR").unwrap();
-        config.data_dir = get_data_dir(&matches);
+        set_data_dir(&matches, &mut config);
 
         let logger = track_try_unwrap!(logger_builder.build());
         let logger = logger.new(o!("server" => format!("{}@{}", server_id, server_addr)));
@@ -224,7 +224,7 @@ fn main() {
     } else if let Some(matches) = matches.subcommand_matches("leave") {
         // LEAVE CLUSTER
         let contact_server_addr = matches.value_of("CONTACT_SERVER_ADDR").unwrap();
-        config.data_dir = get_data_dir(&matches);
+        set_data_dir(&matches, &mut config);
 
         let contact_server =
             track_try_unwrap!(contact_server_addr.parse().map_err(Failure::from_error));
@@ -238,7 +238,7 @@ fn main() {
     } else if let Some(matches) = matches.subcommand_matches("start") {
         // START SERVER
         let logger = track_try_unwrap!(logger_builder.build());
-        config.data_dir = track_try_unwrap!(track_any_err!(get_data_dir(&matches).parse()));
+        set_data_dir(&matches, &mut config);
         track_try_unwrap!(track_any_err!(set_daemon_config(
             &matches,
             &mut config.daemon
@@ -339,16 +339,18 @@ fn put_content_timeout_arg<'a, 'b>() -> Arg<'a, 'b> {
         .default_value("60")
 }
 
-fn get_data_dir(matches: &ArgMatches) -> String {
+fn set_data_dir(matches: &ArgMatches, config: &mut FrugalosConfig) {
     if let Some(value) = matches
         .value_of("DATA_DIR")
         .map(|v| v.to_string())
         .or_else(|| env::var("FRUGALOS_DATA_DIR").ok())
     {
-        value
-    } else {
+        config.data_dir = value;
+    }
+
+    if config.data_dir.is_empty() {
         println!(
-            "[ERROR] Must set either the `data-dir` argument or the `FRUGALOS_DATA_DIR` environment variable"
+            "[ERROR] Must set the `data-dir` argument, the `FRUGALOS_DATA_DIR` environment variable or the `frugalos.data_dir` key of a configuration file"
         );
         std::process::exit(1);
     }
