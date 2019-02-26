@@ -69,6 +69,12 @@ fn main() {
                         .default_value("0.0.0.0:3000"),
                 )
                 .arg(
+                    Arg::with_name("STOP_WAITING_TIME_MILLIS")
+                        .long("stop-waiting-time-millis")
+                        .takes_value(true)
+                        .default_value("10"),
+                )
+                .arg(
                     Arg::with_name("RPC_CONNECT_TIMEOUT_MILLIS")
                         .long("rpc-connect-timeout-millis")
                         .takes_value(true)
@@ -222,9 +228,11 @@ fn main() {
             daemon.executor_threads = threads;
         }
 
-        let daemon = track_try_unwrap!(daemon.finish(data_dir, http_addr,));
-        track_try_unwrap!(daemon.run());
+        let mut config = frugalos::daemon::FrugalosRunConfig::default();
+        config.stop_waiting_time = track_try_unwrap!(get_stop_waiting_time(&matches));
 
+        let daemon = track_try_unwrap!(daemon.finish(data_dir, http_addr,));
+        track_try_unwrap!(daemon.run(config));
         // NOTE: ログ出力(非同期)用に少し待機
         std::thread::sleep(std::time::Duration::from_millis(100));
     } else if let Some(matches) = matches.subcommand_matches("stop") {
@@ -313,6 +321,18 @@ fn get_data_dir(matches: &ArgMatches) -> String {
         );
         std::process::exit(1);
     }
+}
+
+/// Gets waiting time when frugalos stops.
+fn get_stop_waiting_time(matches: &ArgMatches) -> Result<Duration> {
+    matches.value_of("STOP_WAITING_TIME_MILLIS").map_or_else(
+        || Ok(Duration::from_millis(10)),
+        |v| {
+            v.parse::<u64>()
+                .map(Duration::from_millis)
+                .map_err(|e| track!(Error::from(e)))
+        },
+    )
 }
 
 /// Gets `ChannelOptions` for RPC clients.
