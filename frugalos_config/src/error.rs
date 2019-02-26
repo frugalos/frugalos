@@ -60,6 +60,15 @@ impl From<libfrugalos::Error> for Error {
     }
 }
 
+impl<T> From<std::sync::mpsc::SendError<T>> for Error
+where
+    T: Send + Sync + 'static,
+{
+    fn from(f: std::sync::mpsc::SendError<T>) -> Self {
+        ErrorKind::Other.cause(f).into()
+    }
+}
+
 pub fn to_rpc_error(e: Error) -> libfrugalos::Error {
     let kind = match *e.kind() {
         ErrorKind::InvalidInput => libfrugalos::ErrorKind::InvalidInput,

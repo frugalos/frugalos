@@ -20,6 +20,7 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::time::Duration;
 
+use cancelable_future::{Cancelable, SignalSender};
 use config::server_to_frugalos_raft_node;
 use machine::Snapshot;
 use protobuf;
@@ -140,6 +141,8 @@ pub fn create<P: AsRef<Path>>(logger: &Logger, mut local: Server, data_dir: P) -
     let mut rpc_server_builder = RpcServerBuilder::new(node.addr);
     let raft_service = frugalos_raft::Service::new(logger.clone(), &mut rpc_server_builder);
     let rpc_server = rpc_server_builder.finish(executor.handle());
+    let (cancelable_rpc_server, cancelizer) =
+        Cancelable::new(rpc_server.map_err(move |e| panic!("Error: {}", e)));
 
     let (device, rlog) = track!(make_rlog(
         logger.clone(),
@@ -150,12 +153,17 @@ pub fn create<P: AsRef<Path>>(logger: &Logger, mut local: Server, data_dir: P) -
         raft_service.handle(),
         vec![local.clone()],
     ))?;
-    executor.spawn(rpc_server.map_err(move |e| panic!("Error: {}", e)));
+    executor.spawn(cancelable_rpc_server);
     executor.spawn(raft_service.map_err(move |e| panic!("Error: {}", e)));
     executor.spawn(rpc_service.map_err(move |e| panic!("Error: {}", e)));
 
     // クラスタ構成に自サーバを登録
-    let monitor = executor.spawn_monitor(CreateCluster::new(logger.clone(), rlog, local.clone()));
+    let monitor = executor.spawn_monitor(CreateCluster::new(
+        logger.clone(),
+        rlog,
+        local.clone(),
+        cancelizer,
+    ));
     let result = track!(executor.run_fiber(monitor).map_err(Error::from))?;
     track!(result.map_err(Error::from))?;
 
@@ -254,13 +262,20 @@ struct CreateCluster {
     logger: Logger,
     rlog: ReplicatedLog<RaftIo>,
     local: Server,
+    cancelizer: SignalSender,
 }
 impl CreateCluster {
-    pub fn new(logger: Logger, rlog: ReplicatedLog<RaftIo>, local: Server) -> Self {
+    pub fn new(
+        logger: Logger,
+        rlog: ReplicatedLog<RaftIo>,
+        local: Server,
+        cancelizer: SignalSender,
+    ) -> Self {
         CreateCluster {
             logger,
             rlog,
             local,
+            cancelizer,
         }
     }
 }
@@ -284,7 +299,8 @@ impl Future for CreateCluster {
                     track!(self.rlog.install_snapshot(index + 1, snapshot))?;
                 }
                 Event::SnapshotInstalled { .. } => {
-                    return Ok(Async::Ready(()));
+                    let result = self.cancelizer.send_signal();
+                    return result.map(|_| Async::Ready(()));
                 }
                 _ => {}
             }

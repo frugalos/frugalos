@@ -36,6 +36,7 @@ pub use service::{Event, Service, ServiceHandle};
 pub mod cluster;
 
 mod builder;
+mod cancelable_future;
 mod config;
 mod error;
 mod machine;
