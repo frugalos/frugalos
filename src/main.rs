@@ -29,22 +29,7 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 #[allow(clippy::cyclomatic_complexity)]
 fn main() {
-    let max_concurrent_logs = FrugalosConfig::default().max_concurrent_logs.to_string();
-    let http_server_bind_addr = FrugalosConfig::default().http_server.bind_addr.to_string();
     let rpc_server_bind_addr = FrugalosConfig::default().rpc_server.bind_addr.to_string();
-    let jaeger_sampling_rate = FrugalosConfig::default().daemon.sampling_rate.to_string();
-    let tcp_connect_timeout_millis = (FrugalosConfig::default()
-        .rpc_server
-        .tcp_connect_timeout
-        .as_secs()
-        * 1000)
-        .to_string();
-    let tcp_write_timeout_millis = (FrugalosConfig::default()
-        .rpc_server
-        .tcp_write_timeout
-        .as_secs()
-        * 1000)
-        .to_string();
     let matches = App::new("frugalos")
         .version(env!("CARGO_PKG_VERSION"))
         .subcommand(
@@ -70,8 +55,7 @@ fn main() {
                 .arg(
                     Arg::with_name("SAMPLING_RATE")
                         .long("sampling-rate")
-                        .takes_value(true)
-                        .default_value(&jaeger_sampling_rate),
+                        .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("EXECUTOR_THREADS")
@@ -81,20 +65,17 @@ fn main() {
                 .arg(
                     Arg::with_name("HTTP_SERVER_BIND_ADDR")
                         .long("http-server-bind-addr")
-                        .takes_value(true)
-                        .default_value(&http_server_bind_addr),
+                        .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("RPC_CONNECT_TIMEOUT_MILLIS")
                         .long("rpc-connect-timeout-millis")
-                        .takes_value(true)
-                        .default_value(&tcp_connect_timeout_millis),
+                        .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("RPC_WRITE_TIMEOUT_MILLIS")
                         .long("rpc-write-timeout-millis")
-                        .takes_value(true)
-                        .default_value(&tcp_write_timeout_millis),
+                        .takes_value(true),
                 )
                 .arg(data_dir_arg())
                 .arg(put_content_timeout_arg()),
@@ -120,14 +101,12 @@ fn main() {
                 .short("l")
                 .long("loglevel")
                 .takes_value(true)
-                .possible_values(&["debug", "info", "warning", "error", "critical"])
-                .default_value("info"),
+                .possible_values(&["debug", "info", "warning", "error", "critical"]),
         )
         .arg(
             Arg::with_name("MAX_CONCURRENT_LOGS")
                 .long("max_concurrent_logs")
-                .takes_value(true)
-                .default_value(&max_concurrent_logs),
+                .takes_value(true),
         )
         .arg(
             Arg::with_name("CONFIG_FILE")
@@ -311,7 +290,6 @@ fn server_addr_arg<'a, 'b>() -> Arg<'a, 'b> {
         .long("addr")
         .alias("rpc-addr")
         .takes_value(true)
-        .default_value("127.0.0.1:14278")
 }
 
 fn contact_server_addr_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -336,7 +314,6 @@ fn put_content_timeout_arg<'a, 'b>() -> Arg<'a, 'b> {
         .help("Sets timeout in seconds on putting a content.")
         .long("put-content-timeout")
         .takes_value(true)
-        .default_value("60")
 }
 
 fn set_data_dir(matches: &ArgMatches, config: &mut FrugalosConfig) {
@@ -350,7 +327,7 @@ fn set_data_dir(matches: &ArgMatches, config: &mut FrugalosConfig) {
 
     if config.data_dir.is_empty() {
         println!(
-            "[ERROR] Must set the `data-dir` argument, the `FRUGALOS_DATA_DIR` environment variable or the `frugalos.data_dir` key of a configuration file"
+            "[ERROR] Must set one of the `data-dir` argument, the `FRUGALOS_DATA_DIR` environment variable or the `frugalos.data_dir` key of a configuration file"
         );
         std::process::exit(1);
     }
