@@ -69,6 +69,16 @@ where
     }
 }
 
+impl From<std::sync::mpsc::TryRecvError> for Error {
+    fn from(f: std::sync::mpsc::TryRecvError) -> Self {
+        let kind = match f {
+            std::sync::mpsc::TryRecvError::Disconnected => ErrorKind::Disconnected,
+            std::sync::mpsc::TryRecvError::Empty => ErrorKind::WouldBlock,
+        };
+        kind.cause(f).into()
+    }
+}
+
 pub fn to_rpc_error(e: Error) -> libfrugalos::Error {
     let kind = match *e.kind() {
         ErrorKind::InvalidInput => libfrugalos::ErrorKind::InvalidInput,
@@ -80,10 +90,12 @@ pub fn to_rpc_error(e: Error) -> libfrugalos::Error {
 
 /// エラー種類。
 #[allow(missing_docs)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
     InvalidInput,
     NotLeader,
+    Disconnected,
+    WouldBlock,
     Other,
 }
 impl TrackableErrorKind for ErrorKind {}

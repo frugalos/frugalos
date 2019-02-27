@@ -20,7 +20,7 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::time::Duration;
 
-use cancelable_future::{Cancelable, SignalSender};
+use cancelable_future::Cancelable;
 use config::server_to_frugalos_raft_node;
 use machine::Snapshot;
 use protobuf;
@@ -137,35 +137,38 @@ pub fn create<P: AsRef<Path>>(logger: &Logger, mut local: Server, data_dir: P) -
     let rpc_service = RpcServiceBuilder::new()
         .logger(logger.clone())
         .finish(executor.handle());
+    let rpc_service_handle = rpc_service.handle();
+    let (cancelable_rpc_service, mut rpc_service_cancelizer) =
+        Cancelable::new(rpc_service.map_err(move |e| panic!("Error: {}", e)));
 
     let mut rpc_server_builder = RpcServerBuilder::new(node.addr);
     let raft_service = frugalos_raft::Service::new(logger.clone(), &mut rpc_server_builder);
     let rpc_server = rpc_server_builder.finish(executor.handle());
-    let (cancelable_rpc_server, cancelizer) =
+    let (cancelable_rpc_server, mut rpc_server_cancelizer) =
         Cancelable::new(rpc_server.map_err(move |e| panic!("Error: {}", e)));
 
     let (device, rlog) = track!(make_rlog(
         logger.clone(),
         &data_dir,
         &local,
-        rpc_service.handle(),
+        rpc_service_handle,
         executor.handle(),
         raft_service.handle(),
         vec![local.clone()],
     ))?;
     executor.spawn(cancelable_rpc_server);
     executor.spawn(raft_service.map_err(move |e| panic!("Error: {}", e)));
-    executor.spawn(rpc_service.map_err(move |e| panic!("Error: {}", e)));
+    executor.spawn(cancelable_rpc_service);
 
     // クラスタ構成に自サーバを登録
-    let monitor = executor.spawn_monitor(CreateCluster::new(
-        logger.clone(),
-        rlog,
-        local.clone(),
-        cancelizer,
-    ));
+    let monitor = executor.spawn_monitor(CreateCluster::new(logger.clone(), rlog, local.clone()));
     let result = track!(executor.run_fiber(monitor).map_err(Error::from))?;
     track!(result.map_err(Error::from))?;
+
+    // rpcサーバfutureを停止する
+    track!(rpc_server_cancelizer.send_signal())?;
+    // rpcサービスfutureを停止する
+    track!(rpc_service_cancelizer.send_signal())?;
 
     // ディスクの同期を待機 (不要かも)
     device.stop(Deadline::Immediate);
@@ -200,8 +203,11 @@ pub fn join<P: AsRef<Path>>(
     let rpc_service = RpcServiceBuilder::new()
         .logger(logger.clone())
         .finish(executor.handle());
-    let client = Client::new(contact_server, rpc_service.handle());
-    executor.spawn(rpc_service.map_err(|e| panic!("{}", e)));
+    let rpc_service_handle = rpc_service.handle();
+    let client = Client::new(contact_server, rpc_service_handle);
+    let (cancelable_rpc_service, mut rpc_service_cancelizer) =
+        Cancelable::new(rpc_service.map_err(move |e| panic!("Error: {}", e)));
+    executor.spawn(cancelable_rpc_service);
 
     let monitor = executor.spawn_monitor(client.put_server(local.clone()));
     let result = track!(executor.run_fiber(monitor).map_err(Error::from))?;
@@ -211,6 +217,9 @@ pub fn join<P: AsRef<Path>>(
         "This server is joined to the cluster: {}",
         dump!(joined)
     );
+
+    // rpc_service futureをcancelする
+    track!(rpc_service_cancelizer.send_signal())?;
 
     // ローカルにも情報を保存
     track!(save_local_server_info(data_dir, joined))?;
@@ -240,7 +249,9 @@ pub fn leave<P: AsRef<Path>>(
         .logger(logger.clone())
         .finish(executor.handle());
     let client = Client::new(contact_server, rpc_service.handle());
-    executor.spawn(rpc_service.map_err(|e| panic!("{}", e)));
+    let (cancelable_rpc_service, mut rpc_service_cancelizer) =
+        Cancelable::new(rpc_service.map_err(move |e| panic!("Error: {}", e)));
+    executor.spawn(cancelable_rpc_service);
 
     let monitor = executor.spawn_monitor(client.delete_server(local.id.clone()));
     let result = track!(executor.run_fiber(monitor).map_err(Error::from))?;
@@ -250,6 +261,9 @@ pub fn leave<P: AsRef<Path>>(
         "This server is left from the cluster: {}",
         dump!(left)
     );
+
+    // rpc_service futureをcancelする
+    track!(rpc_service_cancelizer.send_signal())?;
 
     // ローカルの情報を削除
     track!(delete_local_server_info(data_dir))?;
@@ -262,20 +276,13 @@ struct CreateCluster {
     logger: Logger,
     rlog: ReplicatedLog<RaftIo>,
     local: Server,
-    cancelizer: SignalSender,
 }
 impl CreateCluster {
-    pub fn new(
-        logger: Logger,
-        rlog: ReplicatedLog<RaftIo>,
-        local: Server,
-        cancelizer: SignalSender,
-    ) -> Self {
+    pub fn new(logger: Logger, rlog: ReplicatedLog<RaftIo>, local: Server) -> Self {
         CreateCluster {
             logger,
             rlog,
             local,
-            cancelizer,
         }
     }
 }
@@ -298,10 +305,7 @@ impl Future for CreateCluster {
                         track!(protobuf::snapshot_encoder().encode_into_bytes(snapshot))?;
                     track!(self.rlog.install_snapshot(index + 1, snapshot))?;
                 }
-                Event::SnapshotInstalled { .. } => {
-                    let result = self.cancelizer.send_signal();
-                    return result.map(|_| Async::Ready(()));
-                }
+                Event::SnapshotInstalled { .. } => return Ok(Async::Ready(())),
                 _ => {}
             }
         }
