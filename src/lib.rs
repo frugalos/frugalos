@@ -199,6 +199,7 @@ mod tests {
         expected.loglevel = sloggers::types::Severity::Critical;
         expected.daemon.sampling_rate = 0.1;
         expected.daemon.executor_threads = 3;
+        expected.daemon.stop_waiting_time = Duration::from_secs(3000);
         expected.http_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 2222));
         expected.rpc_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 3333));
         expected.rpc_server.tcp_connect_timeout = Duration::from_secs(8);
