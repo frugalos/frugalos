@@ -192,33 +192,54 @@ mod tests {
     use trackable::result::TestResult;
 
     #[test]
-    fn config_file_parsing_works() -> TestResult {
-        let mut expected = FrugalosConfig::default();
-
-        expected.max_concurrent_logs = 30;
-        expected.loglevel = sloggers::types::Severity::Critical;
-        expected.daemon.sampling_rate = 0.1;
-        expected.daemon.executor_threads = 3;
-        expected.daemon.stop_waiting_time = Duration::from_secs(3000);
-        expected.http_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 2222));
-        expected.rpc_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 3333));
-        expected.rpc_server.tcp_connect_timeout = Duration::from_secs(8);
-        expected.rpc_server.tcp_write_timeout = Duration::from_secs(10);
-        expected.segment.mds_client.put_content_timeout = Seconds(32);
-
-        let wrapper = FrugalosConfigWrapper {
-            config: expected.clone(),
-        };
-        let content = track_any_err!(serde_yaml::to_string(&wrapper))?;
+    fn config_works() -> TestResult {
+        let content = r##"
+---
+frugalos:
+  data_dir: "/var/lib/frugalos"
+  log_file: ~
+  loglevel: critical
+  max_concurrent_logs: 30
+  daemon:
+    executor_threads: 3
+    sampling_rate: 0.1
+    stop_waiting_time:
+      secs: 300
+      nanos: 0
+  http_server:
+    bind_addr: "127.0.0.1:2222"
+  rpc_server:
+    bind_addr: "127.0.0.1:3333"
+    tcp_connect_timeout:
+      secs: 8
+      nanos: 0
+    tcp_write_timeout:
+      secs: 10
+      nanos: 0
+  segment:
+    mds_client:
+      put_content_timeout: 32"##;
         let dir = track_any_err!(TempDir::new("frugalos_test"))?;
         let filepath = dir.path().join("frugalos.yml");
         let mut file = track_any_err!(File::create(filepath.clone()))?;
 
         track_any_err!(file.write(content.as_bytes()))?;
 
-        let config: FrugalosConfig = track!(FrugalosConfig::from_yaml(filepath))?;
+        let actual = track!(FrugalosConfig::from_yaml(filepath))?;
+        let mut expected = FrugalosConfig::default();
+        expected.data_dir = "/var/lib/frugalos".to_owned();
+        expected.max_concurrent_logs = 30;
+        expected.loglevel = sloggers::types::Severity::Critical;
+        expected.daemon.sampling_rate = 0.1;
+        expected.daemon.executor_threads = 3;
+        expected.daemon.stop_waiting_time = Duration::from_secs(300);
+        expected.http_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 2222));
+        expected.rpc_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 3333));
+        expected.rpc_server.tcp_connect_timeout = Duration::from_secs(8);
+        expected.rpc_server.tcp_write_timeout = Duration::from_secs(10);
+        expected.segment.mds_client.put_content_timeout = Seconds(32);
 
-        assert_eq!(expected, config);
+        assert_eq!(expected, actual);
 
         Ok(())
     }
