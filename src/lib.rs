@@ -123,6 +123,8 @@ pub struct FrugalosDaemonConfig {
     pub executor_threads: usize,
     /// Jaegerのトレースのサンプリング確率。
     pub sampling_rate: f64,
+    /// frugalos 停止時に待つ時間。
+    pub stop_waiting_time: Duration,
 }
 
 impl Default for FrugalosDaemonConfig {
@@ -130,6 +132,7 @@ impl Default for FrugalosDaemonConfig {
         Self {
             executor_threads: num_cpus::get(),
             sampling_rate: 0.001,
+            stop_waiting_time: Duration::from_millis(10),
         }
     }
 }
