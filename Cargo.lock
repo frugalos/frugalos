@@ -289,7 +289,7 @@ dependencies = [
  "httpcodec 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "jemalloc-ctl 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "jemallocator 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
- "libfrugalos 0.2.1",
+ "libfrugalos 0.2.2",
  "num_cpus 1.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "prometrics 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "raftlog 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -318,7 +318,7 @@ dependencies = [
  "fibers_tasque 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "frugalos_raft 0.6.0",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libfrugalos 0.2.1",
+ "libfrugalos 0.2.2",
  "prometrics 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "protobuf_codec 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "raftlog 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -341,7 +341,7 @@ dependencies = [
  "fibers_tasque 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "frugalos_raft 0.6.0",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libfrugalos 0.2.1",
+ "libfrugalos 0.2.2",
  "patricia_tree 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "prometrics 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "protobuf_codec 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -391,7 +391,7 @@ dependencies = [
  "frugalos_mds 0.6.1",
  "frugalos_raft 0.6.0",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "libfrugalos 0.2.1",
+ "libfrugalos 0.2.2",
  "prometrics 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "raftlog 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -566,7 +566,7 @@ dependencies = [
 
 [[package]]
 name = "libfrugalos"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "bytecodec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
