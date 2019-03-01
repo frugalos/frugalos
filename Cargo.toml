@@ -44,7 +44,7 @@ sloggers = "0.3"
 serde = "1"
 serde_derive = "1"
 serde_yaml = "0.8"
-trackable = "0.2"
+trackable = "^0.2.21"
 url = "1"
 
 [dev-dependencies]
