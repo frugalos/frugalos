@@ -5,7 +5,9 @@ use fibers::sync::mpsc;
 use fibers::Spawn;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
-use frugalos_mds::{Node, Service as RaftMdsService, ServiceHandle as MdsHandle};
+use frugalos_mds::{
+    FrugalosMdsConfig, Node, Service as RaftMdsService, ServiceHandle as MdsHandle,
+};
 use frugalos_raft::{self, NodeId};
 use futures::{Async, Future, Poll, Stream};
 use raftlog::cluster::ClusterMembers;
@@ -30,6 +32,7 @@ pub struct Service<S> {
     command_rx: mpsc::Receiver<Command>,
     raft_metrics: frugalos_raft::RpcMetrics,
     mds_alive: bool,
+    mds_config: FrugalosMdsConfig,
 }
 impl<S> Service<S>
 where
@@ -42,6 +45,7 @@ where
         rpc_service: RpcServiceHandle,
         rpc: &mut RpcServerBuilder,
         raft_service: frugalos_raft::ServiceHandle,
+        mds_config: FrugalosMdsConfig,
     ) -> Result<Self> {
         let mds_service = track!(RaftMdsService::new(logger.clone(), rpc))?;
         let device_registry = DeviceRegistry::new(logger.clone());
@@ -59,6 +63,7 @@ where
             command_rx,
             raft_metrics: frugalos_raft::RpcMetrics::new(),
             mds_alive: true,
+            mds_config,
         })
     }
 
@@ -104,6 +109,7 @@ where
                 let rpc_service = self.rpc_service.clone();
                 let raft_service = self.raft_service.clone();
                 let raft_metrics = self.raft_metrics.clone();
+                let mds_config = self.mds_config.clone();
                 let mds_service = self.mds_service.handle();
                 let future = device
                     .map_err(|e| track!(e))
@@ -114,6 +120,7 @@ where
                             rpc_service,
                             raft_service,
                             raft_metrics,
+                            mds_config,
                             mds_service,
                             node_id,
                             device,
@@ -203,6 +210,7 @@ impl SegmentNode {
         rpc_service: RpcServiceHandle,
         raft_service: frugalos_raft::ServiceHandle,
         raft_metrics: frugalos_raft::RpcMetrics,
+        mds_config: FrugalosMdsConfig,
         mds_service: MdsHandle,
 
         node_id: NodeId,
@@ -239,6 +247,7 @@ impl SegmentNode {
         ))?;
         let node = track!(Node::new(
             logger.clone(),
+            mds_config,
             mds_service,
             node_id,
             cluster,

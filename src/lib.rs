@@ -87,6 +87,8 @@ pub struct FrugalosConfig {
     pub http_server: FrugalosHttpServerConfig,
     /// RPC server 向けの設定。
     pub rpc_server: FrugalosRpcServerConfig,
+    /// frugalos_mds 向けの設定。
+    pub mds: frugalos_mds::FrugalosMdsConfig,
     /// frugalos_segment 向けの設定。
     pub segment: frugalos_segment::FrugalosSegmentConfig,
 }
@@ -111,6 +113,7 @@ impl Default for FrugalosConfig {
             daemon: Default::default(),
             http_server: Default::default(),
             rpc_server: Default::default(),
+            mds: Default::default(),
             segment: Default::default(),
         }
     }
@@ -188,6 +191,7 @@ mod tests {
     use libfrugalos::time::Seconds;
     use std::fs::File;
     use std::io::Write;
+    use std::ops::Range;
     use tempdir::TempDir;
     use trackable::result::TestResult;
 
@@ -216,6 +220,10 @@ frugalos:
     tcp_write_timeout:
       secs: 10
       nanos: 0
+  mds:
+    snapshot_threshold:
+      start: 100
+      end: 200
   segment:
     mds_client:
       put_content_timeout: 32"##;
@@ -237,6 +245,10 @@ frugalos:
         expected.rpc_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 3333));
         expected.rpc_server.tcp_connect_timeout = Duration::from_secs(8);
         expected.rpc_server.tcp_write_timeout = Duration::from_secs(10);
+        expected.mds.snapshot_threshold = Range {
+            start: 100,
+            end: 200,
+        };
         expected.segment.mds_client.put_content_timeout = Seconds(32);
 
         assert_eq!(expected, actual);

@@ -16,15 +16,16 @@ use raftlog::{self, ReplicatedLog};
 use slog::Logger;
 use std::collections::VecDeque;
 use std::env;
+use std::ops::Range;
 use std::time::Duration;
 
+use super::snapshot::SnapshotThreshold;
 use super::{Event, NodeHandle, Proposal, Request, Seconds};
 use codec;
 use machine::{Command, Machine};
 use protobuf;
-use {Error, ErrorKind, Result, ServiceHandle};
+use {Error, ErrorKind, FrugalosMdsConfig, Result, ServiceHandle};
 
-const DEFAULT_SNAPSHOT_THRESHOLD: usize = 10_000;
 const DEFAULT_REELECTION_THRESHOLD: usize = 10; // 10 * 500ms = 10s
 const DEFAULT_LARGE_QUEUE_THRESHOLD: usize = 1024;
 
@@ -97,7 +98,8 @@ pub struct Node {
     request_rx: mpsc::Receiver<Request>,
     proposals: VecDeque<Proposal>,
     local_log_size: usize,
-    snapshot_threshold: usize,
+    /// 次に snapshot を取得する閾値.
+    snapshot_threshold: SnapshotThreshold,
     next_commit: LogIndex,
     last_commit: Option<LogIndex>,
     events: VecDeque<Event>,
@@ -119,6 +121,7 @@ impl Node {
     /// 新しい`Node`インスタンスを生成する.
     pub fn new(
         logger: Logger,
+        config: FrugalosMdsConfig,
         service: ServiceHandle,
         node_id: NodeId,
         cluster: ClusterMembers,
@@ -131,11 +134,15 @@ impl Node {
 
         let rlog = ReplicatedLog::new(node_id.to_raft_node_id(), cluster, io);
 
-        // TODO: 関数引数経由で渡せるようにする(or setterを用意)
-        let snapshot_threshold = env::var("FRUGALOS_SNAPSHOT_THRESHOLD")
+        // For backward compatibility
+        let snapshot_threshold_range = env::var("FRUGALOS_SNAPSHOT_THRESHOLD")
             .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(DEFAULT_SNAPSHOT_THRESHOLD);
+            .and_then(|v| v.parse().map(|v| Range { start: v, end: v }).ok())
+            .unwrap_or(config.snapshot_threshold);
+        let snapshot_threshold = track!(SnapshotThreshold::new(
+            &node_id.to_string(),
+            snapshot_threshold_range
+        ))?;
         let reelection_threshold = env::var("FRUGALOS_REELECTION_THRESHOLD")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -180,20 +187,6 @@ impl Node {
             commit_timeout: None,
             rpc_service,
         })
-    }
-
-    /// スナップショットを取る際の閾値を取得する.
-    ///
-    /// ローカルログの長さが、この値を超えた場合に、スナップショットの取得が開始される.
-    /// `set_snapshot_threshold`メソッドが呼び出されていない場合には、
-    /// デフォルト値である`10_000`が返される.
-    pub fn snapshot_threshold(&self) -> usize {
-        self.snapshot_threshold
-    }
-
-    /// スナップショットを取る際の閾値を変更する.
-    pub fn set_snapshot_threshold(&mut self, threshold: usize) {
-        self.snapshot_threshold = threshold;
     }
 
     fn handle_request(&mut self, request: Request) {
@@ -382,10 +375,12 @@ impl Node {
         };
         if !self.rlog.is_snapshot_installing() && self.ready_snapshot.is_none() {
             self.local_log_size = 0;
+            self.snapshot_threshold.refresh();
             info!(
                 self.logger,
-                "Starts taking snapshot: objects={}",
-                self.machine.len()
+                "Starts taking snapshot: objects={}, next_threshold={}",
+                self.machine.len(),
+                self.snapshot_threshold.value()
             );
 
             // TODO: 完全にインクリメンタルにする
@@ -534,7 +529,7 @@ impl Node {
         // スナップショットの処理
         self.last_commit = Some(commit);
         self.local_log_size += 1;
-        if self.local_log_size > self.snapshot_threshold {
+        if self.local_log_size > self.snapshot_threshold.value() {
             track!(self.take_snapshot())?;
         }
         Ok(())

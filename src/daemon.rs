@@ -85,6 +85,7 @@ impl FrugalosDaemon {
             config_service,
             &mut rpc_server_builder,
             rpc_service.handle(),
+            config.mds,
             config.segment.mds_client,
         ))?;
 
