@@ -63,6 +63,8 @@ impl<S> Service<S>
 where
     S: Spawn + Send + Clone + 'static,
 {
+    // FIXME: 引数を減らす方法を考える
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         logger: Logger,
         spawner: S,
