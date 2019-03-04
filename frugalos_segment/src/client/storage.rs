@@ -23,7 +23,8 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use config::{
-    ClientConfig, ClusterConfig, ClusterMember, DispersedConfig, Participants, ReplicatedConfig,
+    ClientConfig, ClusterConfig, ClusterMember, DispersedClientConfig, DispersedConfig,
+    Participants, ReplicatedConfig,
 };
 use util::Phase;
 use {Error, ErrorKind, ObjectValue, Result};
@@ -57,6 +58,7 @@ impl StorageClient {
                 logger,
                 config.cluster,
                 c,
+                config.dispersed_client,
                 rpc_service,
                 ec,
             )),
@@ -316,6 +318,7 @@ pub struct DispersedClient {
     logger: Logger,
     cluster: Arc<ClusterConfig>,
     config: DispersedConfig,
+    client_config: DispersedClientConfig,
     data_fragments: usize,
     ec: ErasureCoder,
     rpc_service: RpcServiceHandle,
@@ -325,6 +328,7 @@ impl DispersedClient {
         logger: Logger,
         cluster: ClusterConfig,
         config: DispersedConfig,
+        client_config: DispersedClientConfig,
         rpc_service: RpcServiceHandle,
         ec: Option<ErasureCoder>,
     ) -> Self {
@@ -335,6 +339,7 @@ impl DispersedClient {
             logger,
             cluster: Arc::new(cluster),
             config,
+            client_config,
             ec,
             data_fragments,
             rpc_service,
@@ -416,7 +421,7 @@ impl DispersedClient {
             deadline,
             rpc_service: self.rpc_service,
             parent: span.handle(),
-            timeout: Some(timer::timeout(Duration::from_secs(2))), // TODO: ハードコーディングは止める
+            timeout: Some(timer::timeout(self.client_config.get_timeout.clone())),
         };
         Box::new(DispersedGet {
             phase: Phase::A(future),

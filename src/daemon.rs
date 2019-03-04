@@ -85,7 +85,7 @@ impl FrugalosDaemon {
             config_service,
             &mut rpc_server_builder,
             rpc_service.handle(),
-            config.segment.mds_client,
+            config.segment,
         ))?;
 
         let sampler = Sampler::<SpanContextState>::or(

@@ -234,6 +234,10 @@ frugalos:
       secs: 10
       nanos: 0
   segment:
+    dispersed_client:
+      get_timeout:
+        secs: 4
+        nanos: 0
     mds_client:
       put_content_timeout: 32"##;
         let dir = track_any_err!(TempDir::new("frugalos_test"))?;
@@ -254,6 +258,7 @@ frugalos:
         expected.rpc_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 3333));
         expected.rpc_server.tcp_connect_timeout = Duration::from_secs(8);
         expected.rpc_server.tcp_write_timeout = Duration::from_secs(10);
+        expected.segment.dispersed_client.get_timeout = Duration::from_secs(4);
         expected.segment.mds_client.put_content_timeout = Seconds(32);
 
         assert_eq!(expected, actual);

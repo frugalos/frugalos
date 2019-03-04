@@ -7,6 +7,7 @@ use libfrugalos::time::Seconds;
 use raftlog::cluster::ClusterMembers;
 use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
+use std::time::Duration;
 
 // TODO: LumpIdの名前空間の使い方に関してWikiに記載する
 pub(crate) const LUMP_NAMESPACE_CONTENT: u8 = 1;
@@ -54,12 +55,29 @@ impl Default for MdsClientConfig {
     }
 }
 
-// FIXME: rename
+/// Configuration for `DispersedClient`.
+/// This struct mainly focuses on a client configurations.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DispersedClientConfig {
+    /// How long to wait before aborting a get operation.
+    pub get_timeout: Duration,
+}
+
+impl Default for DispersedClientConfig {
+    fn default() -> Self {
+        DispersedClientConfig {
+            get_timeout: Duration::from_secs(2),
+        }
+    }
+}
+
+// FIXME: rename (config.rs で定義されている struct は名前、責務、依存関係を整理した方がよい)
 /// クライアントがセグメントにアクセスする際に使用する構成情報。
 #[allow(missing_docs)]
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
     pub cluster: ClusterConfig,
+    pub dispersed_client: DispersedClientConfig,
     pub storage: Storage,
     pub mds: MdsClientConfig,
 }

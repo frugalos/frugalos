@@ -12,7 +12,7 @@ use fibers_tasque::TaskQueueExt;
 use frugalos_config::{DeviceGroup, Event as ConfigEvent, Service as ConfigService};
 use frugalos_raft::Service as RaftService;
 use frugalos_segment;
-use frugalos_segment::config::MdsClientConfig;
+use frugalos_segment::FrugalosSegmentConfig;
 use frugalos_segment::Service as SegmentService;
 use futures::future::Fuse;
 use futures::{Async, Future, Poll, Stream};
@@ -56,7 +56,7 @@ pub struct Service<S> {
 
     servers: HashMap<ServerId, Server>,
 
-    mds_client_config: MdsClientConfig,
+    segment_config: FrugalosSegmentConfig,
 }
 impl<S> Service<S>
 where
@@ -69,7 +69,7 @@ where
         config_service: ConfigService,
         rpc: &mut RpcServerBuilder,
         rpc_service: RpcServiceHandle,
-        mds_client_config: MdsClientConfig,
+        segment_config: FrugalosSegmentConfig,
     ) -> Result<Self> {
         let frugalos_segment_service = track!(SegmentService::new(
             logger.clone(),
@@ -91,7 +91,7 @@ where
             buckets: Arc::new(AtomicImmut::new(HashMap::new())),
             bucket_no_to_id: HashMap::new(),
             servers: HashMap::new(),
-            mds_client_config,
+            segment_config,
         })
     }
     pub fn client(&self) -> FrugalosClient {
@@ -159,7 +159,7 @@ where
             self.logger.clone(),
             self.rpc_service.clone(),
             &bucket_config,
-            self.mds_client_config.clone(),
+            self.segment_config.clone(),
         );
         let mut buckets = (&*self.buckets.load()).clone();
         buckets.insert(id, bucket);
