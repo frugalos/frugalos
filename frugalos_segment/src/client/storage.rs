@@ -421,7 +421,7 @@ impl DispersedClient {
             deadline,
             rpc_service: self.rpc_service,
             parent: span.handle(),
-            timeout: Some(timer::timeout(self.client_config.get_timeout.clone())),
+            timeout: Some(timer::timeout(self.client_config.get_timeout)),
         };
         Box::new(DispersedGet {
             phase: Phase::A(future),
