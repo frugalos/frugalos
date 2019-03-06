@@ -22,14 +22,49 @@ use std::time::Duration;
 use super::snapshot::SnapshotThreshold;
 use super::{Event, NodeHandle, Proposal, Request, Seconds};
 use codec;
+use config::FrugalosMdsConfig;
 use machine::{Command, Machine};
 use protobuf;
-use {Error, ErrorKind, FrugalosMdsConfig, Result, ServiceHandle};
-
-const DEFAULT_REELECTION_THRESHOLD: usize = 10; // 10 * 500ms = 10s
-const DEFAULT_LARGE_QUEUE_THRESHOLD: usize = 1024;
+use {Error, ErrorKind, Result, ServiceHandle};
 
 type RaftEvent = raftlog::Event;
+
+/// proposal キューが長すぎる(リーダーが重い)と判断する基準となる閾値。
+#[derive(Debug)]
+struct LargeProposalQueueThreshold(usize);
+
+/// リーダー選出待ちキューが長すぎると判断する基準となる閾値。
+#[derive(Debug)]
+struct LargeLeaderWaitingQueueThreshold(usize);
+
+/// リーダー選出待ちをあきらめるまでのタイムアウト値。
+#[derive(Debug)]
+struct LeaderWaitingTimeout {
+    max: usize,
+    current: usize,
+}
+
+impl LeaderWaitingTimeout {
+    fn new(max: usize) -> Self {
+        Self { max, current: 0 }
+    }
+
+    fn decrement(&mut self) {
+        self.current = self.current.saturating_sub(1);
+    }
+
+    fn reset(&mut self) {
+        self.current = self.max;
+    }
+
+    fn is_expired(&self) -> bool {
+        self.current == 0
+    }
+}
+
+/// リーダが重い場合に再選出を行うかどうかを決める閾値。
+#[derive(Debug)]
+struct ReElectionThreshold(usize);
 
 #[derive(Clone)]
 struct Metrics {
@@ -93,8 +128,9 @@ pub struct Node {
     node_id: NodeId,
     rlog: ReplicatedLog<RaftIo>,
     leader: Option<NodeId>,
+    large_leader_waiting_queue_threshold: LargeLeaderWaitingQueueThreshold,
     leader_waitings: Vec<Monitored<NodeId, Error>>,
-    leader_waiting_timeout: usize,
+    leader_waiting_timeout: LeaderWaitingTimeout,
     request_rx: mpsc::Receiver<Request>,
     proposals: VecDeque<Proposal>,
     local_log_size: usize,
@@ -108,14 +144,16 @@ pub struct Node {
     ready_snapshot: Option<AsyncCall<Result<(LogIndex, Vec<u8>)>>>,
     decoding_snapshot: Option<AsyncCall<Result<(LogPosition, Machine, Vec<ObjectVersion>)>>>,
     polling_timer: timer::Timeout,
+    polling_timer_interval: Duration,
     phase: Phase,
     rpc_service: RpcServiceHandle,
 
     // リーダが重い場合に再選出を行うための変数群
     large_queue_rounds: usize,
-    large_queue_threshold: usize,
-    reelection_threshold: usize,
+    large_queue_threshold: LargeProposalQueueThreshold,
+    reelection_threshold: ReElectionThreshold,
     commit_timeout: Option<usize>,
+    commit_timeout_threshold: usize,
 }
 impl Node {
     /// 新しい`Node`インスタンスを生成する.
@@ -135,28 +173,35 @@ impl Node {
         let rlog = ReplicatedLog::new(node_id.to_raft_node_id(), cluster, io);
 
         // For backward compatibility
+        let snapshot_threshold = config.snapshot_threshold.clone();
         let snapshot_threshold_range = env::var("FRUGALOS_SNAPSHOT_THRESHOLD")
             .ok()
             .and_then(|v| v.parse().map(|v| Range { start: v, end: v }).ok())
-            .unwrap_or(config.snapshot_threshold);
+            .unwrap_or(snapshot_threshold);
         let snapshot_threshold = track!(SnapshotThreshold::new(
             &node_id.to_string(),
             snapshot_threshold_range
         ))?;
         let reelection_threshold = env::var("FRUGALOS_REELECTION_THRESHOLD")
             .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(DEFAULT_REELECTION_THRESHOLD);
-        let large_queue_threshold = env::var("FRUGALOS_LARE_QUEUE_THRESHOLD")
+            .and_then(|v| v.parse().map(ReElectionThreshold).ok())
+            .unwrap_or_else(|| ReElectionThreshold(config.reelection_threshold));
+        let large_queue_threshold = env::var("FRUGALOS_LARGE_QUEUE_THRESHOLD")
             .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(DEFAULT_LARGE_QUEUE_THRESHOLD);
+            .and_then(|v| v.parse().map(LargeProposalQueueThreshold).ok())
+            .unwrap_or_else(|| LargeProposalQueueThreshold(config.large_proposal_queue_threshold));
+        let large_leader_waiting_queue_threshold =
+            LargeLeaderWaitingQueueThreshold(config.large_leader_waiting_queue_threshold);
+        let leader_waiting_timeout =
+            LeaderWaitingTimeout::new(config.leader_waiting_timeout_threshold);
         info!(
             logger,
-            "Thresholds: snapshot={}, reelection={}, queue={}",
+            "Thresholds: snapshot={}, reelection={}, queue={}, commit_timeout={}, leader_waiting={}",
             snapshot_threshold,
-            reelection_threshold,
-            large_queue_threshold
+            reelection_threshold.0,
+            large_queue_threshold.0,
+            config.commit_timeout_threshold,
+            large_leader_waiting_queue_threshold.0,
         );
 
         let metrics = track!(Metrics::new(&node_id))?;
@@ -166,8 +211,9 @@ impl Node {
             node_id,
             rlog,
             leader: None,
+            large_leader_waiting_queue_threshold,
             leader_waitings: Vec::new(),
-            leader_waiting_timeout: 0,
+            leader_waiting_timeout,
             request_rx,
             proposals: VecDeque::new(),
             local_log_size: 0,
@@ -179,12 +225,14 @@ impl Node {
             metrics,
             ready_snapshot: None,
             decoding_snapshot: None,
-            polling_timer: timer::timeout(Duration::from_millis(500)),
+            polling_timer: timer::timeout(config.node_polling_interval),
+            polling_timer_interval: config.node_polling_interval,
             phase: Phase::Running,
             large_queue_rounds: 0,
             large_queue_threshold,
             reelection_threshold,
             commit_timeout: None,
+            commit_timeout_threshold: config.commit_timeout_threshold,
             rpc_service,
         })
     }
@@ -217,10 +265,10 @@ impl Node {
                     monitored.exit(Ok(leader));
                 } else {
                     if self.leader_waitings.is_empty() {
-                        self.leader_waiting_timeout = 10; // TODO:
+                        self.leader_waiting_timeout.reset();
                     }
                     self.leader_waitings.push(monitored);
-                    if self.leader_waitings.len() > 10000 {
+                    if self.leader_waitings.len() > self.large_leader_waiting_queue_threshold.0 {
                         // NOTE: リーダが収束しない状態で無限にメモリを消費してしまうことがないようにする
                         // TODO: もう少しちゃんと制御（e.g., timeout)
                         warn!(self.logger, "Too many waitings (cleared)");
@@ -417,7 +465,7 @@ impl Node {
         }
         self.proposals.push_back(proposal);
         if self.commit_timeout.is_none() {
-            self.commit_timeout = Some(30); // TODO: parameter
+            self.commit_timeout = Some(self.commit_timeout_threshold);
         }
     }
     fn check_leader(&self) -> Result<()> {
@@ -647,16 +695,16 @@ impl Stream for Node {
             //
             // TODO: バグが修正されたら、このコードは消す
             // => 定期実行系は便利ではあるので、残しておいても良いかも
-            self.polling_timer = timer::timeout(Duration::from_millis(500));
+            self.polling_timer = timer::timeout(self.polling_timer_interval);
 
             // キュー長チェック
             let proposal_queue_len = self.rlog.proposal_queue_len();
             self.metrics
                 .proposal_queue_len
                 .set(proposal_queue_len as f64);
-            if proposal_queue_len > self.large_queue_threshold {
+            if proposal_queue_len > self.large_queue_threshold.0 {
                 self.large_queue_rounds += 1;
-                if self.large_queue_rounds >= self.reelection_threshold {
+                if self.large_queue_rounds >= self.reelection_threshold.0 {
                     warn!(self.logger, "The leader may be slow. Reelection is started");
                     self.start_reelection();
                     self.large_queue_rounds = 0;
@@ -677,8 +725,8 @@ impl Stream for Node {
             }
 
             // リーダ待機チェック
-            self.leader_waiting_timeout = self.leader_waiting_timeout.saturating_sub(1);
-            if self.leader_waiting_timeout == 0 && !self.leader_waitings.is_empty() {
+            self.leader_waiting_timeout.decrement();
+            if self.leader_waiting_timeout.is_expired() && !self.leader_waitings.is_empty() {
                 warn!(self.logger, "Leader waiting timeout (cleared)");
                 self.leader_waitings.clear();
             }
@@ -762,5 +810,26 @@ impl Stream for Node {
             return Ok(Async::Ready(Some(event)));
         }
         Ok(Async::NotReady)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn leader_waiting_timeout_works() {
+        let mut timeout = LeaderWaitingTimeout::new(3);
+        assert!(timeout.is_expired());
+        timeout.reset();
+        assert!(!timeout.is_expired());
+        timeout.decrement();
+        timeout.decrement();
+        timeout.decrement();
+        assert!(timeout.is_expired());
+        timeout.decrement();
+        assert!(timeout.is_expired());
+        timeout.reset();
+        assert!(!timeout.is_expired());
     }
 }
