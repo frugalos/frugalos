@@ -383,6 +383,7 @@ impl DispersedClient {
             rpc_service: self.rpc_service,
             parent: Span::inactive().handle(), // TODO
             timeout: None,
+            next_timeout_duration: self.client_config.get_timeout,
         };
         GetDispersedFragment {
             phase: Phase::A(future),
@@ -422,6 +423,7 @@ impl DispersedClient {
             rpc_service: self.rpc_service,
             parent: span.handle(),
             timeout: Some(timer::timeout(self.client_config.get_timeout)),
+            next_timeout_duration: self.client_config.get_timeout,
         };
         Box::new(DispersedGet {
             phase: Phase::A(future),
@@ -624,6 +626,9 @@ pub struct CollectFragments {
     //
     // TODO: `deadline`を考慮した値を使うようにする
     timeout: Option<timer::Timeout>,
+
+    /// How long to wait before aborting the next get operation.
+    next_timeout_duration: Duration,
 }
 impl CollectFragments {
     fn fill_shortage_from_spare(&mut self, mut force: bool) -> Result<()> {
@@ -730,14 +735,15 @@ impl Future for CollectFragments {
                 // TODO: ログは出さなくする(かわりにprometheusを使う)
                 info!(
                     self.logger,
-                    "Collecting fragments timeout expired: add new candidate"
+                    "Collecting fragments timeout expired: add new candidate. next_timeout={:?}",
+                    self.next_timeout_duration
                 );
                 self.timeout = None;
                 if !self.spares.is_empty() {
                     if let Err(e) = track!(self.fill_shortage_from_spare(true)) {
                         warn!(self.logger, "{}", e);
                     } else {
-                        self.timeout = Some(timer::timeout(Duration::from_secs(2)));
+                        self.timeout = Some(timer::timeout(self.next_timeout_duration));
                         continue;
                     }
                 }
