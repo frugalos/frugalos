@@ -73,6 +73,7 @@ impl fmt::Display for SnapshotThreshold {
 fn fill_rng_seed(seed: &mut [u8], src: &str) {
     let len = src.len();
     let mut src = src.to_owned();
+    src.truncate(SEED_LENGTH);
     if len < SEED_LENGTH {
         // Zero padding is acceptable because we don't need a random seed here.
         src.extend(iter::repeat("0").take(SEED_LENGTH - len));
@@ -85,12 +86,13 @@ mod tests {
     use super::*;
     use trackable::result::TestResult;
 
-    const SEED: &str = "xCZw9dir5QixSgZVzjvve7UXUZbYf2eD";
+    const GOOD_SEED: &str = "xCZw9dir5QixSgZVzjvve7UXUZbYf2eD";
+    const LONG_SEED: &str = "abcdefghijklmnopqrstuvwxyz0123456789";
 
     #[test]
     fn it_works() -> TestResult {
         let range = Range { start: 0, end: 100 };
-        let mut threshold = track!(SnapshotThreshold::new(SEED, range))?;
+        let mut threshold = track!(SnapshotThreshold::new(GOOD_SEED, range))?;
         assert_eq!(20, threshold.value());
         threshold.refresh();
         assert_eq!(31, threshold.value());
@@ -100,7 +102,19 @@ mod tests {
     #[test]
     fn it_works_with_minimum_range() -> TestResult {
         let range = Range { start: 1, end: 1 };
-        let mut threshold = track!(SnapshotThreshold::new(SEED, range))?;
+        let mut threshold = track!(SnapshotThreshold::new(GOOD_SEED, range))?;
+        assert_eq!(1, threshold.value());
+        threshold.refresh();
+        assert_eq!(1, threshold.value());
+        threshold.refresh();
+        assert_eq!(1, threshold.value());
+        Ok(())
+    }
+
+    #[test]
+    fn it_works_with_long_seed() -> TestResult {
+        let range = Range { start: 1, end: 1 };
+        let mut threshold = track!(SnapshotThreshold::new(LONG_SEED, range))?;
         assert_eq!(1, threshold.value());
         threshold.refresh();
         assert_eq!(1, threshold.value());
@@ -111,7 +125,7 @@ mod tests {
 
     #[test]
     fn it_rejects_invalid_range() -> TestResult {
-        assert!(SnapshotThreshold::new(SEED, Range { start: 3, end: 2 }).is_err());
+        assert!(SnapshotThreshold::new(GOOD_SEED, Range { start: 3, end: 2 }).is_err());
         Ok(())
     }
 
