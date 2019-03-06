@@ -17,6 +17,9 @@ pub struct SnapshotThreshold {
     /// The value range which this threshold may take.
     range: Range<usize>,
     /// The current value of this threshold.
+    /// invariant: range.start <= current <= range.end
+    /// NOTE: We don't add assert! for this invariant because it's not critical
+    ///       even if this invariant is not satisfied strictly.
     current: usize,
 }
 
