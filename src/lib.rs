@@ -67,6 +67,7 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct FrugalosConfigWrapper {
     #[serde(rename = "frugalos")]
+    #[serde(default)]
     config: FrugalosConfig,
 }
 
@@ -74,22 +75,30 @@ struct FrugalosConfigWrapper {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FrugalosConfig {
     /// データ用ディレクトリのパス。
+    #[serde(default)]
     pub data_dir: String,
     /// ログをファイルに出力する場合の出力先ファイルパス。
+    #[serde(default)]
     pub log_file: Option<PathBuf>,
     /// 出力するログレベルの下限。
+    #[serde(default = "default_loglevel")]
     pub loglevel: sloggers::types::Severity,
     /// 同時に処理できるログの最大値。
+    #[serde(default = "default_max_concurrent_logs")]
     pub max_concurrent_logs: usize,
     /// デーモン向けの設定。
+    #[serde(default)]
     pub daemon: FrugalosDaemonConfig,
     /// HTTP server 向けの設定。
+    #[serde(default)]
     pub http_server: FrugalosHttpServerConfig,
     /// RPC server 向けの設定。
+    #[serde(default)]
     pub rpc_server: FrugalosRpcServerConfig,
     /// frugalos_mds 向けの設定。
     pub mds: frugalos_mds::FrugalosMdsConfig,
     /// frugalos_segment 向けの設定。
+    #[serde(default)]
     pub segment: frugalos_segment::FrugalosSegmentConfig,
 }
 
@@ -107,9 +116,9 @@ impl Default for FrugalosConfig {
     fn default() -> Self {
         Self {
             data_dir: Default::default(),
-            log_file: None,
-            loglevel: sloggers::types::Severity::Info,
-            max_concurrent_logs: 4096,
+            log_file: Default::default(),
+            loglevel: default_loglevel(),
+            max_concurrent_logs: default_max_concurrent_logs(),
             daemon: Default::default(),
             http_server: Default::default(),
             rpc_server: Default::default(),
@@ -185,6 +194,14 @@ impl Default for FrugalosRpcServerConfig {
     }
 }
 
+fn default_loglevel() -> sloggers::types::Severity {
+    sloggers::types::Severity::Info
+}
+
+fn default_max_concurrent_logs() -> usize {
+    4096
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,10 +242,14 @@ frugalos:
       start: 100
       end: 200
   segment:
+    dispersed_client:
+      get_timeout:
+        secs: 4
+        nanos: 0
     mds_client:
       put_content_timeout: 32"##;
         let dir = track_any_err!(TempDir::new("frugalos_test"))?;
-        let filepath = dir.path().join("frugalos.yml");
+        let filepath = dir.path().join("frugalos1.yml");
         let mut file = track_any_err!(File::create(filepath.clone()))?;
 
         track_any_err!(file.write(content.as_bytes()))?;
@@ -249,9 +270,25 @@ frugalos:
             start: 100,
             end: 200,
         };
+        expected.segment.dispersed_client.get_timeout = Duration::from_secs(4);
         expected.segment.mds_client.put_content_timeout = Seconds(32);
 
         assert_eq!(expected, actual);
+
+        Ok(())
+    }
+
+    #[test]
+    fn config_default_works() -> TestResult {
+        let content = r##"---\nfrugalos: {}"##;
+        let dir = track_any_err!(TempDir::new("frugalos_test"))?;
+        let filepath = dir.path().join("frugalos2.yml");
+        let mut file = track_any_err!(File::create(filepath.clone()))?;
+
+        track_any_err!(file.write(content.as_bytes()))?;
+
+        let actual = track!(FrugalosConfig::from_yaml(filepath))?;
+        assert_eq!(FrugalosConfig::default(), actual);
 
         Ok(())
     }

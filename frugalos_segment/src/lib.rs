@@ -60,13 +60,18 @@ pub struct ObjectValue {
 /// frugalos_segment の設定を表す struct。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FrugalosSegmentConfig {
+    /// A configuration for a dispersed client.
+    #[serde(default)]
+    pub dispersed_client: config::DispersedClientConfig,
     /// A configuration for `MdsClient`.
+    #[serde(default)]
     pub mds_client: config::MdsClientConfig,
 }
 
 impl Default for FrugalosSegmentConfig {
     fn default() -> Self {
         Self {
+            dispersed_client: Default::default(),
             mds_client: Default::default(),
         }
     }
