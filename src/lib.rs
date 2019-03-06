@@ -96,6 +96,7 @@ pub struct FrugalosConfig {
     #[serde(default)]
     pub rpc_server: FrugalosRpcServerConfig,
     /// frugalos_mds 向けの設定。
+    #[serde(default)]
     pub mds: frugalos_mds::FrugalosMdsConfig,
     /// frugalos_segment 向けの設定。
     #[serde(default)]
@@ -283,6 +284,24 @@ frugalos:
         let content = r##"---\nfrugalos: {}"##;
         let dir = track_any_err!(TempDir::new("frugalos_test"))?;
         let filepath = dir.path().join("frugalos2.yml");
+        let mut file = track_any_err!(File::create(filepath.clone()))?;
+
+        track_any_err!(file.write(content.as_bytes()))?;
+
+        let actual = track!(FrugalosConfig::from_yaml(filepath))?;
+        assert_eq!(FrugalosConfig::default(), actual);
+
+        Ok(())
+    }
+
+    #[test]
+    fn it_works_even_if_mds_config_is_missing() -> TestResult {
+        let content = r##"---
+        frugalos:
+          segment: {}
+        "##;
+        let dir = track_any_err!(TempDir::new("frugalos_test"))?;
+        let filepath = dir.path().join("frugalos3.yml");
         let mut file = track_any_err!(File::create(filepath.clone()))?;
 
         track_any_err!(file.write(content.as_bytes()))?;
