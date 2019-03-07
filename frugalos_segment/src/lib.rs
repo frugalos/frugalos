@@ -57,7 +57,7 @@ pub struct ObjectValue {
     pub content: Vec<u8>,
 }
 
-/// frugalos_segment の設定を表す struct。
+/// `frugalos_segment` の設定。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FrugalosSegmentConfig {
     /// A configuration for a dispersed client.
