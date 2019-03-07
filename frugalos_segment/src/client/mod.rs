@@ -22,6 +22,7 @@ pub mod storage; // TODO: private
 /// セグメントにアクセスるために使用するクライアント。
 #[derive(Clone)]
 pub struct Client {
+    logger: Logger,
     mds: MdsClient,
     pub(crate) storage: StorageClient, // TODO: private
 }
@@ -39,8 +40,12 @@ impl Client {
             config.cluster.clone(),
             config.mds.clone(),
         );
-        let storage = StorageClient::new(logger, config, rpc_service, ec);
-        Client { mds, storage }
+        let storage = StorageClient::new(logger.clone(), config, rpc_service, ec);
+        Client {
+            logger,
+            mds,
+            storage,
+        }
     }
 
     /// オブジェクトを取得する。
@@ -91,12 +96,18 @@ impl Client {
         } else {
             Vec::new()
         };
+        let object_id = id.clone();
+        let logger = self.logger.clone();
         self.mds
             .put(id, metadata, expect, deadline, parent.clone())
             .and_then(move |(version, created)| {
+                let mut tracking = PutFailureTracking::new(logger, object_id);
                 storage
                     .put(version, content, deadline, parent)
-                    .map(move |()| (version, created))
+                    .map(move |()| {
+                        tracking.complete();
+                        (version, created)
+                    })
             })
     }
 
@@ -156,6 +167,39 @@ impl Client {
     /// セグメント内に保持されているオブジェクトの数を返す.
     pub fn object_count(&self) -> impl Future<Item = u64, Error = Error> {
         self.mds.object_count()
+    }
+}
+
+/// Put がアトミックではないため、ストレージへの保存に失敗した可能性を追跡する。
+struct PutFailureTracking {
+    logger: Logger,
+    /// 追跡対象のオブジェクトID。
+    object_id: ObjectId,
+    /// 操作が完了したか。
+    is_completed: bool,
+}
+
+impl PutFailureTracking {
+    fn new(logger: Logger, object_id: ObjectId) -> Self {
+        Self {
+            logger,
+            object_id,
+            is_completed: false,
+        }
+    }
+    fn complete(&mut self) {
+        self.is_completed = true;
+    }
+}
+
+impl Drop for PutFailureTracking {
+    fn drop(&mut self) {
+        if !self.is_completed {
+            warn!(
+                self.logger,
+                "A put operation might have failed: object_id={:?}", self.object_id
+            );
+        }
     }
 }
 
