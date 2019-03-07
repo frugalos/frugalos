@@ -238,6 +238,14 @@ frugalos:
       secs: 10
       nanos: 0
   mds:
+    commit_timeout_threshold: 20
+    large_proposal_queue_threshold: 250
+    large_leader_waiting_queue_threshold: 400
+    leader_waiting_timeout_threshold: 12
+    node_polling_interval:
+      secs: 0
+      nanos: 200000000
+    reelection_threshold: 48
     snapshot_threshold:
       start: 100
       end: 200
@@ -266,6 +274,12 @@ frugalos:
         expected.rpc_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 3333));
         expected.rpc_server.tcp_connect_timeout = Duration::from_secs(8);
         expected.rpc_server.tcp_write_timeout = Duration::from_secs(10);
+        expected.mds.commit_timeout_threshold = 20;
+        expected.mds.large_proposal_queue_threshold = 250;
+        expected.mds.large_leader_waiting_queue_threshold = 400;
+        expected.mds.leader_waiting_timeout_threshold = 12;
+        expected.mds.node_polling_interval = Duration::from_millis(200);
+        expected.mds.reelection_threshold = 48;
         expected.mds.snapshot_threshold = Range {
             start: 100,
             end: 200,
