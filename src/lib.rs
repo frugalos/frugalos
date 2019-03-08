@@ -96,6 +96,7 @@ pub struct FrugalosConfig {
     #[serde(default)]
     pub rpc_server: FrugalosRpcServerConfig,
     /// frugalos_mds 向けの設定。
+    #[serde(default)]
     pub mds: frugalos_mds::FrugalosMdsConfig,
     /// frugalos_segment 向けの設定。
     #[serde(default)]
@@ -293,8 +294,10 @@ frugalos:
     }
 
     #[test]
-    fn config_default_works() -> TestResult {
-        let content = r##"---\nfrugalos: {}"##;
+    fn default_config_values_is_used() -> TestResult {
+        let content = r##"---
+        frugalos: {}
+        "##;
         let dir = track_any_err!(TempDir::new("frugalos_test"))?;
         let filepath = dir.path().join("frugalos2.yml");
         let mut file = track_any_err!(File::create(filepath.clone()))?;
@@ -306,4 +309,37 @@ frugalos:
 
         Ok(())
     }
+
+    #[test]
+    fn it_works_even_if_mds_config_is_missing() -> TestResult {
+        let content = r##"---
+        frugalos:
+          segment: {}
+        "##;
+        let dir = track_any_err!(TempDir::new("frugalos_test"))?;
+        let filepath = dir.path().join("frugalos3.yml");
+        let mut file = track_any_err!(File::create(filepath.clone()))?;
+
+        track_any_err!(file.write(content.as_bytes()))?;
+
+        let actual = track!(FrugalosConfig::from_yaml(filepath))?;
+        assert_eq!(FrugalosConfig::default(), actual);
+
+        Ok(())
+    }
+
+    #[test]
+    fn frugalos_config_value_must_not_be_unit_type() -> TestResult {
+        let content = r##"---
+        frugalos:
+        "##;
+        let dir = track_any_err!(TempDir::new("frugalos_test"))?;
+        let filepath = dir.path().join("frugalos4.yml");
+        let mut file = track_any_err!(File::create(filepath.clone()))?;
+
+        track_any_err!(file.write(content.as_bytes()))?;
+        assert!(FrugalosConfig::from_yaml(filepath).is_err());
+        Ok(())
+    }
+
 }
