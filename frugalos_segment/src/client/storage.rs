@@ -278,7 +278,7 @@ impl Future for PutAll {
         loop {
             let remainings = match self.future.poll() {
                 Err((e, _, remainings)) => {
-                    if remainings.is_empty() && self.ok_count < self.required_ok_count {
+                    if remainings.len() + self.ok_count < self.required_ok_count {
                         return Err(track!(e));
                     }
                     remainings
@@ -881,14 +881,14 @@ mod tests {
     }
 
     #[test]
-    fn put_all_succeeds_incorrectly() {
+    fn put_all_fails_even_if_last_operation_succeeds() {
         let futures: Vec<BoxFuture<_>> = vec![
             Box::new(futures::future::err(ErrorKind::Other.into())),
             Box::new(futures::future::err(ErrorKind::Other.into())),
             Box::new(futures::future::ok(())),
         ];
         let put = PutAll::new(futures.into_iter(), 2);
-        assert!(wait(put).is_ok());
+        assert!(wait(put).is_err());
     }
 
     #[test]
