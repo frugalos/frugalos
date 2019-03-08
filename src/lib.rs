@@ -280,8 +280,10 @@ frugalos:
     }
 
     #[test]
-    fn config_default_works() -> TestResult {
-        let content = r##"---\nfrugalos: {}"##;
+    fn default_config_values_is_used() -> TestResult {
+        let content = r##"---
+        frugalos: {}
+        "##;
         let dir = track_any_err!(TempDir::new("frugalos_test"))?;
         let filepath = dir.path().join("frugalos2.yml");
         let mut file = track_any_err!(File::create(filepath.clone()))?;
@@ -311,4 +313,19 @@ frugalos:
 
         Ok(())
     }
+
+    #[test]
+    fn frugalos_config_value_must_not_be_unit_type() -> TestResult {
+        let content = r##"---
+        frugalos:
+        "##;
+        let dir = track_any_err!(TempDir::new("frugalos_test"))?;
+        let filepath = dir.path().join("frugalos4.yml");
+        let mut file = track_any_err!(File::create(filepath.clone()))?;
+
+        track_any_err!(file.write(content.as_bytes()))?;
+        assert!(FrugalosConfig::from_yaml(filepath).is_err());
+        Ok(())
+    }
+
 }
