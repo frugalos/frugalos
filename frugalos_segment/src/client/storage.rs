@@ -870,6 +870,28 @@ mod tests {
     }
 
     #[test]
+    fn put_all_fails_correctly() {
+        let futures: Vec<BoxFuture<_>> = vec![
+            Box::new(futures::future::err(ErrorKind::Other.into())),
+            Box::new(futures::future::ok(())),
+            Box::new(futures::future::err(ErrorKind::Other.into())),
+        ];
+        let put = PutAll::new(futures.into_iter(), 2);
+        assert!(wait(put).is_err());
+    }
+
+    #[test]
+    fn put_all_succeeds_incorrectly() {
+        let futures: Vec<BoxFuture<_>> = vec![
+            Box::new(futures::future::err(ErrorKind::Other.into())),
+            Box::new(futures::future::err(ErrorKind::Other.into())),
+            Box::new(futures::future::ok(())),
+        ];
+        let put = PutAll::new(futures.into_iter(), 2);
+        assert!(wait(put).is_ok());
+    }
+
+    #[test]
     fn it_puts_data_correctly() -> TestResult {
         let data_fragments = 4;
         let parity_fragments = 1;
