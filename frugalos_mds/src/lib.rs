@@ -22,6 +22,7 @@ extern crate patricia_tree;
 extern crate prometrics;
 #[macro_use]
 extern crate protobuf_codec;
+extern crate frugalos_core;
 extern crate frugalos_raft;
 extern crate raftlog;
 extern crate rand;
