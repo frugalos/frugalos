@@ -882,7 +882,7 @@ mod tests {
     }
 
     #[test]
-    fn put_all_new_works() {
+    fn put_all_new_works() -> TestResult {
         let futures: Vec<BoxFuture<_>> = vec![];
         assert!(PutAll::new(futures.into_iter(), 2).is_err());
 
@@ -893,14 +893,18 @@ mod tests {
             Box::new(futures::future::ok(())),
             Box::new(futures::future::ok(())),
         ];
-        assert!(PutAll::new(futures.into_iter(), 2).is_ok());
+        let put = track!(PutAll::new(futures.into_iter(), 2))?;
+        assert!(wait(put).is_ok());
 
         let futures: Vec<BoxFuture<_>> = vec![
             Box::new(futures::future::ok(())),
             Box::new(futures::future::ok(())),
             Box::new(futures::future::ok(())),
         ];
-        assert!(PutAll::new(futures.into_iter(), 2).is_ok());
+        let put = track!(PutAll::new(futures.into_iter(), 2))?;
+        assert!(wait(put).is_ok());
+
+        Ok(())
     }
 
     #[test]
