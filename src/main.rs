@@ -360,9 +360,11 @@ fn get_server_seqno(matches: &ArgMatches) -> Result<u32> {
     matches
         .value_of("SERVER_SEQNO")
         .map(|v| v.parse::<u32>().map_err(|e| track!(Error::from(e))))
-        .unwrap_or(Err(Error::from(
-            ErrorKind::InvalidInput.cause("server seqno must be specified"),
-        )))
+        .unwrap_or_else(|| {
+            Err(Error::from(
+                ErrorKind::InvalidInput.cause("server seqno must be specified"),
+            ))
+        })
 }
 
 fn set_data_dir(matches: &ArgMatches, config: &mut FrugalosConfig) {
