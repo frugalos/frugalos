@@ -120,7 +120,7 @@ where
                             rpc_service,
                             raft_service,
                             raft_metrics,
-                            mds_config,
+                            &mds_config,
                             mds_service,
                             node_id,
                             device,
@@ -210,7 +210,7 @@ impl SegmentNode {
         rpc_service: RpcServiceHandle,
         raft_service: frugalos_raft::ServiceHandle,
         raft_metrics: frugalos_raft::RpcMetrics,
-        mds_config: FrugalosMdsConfig,
+        mds_config: &FrugalosMdsConfig,
         mds_service: MdsHandle,
 
         node_id: NodeId,
@@ -247,7 +247,7 @@ impl SegmentNode {
         ))?;
         let node = track!(Node::new(
             logger.clone(),
-            mds_config,
+            &mds_config,
             mds_service,
             node_id,
             cluster,

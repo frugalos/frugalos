@@ -43,7 +43,7 @@ pub struct FrugalosDaemon {
 }
 impl FrugalosDaemon {
     /// Creates a new `FrugalosDaemon`.
-    pub fn new(logger: Logger, config: FrugalosConfig) -> Result<Self> {
+    pub fn new(logger: &Logger, config: FrugalosConfig) -> Result<Self> {
         let data_dir = config.data_dir;
         let http_addr = config.http_server.bind_addr;
         let logger = Logger::root(
