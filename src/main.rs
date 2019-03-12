@@ -240,7 +240,7 @@ fn main() {
             &mut config.segment
         )));
         let daemon = track_try_unwrap!(frugalos::daemon::FrugalosDaemon::new(
-            logger.clone(),
+            &logger,
             config.clone()
         ));
         track_try_unwrap!(daemon.run(config.daemon.clone()));

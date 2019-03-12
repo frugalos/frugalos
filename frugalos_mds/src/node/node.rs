@@ -159,7 +159,7 @@ impl Node {
     /// 新しい`Node`インスタンスを生成する.
     pub fn new(
         logger: Logger,
-        config: FrugalosMdsConfig,
+        config: &FrugalosMdsConfig,
         service: ServiceHandle,
         node_id: NodeId,
         cluster: ClusterMembers,
