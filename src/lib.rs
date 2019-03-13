@@ -179,10 +179,6 @@ impl Default for FrugalosHttpServerConfig {
 /// RPC server 向けの設定。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FrugalosRpcServerConfig {
-    /// bind するアドレス。
-    #[serde(default = "default_rpc_server_bind_addr")]
-    pub bind_addr: SocketAddr,
-
     /// RPC の接続タイムアウト時間。
     #[serde(
         rename = "tcp_connect_timeout_millis",
@@ -212,7 +208,6 @@ impl FrugalosRpcServerConfig {
 impl Default for FrugalosRpcServerConfig {
     fn default() -> Self {
         Self {
-            bind_addr: default_rpc_server_bind_addr(),
             tcp_connect_timeout: default_tcp_connect_timeout(),
             tcp_write_timeout: default_tcp_write_timeout(),
         }
@@ -233,10 +228,6 @@ fn default_stop_waiting_time() -> Duration {
 
 fn default_http_server_bind_addr() -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], 3000))
-}
-
-fn default_rpc_server_bind_addr() -> SocketAddr {
-    SocketAddr::from(([127, 0, 0, 1], 14278))
 }
 
 fn default_tcp_connect_timeout() -> Duration {
@@ -280,7 +271,6 @@ frugalos:
   http_server:
     bind_addr: "127.0.0.1:2222"
   rpc_server:
-    bind_addr: "127.0.0.1:3333"
     tcp_connect_timeout_millis: 8000
     tcp_write_timeout_millis: 10000
   mds:
@@ -312,7 +302,6 @@ frugalos:
         expected.daemon.executor_threads = 3;
         expected.daemon.stop_waiting_time = Duration::from_millis(300);
         expected.http_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 2222));
-        expected.rpc_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 3333));
         expected.rpc_server.tcp_connect_timeout = Duration::from_secs(8);
         expected.rpc_server.tcp_write_timeout = Duration::from_secs(10);
         expected.mds.commit_timeout_threshold = 20;
