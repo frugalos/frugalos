@@ -10,6 +10,7 @@ extern crate fibers_http_server;
 extern crate fibers_rpc;
 extern crate fibers_tasque;
 extern crate frugalos_config;
+extern crate frugalos_core;
 extern crate frugalos_mds;
 extern crate frugalos_raft;
 extern crate frugalos_segment;
@@ -133,19 +134,28 @@ impl Default for FrugalosConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FrugalosDaemonConfig {
     /// 実行スレッド数。
+    #[serde(default = "default_executor_threads")]
     pub executor_threads: usize,
+
     /// Jaegerのトレースのサンプリング確率。
+    #[serde(default = "default_sampling_rate")]
     pub sampling_rate: f64,
+
     /// frugalos 停止時に待つ時間。
+    #[serde(
+        rename = "stop_waiting_time_millis",
+        default = "default_stop_waiting_time",
+        with = "frugalos_core::serde_ext::duration_millis"
+    )]
     pub stop_waiting_time: Duration,
 }
 
 impl Default for FrugalosDaemonConfig {
     fn default() -> FrugalosDaemonConfig {
         Self {
-            executor_threads: num_cpus::get(),
-            sampling_rate: 0.001,
-            stop_waiting_time: Duration::from_millis(10),
+            executor_threads: default_executor_threads(),
+            sampling_rate: default_sampling_rate(),
+            stop_waiting_time: default_stop_waiting_time(),
         }
     }
 }
@@ -154,13 +164,14 @@ impl Default for FrugalosDaemonConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FrugalosHttpServerConfig {
     /// bind するアドレス。
+    #[serde(default = "default_http_server_bind_addr")]
     pub bind_addr: SocketAddr,
 }
 
 impl Default for FrugalosHttpServerConfig {
     fn default() -> Self {
         Self {
-            bind_addr: SocketAddr::from(([0, 0, 0, 0], 3000)),
+            bind_addr: default_http_server_bind_addr(),
         }
     }
 }
@@ -169,10 +180,23 @@ impl Default for FrugalosHttpServerConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FrugalosRpcServerConfig {
     /// bind するアドレス。
+    #[serde(default = "default_rpc_server_bind_addr")]
     pub bind_addr: SocketAddr,
+
     /// RPC の接続タイムアウト時間。
+    #[serde(
+        rename = "tcp_connect_timeout_millis",
+        default = "default_tcp_connect_timeout",
+        with = "frugalos_core::serde_ext::duration_millis"
+    )]
     pub tcp_connect_timeout: Duration,
+
     /// RPC の書き込みタイムアウト時間。
+    #[serde(
+        rename = "tcp_write_timeout_millis",
+        default = "default_tcp_write_timeout",
+        with = "frugalos_core::serde_ext::duration_millis"
+    )]
     pub tcp_write_timeout: Duration,
 }
 
@@ -188,11 +212,39 @@ impl FrugalosRpcServerConfig {
 impl Default for FrugalosRpcServerConfig {
     fn default() -> Self {
         Self {
-            bind_addr: SocketAddr::from(([127, 0, 0, 1], 14278)),
-            tcp_connect_timeout: Duration::from_millis(5000),
-            tcp_write_timeout: Duration::from_millis(5000),
+            bind_addr: default_rpc_server_bind_addr(),
+            tcp_connect_timeout: default_tcp_connect_timeout(),
+            tcp_write_timeout: default_tcp_write_timeout(),
         }
     }
+}
+
+fn default_executor_threads() -> usize {
+    num_cpus::get()
+}
+
+fn default_sampling_rate() -> f64 {
+    0.001
+}
+
+fn default_stop_waiting_time() -> Duration {
+    Duration::from_millis(10)
+}
+
+fn default_http_server_bind_addr() -> SocketAddr {
+    SocketAddr::from(([127, 0, 0, 1], 3000))
+}
+
+fn default_rpc_server_bind_addr() -> SocketAddr {
+    SocketAddr::from(([127, 0, 0, 1], 14278))
+}
+
+fn default_tcp_connect_timeout() -> Duration {
+    Duration::from_secs(5)
+}
+
+fn default_tcp_write_timeout() -> Duration {
+    Duration::from_secs(5)
 }
 
 fn default_loglevel() -> sloggers::types::Severity {
@@ -209,7 +261,6 @@ mod tests {
     use libfrugalos::time::Seconds;
     use std::fs::File;
     use std::io::Write;
-    use std::ops::Range;
     use tempdir::TempDir;
     use trackable::result::TestResult;
 
@@ -225,38 +276,27 @@ frugalos:
   daemon:
     executor_threads: 3
     sampling_rate: 0.1
-    stop_waiting_time:
-      secs: 300
-      nanos: 0
+    stop_waiting_time_millis: 300
   http_server:
     bind_addr: "127.0.0.1:2222"
   rpc_server:
     bind_addr: "127.0.0.1:3333"
-    tcp_connect_timeout:
-      secs: 8
-      nanos: 0
-    tcp_write_timeout:
-      secs: 10
-      nanos: 0
+    tcp_connect_timeout_millis: 8000
+    tcp_write_timeout_millis: 10000
   mds:
     commit_timeout_threshold: 20
     large_proposal_queue_threshold: 250
     large_leader_waiting_queue_threshold: 400
     leader_waiting_timeout_threshold: 12
-    node_polling_interval:
-      secs: 0
-      nanos: 200000000
+    node_polling_interval_millis: 200
     reelection_threshold: 48
-    snapshot_threshold:
-      start: 100
-      end: 200
+    snapshot_threshold_min: 100
+    snapshot_threshold_max: 200
   segment:
     dispersed_client:
-      get_timeout:
-        secs: 4
-        nanos: 0
+      get_timeout_millis: 4000
     mds_client:
-      put_content_timeout: 32"##;
+      put_content_timeout_secs: 32"##;
         let dir = track_any_err!(TempDir::new("frugalos_test"))?;
         let filepath = dir.path().join("frugalos1.yml");
         let mut file = track_any_err!(File::create(filepath.clone()))?;
@@ -270,7 +310,7 @@ frugalos:
         expected.loglevel = sloggers::types::Severity::Critical;
         expected.daemon.sampling_rate = 0.1;
         expected.daemon.executor_threads = 3;
-        expected.daemon.stop_waiting_time = Duration::from_secs(300);
+        expected.daemon.stop_waiting_time = Duration::from_millis(300);
         expected.http_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 2222));
         expected.rpc_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 3333));
         expected.rpc_server.tcp_connect_timeout = Duration::from_secs(8);
@@ -281,10 +321,8 @@ frugalos:
         expected.mds.leader_waiting_timeout_threshold = 12;
         expected.mds.node_polling_interval = Duration::from_millis(200);
         expected.mds.reelection_threshold = 48;
-        expected.mds.snapshot_threshold = Range {
-            start: 100,
-            end: 200,
-        };
+        expected.mds.snapshot_threshold_min = 100;
+        expected.mds.snapshot_threshold_max = 200;
         expected.segment.dispersed_client.get_timeout = Duration::from_secs(4);
         expected.segment.mds_client.put_content_timeout = Seconds(32);
 

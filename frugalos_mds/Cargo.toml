@@ -19,6 +19,7 @@ cannyls = "0.9"
 fibers = "0.1"
 fibers_rpc = "0.2"
 fibers_tasque = "0.1"
+frugalos_core = { version = "0.1", path = "../frugalos_core" }
 frugalos_raft = { version = "0.6", path = "../frugalos_raft/" }
 futures = "0.1"
 libfrugalos = "0.2"

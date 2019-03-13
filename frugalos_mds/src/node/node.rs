@@ -173,7 +173,7 @@ impl Node {
         let rlog = ReplicatedLog::new(node_id.to_raft_node_id(), cluster, io);
 
         // For backward compatibility
-        let snapshot_threshold = config.snapshot_threshold.clone();
+        let snapshot_threshold = config.snapshot_threshold();
         let snapshot_threshold_range = env::var("FRUGALOS_SNAPSHOT_THRESHOLD")
             .ok()
             .and_then(|v| v.parse().map(|v| Range { start: v, end: v }).ok())

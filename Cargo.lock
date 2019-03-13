@@ -281,6 +281,7 @@ dependencies = [
  "fibers_rpc 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_tasque 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "frugalos_config 0.3.0",
+ "frugalos_core 0.1.0",
  "frugalos_mds 0.6.1",
  "frugalos_raft 0.6.0",
  "frugalos_segment 0.6.0",
@@ -328,6 +329,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "frugalos_core"
+version = "0.1.0"
+dependencies = [
+ "serde 1.0.80 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_derive 1.0.80 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_yaml 0.8.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "trackable 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "frugalos_mds"
 version = "0.6.1"
 dependencies = [
@@ -339,6 +350,7 @@ dependencies = [
  "fibers_global 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_rpc 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_tasque 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "frugalos_core 0.1.0",
  "frugalos_raft 0.6.0",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "libfrugalos 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -390,6 +402,7 @@ dependencies = [
  "fibers 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_global 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_rpc 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
+ "frugalos_core 0.1.0",
  "frugalos_mds 0.6.1",
  "frugalos_raft 0.6.0",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",

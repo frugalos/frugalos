@@ -33,7 +33,11 @@ pub struct FrugalosMdsConfig {
     pub leader_waiting_timeout_threshold: usize,
 
     /// node がポーリングする間隔。
-    #[serde(default = "default_node_polling_interval")]
+    #[serde(
+        rename = "node_polling_interval_millis",
+        default = "default_node_polling_interval",
+        with = "frugalos_core::serde_ext::duration_millis"
+    )]
     pub node_polling_interval: Duration,
 
     /// リーダが重い場合に再選出を行うかどうかを決める閾値。
@@ -42,11 +46,25 @@ pub struct FrugalosMdsConfig {
     #[serde(default = "default_reelection_threshold")]
     pub reelection_threshold: usize,
 
-    /// スナップショットを取る際の閾値(レンジの両端を含む).
+    /// スナップショットを取る際の閾値の下限(この値を含む).
+    #[serde(default = "default_snapshot_threshold_min")]
+    pub snapshot_threshold_min: usize,
+
+    /// スナップショットを取る際の閾値の上限(この値を含む).
+    #[serde(default = "default_snapshot_threshold_max")]
+    pub snapshot_threshold_max: usize,
+}
+
+impl FrugalosMdsConfig {
+    /// スナップショットを取る際の閾値を返す(両端の値を含む).
     ///
     /// `Node` のローカルログの長さが、この値を超えた場合に、スナップショットの取得が開始される.
-    #[serde(default = "default_snapshot_threshold")]
-    pub snapshot_threshold: Range<usize>,
+    pub fn snapshot_threshold(&self) -> Range<usize> {
+        Range {
+            start: self.snapshot_threshold_min,
+            end: self.snapshot_threshold_max,
+        }
+    }
 }
 
 impl Default for FrugalosMdsConfig {
@@ -58,7 +76,8 @@ impl Default for FrugalosMdsConfig {
             leader_waiting_timeout_threshold: default_leader_waiting_timeout_threshold(),
             node_polling_interval: default_node_polling_interval(),
             reelection_threshold: default_reelection_threshold(),
-            snapshot_threshold: default_snapshot_threshold(),
+            snapshot_threshold_min: default_snapshot_threshold_min(),
+            snapshot_threshold_max: default_snapshot_threshold_max(),
         }
     }
 }
@@ -87,9 +106,10 @@ fn default_reelection_threshold() -> usize {
     10
 }
 
-fn default_snapshot_threshold() -> Range<usize> {
-    Range {
-        start: 9_500,
-        end: 10_500,
-    }
+fn default_snapshot_threshold_min() -> usize {
+    9_500
+}
+
+fn default_snapshot_threshold_max() -> usize {
+    10_500
 }
