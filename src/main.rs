@@ -19,10 +19,10 @@ use sloggers::Build;
 use std::env;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
-use trackable::error::Failure;
+use trackable::error::{ErrorKindExt, Failure};
 
 use frugalos::FrugalosConfig;
-use frugalos::{Error, Result};
+use frugalos::{Error, ErrorKind, Result};
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
@@ -48,6 +48,13 @@ fn main() {
         .subcommand(
             SubCommand::with_name("leave")
                 .arg(contact_server_addr_arg())
+                .arg(data_dir_arg()),
+        )
+        .subcommand(
+            SubCommand::with_name("repair-local-dat")
+                .arg(server_id_arg())
+                .arg(server_addr_arg().required(true))
+                .arg(server_seqno_arg().required(true))
                 .arg(data_dir_arg()),
         )
         .subcommand(
@@ -219,6 +226,28 @@ fn main() {
             config.data_dir,
             contact_server,
         ));
+    } else if let Some(matches) = matches.subcommand_matches("repair-local-dat") {
+        let server_id = matches
+            .value_of("SERVER_ID")
+            .map(|v| v.to_string())
+            .or_else(hostname::get_hostname)
+            .unwrap();
+        let server_addr = config.rpc_server.bind_addr.to_string();
+        let server_addr = matches.value_of("SERVER_ADDR").unwrap_or(&server_addr);
+        set_data_dir(&matches, &mut config);
+
+        let logger = track_try_unwrap!(logger_builder.build());
+        let logger = logger.new(o!("server" => format!("{}@{}", server_id, server_addr)));
+        let mut server = Server::new(
+            server_id.to_string(),
+            track_try_unwrap!(server_addr.parse().map_err(Failure::from_error)),
+        );
+        server.seqno = track_try_unwrap!(get_server_seqno(matches));
+        debug!(logger, "config: {:?}", config);
+        track_try_unwrap!(frugalos_config::cluster::save_local_server_info(
+            config.data_dir,
+            server,
+        ));
     } else if let Some(matches) = matches.subcommand_matches("start") {
         // START SERVER
         let logger = track_try_unwrap!(logger_builder.build());
@@ -296,6 +325,13 @@ fn server_addr_arg<'a, 'b>() -> Arg<'a, 'b> {
         .takes_value(true)
 }
 
+fn server_seqno_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("SERVER_SEQNO")
+        .help("seqno of this server")
+        .long("seqno")
+        .takes_value(true)
+}
+
 fn contact_server_addr_arg<'a, 'b>() -> Arg<'a, 'b> {
     Arg::with_name("CONTACT_SERVER_ADDR")
         .long("contact-server")
@@ -318,6 +354,17 @@ fn put_content_timeout_arg<'a, 'b>() -> Arg<'a, 'b> {
         .help("Sets timeout in seconds on putting a content.")
         .long("put-content-timeout")
         .takes_value(true)
+}
+
+fn get_server_seqno(matches: &ArgMatches) -> Result<u32> {
+    matches
+        .value_of("SERVER_SEQNO")
+        .map(|v| v.parse::<u32>().map_err(|e| track!(Error::from(e))))
+        .unwrap_or_else(|| {
+            Err(Error::from(
+                ErrorKind::InvalidInput.cause("server seqno must be specified"),
+            ))
+        })
 }
 
 fn set_data_dir(matches: &ArgMatches, config: &mut FrugalosConfig) {
