@@ -29,19 +29,19 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 #[allow(clippy::cyclomatic_complexity)]
 fn main() {
-    let rpc_server_bind_addr = FrugalosConfig::default().rpc_server.bind_addr.to_string();
+    let rpc_server_bind_addr = default_rpc_server_bind_addr();
     let matches = App::new("frugalos")
         .version(env!("CARGO_PKG_VERSION"))
         .subcommand(
             SubCommand::with_name("create")
                 .arg(server_id_arg())
-                .arg(server_addr_arg())
+                .arg(server_addr_arg(&rpc_server_bind_addr))
                 .arg(data_dir_arg()),
         )
         .subcommand(
             SubCommand::with_name("join")
                 .arg(server_id_arg())
-                .arg(server_addr_arg())
+                .arg(server_addr_arg(&rpc_server_bind_addr))
                 .arg(contact_server_addr_arg())
                 .arg(data_dir_arg()),
         )
@@ -53,7 +53,7 @@ fn main() {
         .subcommand(
             SubCommand::with_name("repair-local-dat")
                 .arg(server_id_arg())
-                .arg(server_addr_arg().required(true))
+                .arg(server_addr_arg(&rpc_server_bind_addr).required(true))
                 .arg(server_seqno_arg().required(true))
                 .arg(data_dir_arg()),
         )
@@ -169,8 +169,7 @@ fn main() {
             .map(|v| v.to_string())
             .or_else(hostname::get_hostname)
             .unwrap();
-        let server_addr = config.rpc_server.bind_addr.to_string();
-        let server_addr = matches.value_of("SERVER_ADDR").unwrap_or(&server_addr);
+        let server_addr = matches.value_of("SERVER_ADDR").unwrap();
         set_data_dir(&matches, &mut config);
 
         let logger = track_try_unwrap!(logger_builder.build());
@@ -192,8 +191,7 @@ fn main() {
             .map(|v| v.to_string())
             .or_else(hostname::get_hostname)
             .unwrap();
-        let server_addr = config.rpc_server.bind_addr.to_string();
-        let server_addr = matches.value_of("SERVER_ADDR").unwrap_or(&server_addr);
+        let server_addr = matches.value_of("SERVER_ADDR").unwrap();
         let contact_server_addr = matches.value_of("CONTACT_SERVER_ADDR").unwrap();
         set_data_dir(&matches, &mut config);
 
@@ -232,8 +230,7 @@ fn main() {
             .map(|v| v.to_string())
             .or_else(hostname::get_hostname)
             .unwrap();
-        let server_addr = config.rpc_server.bind_addr.to_string();
-        let server_addr = matches.value_of("SERVER_ADDR").unwrap_or(&server_addr);
+        let server_addr = matches.value_of("SERVER_ADDR").unwrap();
         set_data_dir(&matches, &mut config);
 
         let logger = track_try_unwrap!(logger_builder.build());
@@ -318,11 +315,12 @@ fn server_id_arg<'a, 'b>() -> Arg<'a, 'b> {
 }
 
 // NOTE: The address of RPC server
-fn server_addr_arg<'a, 'b>() -> Arg<'a, 'b> {
+fn server_addr_arg<'a, 'b>(default_value: &'a str) -> Arg<'a, 'b> {
     Arg::with_name("SERVER_ADDR")
         .long("addr")
         .alias("rpc-addr")
         .takes_value(true)
+        .default_value(default_value)
 }
 
 fn server_seqno_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -354,6 +352,10 @@ fn put_content_timeout_arg<'a, 'b>() -> Arg<'a, 'b> {
         .help("Sets timeout in seconds on putting a content.")
         .long("put-content-timeout")
         .takes_value(true)
+}
+
+fn default_rpc_server_bind_addr() -> String {
+    "127.0.0.1:14278".to_owned()
 }
 
 fn get_server_seqno(matches: &ArgMatches) -> Result<u32> {
