@@ -257,9 +257,9 @@ fn main() {
             &matches,
             &mut config.http_server
         )));
-        track_try_unwrap!(track_any_err!(set_rpc_server_config(
+        track_try_unwrap!(track_any_err!(set_rpc_client_config(
             &matches,
-            &mut config.rpc_server
+            &mut config.rpc_client
         )));
         track_try_unwrap!(track_any_err!(set_segment_config(
             &matches,
@@ -425,10 +425,10 @@ fn set_http_server_config(
     Ok(())
 }
 
-/// Sets configurations for a RPC server.
-fn set_rpc_server_config(
+/// Sets configurations for a RPC client.
+fn set_rpc_client_config(
     matches: &ArgMatches,
-    config: &mut frugalos::FrugalosRpcServerConfig,
+    config: &mut frugalos::FrugalosRpcClientConfig,
 ) -> Result<()> {
     if let Some(v) = matches.value_of("RPC_CONNECT_TIMEOUT_MILLIS") {
         config.tcp_connect_timeout = v

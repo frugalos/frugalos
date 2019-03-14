@@ -66,7 +66,7 @@ impl FrugalosDaemon {
         .map_err(Error::from))?;
         let rpc_service = RpcServiceBuilder::new()
             .logger(logger.clone())
-            .channel_options(config.rpc_server.channel_options())
+            .channel_options(config.rpc_client.channel_options())
             .finish(executor.handle());
 
         let raft_service = frugalos_raft::Service::new(logger.clone(), &mut rpc_server_builder);
