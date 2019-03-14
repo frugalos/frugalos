@@ -106,11 +106,20 @@ pub struct FrugalosConfig {
 
 impl FrugalosConfig {
     /// Reads `FrugalosConfig` from a YAML file.
-    pub fn from_yaml<P: AsRef<Path>>(path: P) -> Result<FrugalosConfig> {
-        let file = File::open(path.as_ref()).map_err(|e| track!(Error::from(e)))?;
-        serde_yaml::from_reader::<File, FrugalosConfigWrapper>(file)
-            .map(|wrapped| wrapped.config)
-            .map_err(|e| track!(Error::from(e)))
+    ///
+    /// Return Value:
+    ///  * The first component is an obtained value of `FrugalosConfig`.
+    ///  * The second component is unknown fields that appear in the `path` with respect to the definition of `FrugalosConfig`.
+    pub fn from_yaml<P: AsRef<Path>>(path: P) -> Result<(FrugalosConfig, std::vec::Vec<String>)> {
+        let file = File::open(path).map_err(|e| track!(Error::from(e)))?;
+        let value: serde_yaml::Value =
+            serde_yaml::from_reader(file).map_err(|e| track!(Error::from(e)))?;
+
+        let mut unknowns = std::vec::Vec::new();
+        let wrapped: FrugalosConfigWrapper =
+            serde_ignored::deserialize(value, |path| unknowns.push(path.to_string()))
+                .map_err(|e| track!(Error::from(e)))?;
+        Ok((wrapped.config, unknowns))
     }
 }
 
@@ -293,7 +302,7 @@ frugalos:
 
         track_any_err!(file.write(content.as_bytes()))?;
 
-        let actual = track!(FrugalosConfig::from_yaml(filepath))?;
+        let (actual, _) = track!(FrugalosConfig::from_yaml(filepath))?;
         let mut expected = FrugalosConfig::default();
         expected.data_dir = "/var/lib/frugalos".to_owned();
         expected.max_concurrent_logs = 30;
@@ -331,7 +340,7 @@ frugalos:
 
         track_any_err!(file.write(content.as_bytes()))?;
 
-        let actual = track!(FrugalosConfig::from_yaml(filepath))?;
+        let (actual, _) = track!(FrugalosConfig::from_yaml(filepath))?;
         assert_eq!(FrugalosConfig::default(), actual);
 
         Ok(())
@@ -349,7 +358,7 @@ frugalos:
 
         track_any_err!(file.write(content.as_bytes()))?;
 
-        let actual = track!(FrugalosConfig::from_yaml(filepath))?;
+        let (actual, _) = track!(FrugalosConfig::from_yaml(filepath))?;
         assert_eq!(FrugalosConfig::default(), actual);
 
         Ok(())
@@ -369,4 +378,36 @@ frugalos:
         Ok(())
     }
 
+    #[test]
+    fn frugalos_config_from_yaml_reports_unknown_fields() -> TestResult {
+        let content = r##"---
+        frugalos:
+          this_is_invalid_field:
+            inner:  "these member are not in FrugalosConfig"
+          daemon:
+            executor_threadz: "typo of executor_threads"
+          segment:
+            dispersed_client:
+              get_timeout_secs: "DispersedClientConfig only has get_time_millis"
+        "##;
+        let dir = track_any_err!(TempDir::new("frugalos_test"))?;
+        let filepath = dir.path().join("frugalos5.yml");
+        let mut file = track_any_err!(File::create(filepath.clone()))?;
+
+        track_any_err!(file.write(content.as_bytes()))?;
+        let (actual, mut unknowns) = track!(FrugalosConfig::from_yaml(filepath))?;
+        unknowns.sort();
+
+        assert_eq!(FrugalosConfig::default(), actual);
+        assert_eq!(
+            unknowns,
+            vec![
+                "frugalos.daemon.executor_threadz",
+                "frugalos.segment.dispersed_client.get_timeout_secs",
+                "frugalos.this_is_invalid_field"
+            ]
+        );
+
+        Ok(())
+    }
 }
