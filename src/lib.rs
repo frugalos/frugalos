@@ -93,9 +93,9 @@ pub struct FrugalosConfig {
     /// HTTP server 向けの設定。
     #[serde(default)]
     pub http_server: FrugalosHttpServerConfig,
-    /// RPC server 向けの設定。
+    /// RPC client 向けの設定。
     #[serde(default)]
-    pub rpc_server: FrugalosRpcServerConfig,
+    pub rpc_client: FrugalosRpcClientConfig,
     /// frugalos_mds 向けの設定。
     #[serde(default)]
     pub mds: frugalos_mds::FrugalosMdsConfig,
@@ -123,7 +123,7 @@ impl Default for FrugalosConfig {
             max_concurrent_logs: default_max_concurrent_logs(),
             daemon: Default::default(),
             http_server: Default::default(),
-            rpc_server: Default::default(),
+            rpc_client: Default::default(),
             mds: Default::default(),
             segment: Default::default(),
         }
@@ -176,9 +176,9 @@ impl Default for FrugalosHttpServerConfig {
     }
 }
 
-/// RPC server 向けの設定。
+/// RPC client 向けの設定。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FrugalosRpcServerConfig {
+pub struct FrugalosRpcClientConfig {
     /// RPC の接続タイムアウト時間。
     #[serde(
         rename = "tcp_connect_timeout_millis",
@@ -196,7 +196,7 @@ pub struct FrugalosRpcServerConfig {
     pub tcp_write_timeout: Duration,
 }
 
-impl FrugalosRpcServerConfig {
+impl FrugalosRpcClientConfig {
     fn channel_options(&self) -> fibers_rpc::channel::ChannelOptions {
         let mut options = fibers_rpc::channel::ChannelOptions::default();
         options.tcp_connect_timeout = self.tcp_connect_timeout;
@@ -205,7 +205,7 @@ impl FrugalosRpcServerConfig {
     }
 }
 
-impl Default for FrugalosRpcServerConfig {
+impl Default for FrugalosRpcClientConfig {
     fn default() -> Self {
         Self {
             tcp_connect_timeout: default_tcp_connect_timeout(),
@@ -270,7 +270,7 @@ frugalos:
     stop_waiting_time_millis: 300
   http_server:
     bind_addr: "127.0.0.1:2222"
-  rpc_server:
+  rpc_client:
     tcp_connect_timeout_millis: 8000
     tcp_write_timeout_millis: 10000
   mds:
@@ -302,8 +302,8 @@ frugalos:
         expected.daemon.executor_threads = 3;
         expected.daemon.stop_waiting_time = Duration::from_millis(300);
         expected.http_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 2222));
-        expected.rpc_server.tcp_connect_timeout = Duration::from_secs(8);
-        expected.rpc_server.tcp_write_timeout = Duration::from_secs(10);
+        expected.rpc_client.tcp_connect_timeout = Duration::from_secs(8);
+        expected.rpc_client.tcp_write_timeout = Duration::from_secs(10);
         expected.mds.commit_timeout_threshold = 20;
         expected.mds.large_proposal_queue_threshold = 250;
         expected.mds.large_leader_waiting_queue_threshold = 400;
