@@ -4,7 +4,6 @@ extern crate frugalos;
 extern crate frugalos_config;
 extern crate frugalos_segment;
 extern crate hostname;
-extern crate jemallocator;
 extern crate libfrugalos;
 #[macro_use]
 extern crate slog;
@@ -23,9 +22,6 @@ use trackable::error::{ErrorKindExt, Failure};
 
 use frugalos::FrugalosConfig;
 use frugalos::{Error, ErrorKind, Result};
-
-#[global_allocator]
-static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 #[allow(clippy::cyclomatic_complexity)]
 fn main() {

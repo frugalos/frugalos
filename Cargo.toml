@@ -29,7 +29,6 @@ frugalos_mds = { version = "0.6", path = "frugalos_mds" }
 frugalos_raft = { version = "0.6", path = "frugalos_raft" }
 frugalos_segment = { version = "0.6", path = "frugalos_segment" }
 futures = "0.1"
-jemallocator = "0.1.8"
 jemalloc-ctl = "0.2"
 hostname = "0.1"
 httpcodec = "0.2"
