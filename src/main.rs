@@ -30,8 +30,15 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 #[allow(clippy::cyclomatic_complexity)]
 fn main() {
     let rpc_server_bind_addr = default_rpc_server_bind_addr();
+    let long_version_str: &str = &format!(
+        "{}\nBuilt by {}-mode with {}",
+        env!("CARGO_PKG_VERSION"),
+        frugalos::build_informations::BUILD_PROFILE,
+        frugalos::build_informations::BUILD_VERSION
+    );
     let matches = App::new("frugalos")
         .version(env!("CARGO_PKG_VERSION"))
+        .long_version(long_version_str)
         .subcommand(
             SubCommand::with_name("create")
                 .arg(server_id_arg())
