@@ -14,7 +14,7 @@ use std::ops::Range;
 use self::mds::MdsClient;
 use self::storage::{ErasureCoder, StorageClient};
 use config::ClientConfig;
-use {Error, ObjectValue};
+use {Error, ObjectValue, Result};
 
 mod mds;
 pub mod storage; // TODO: private
@@ -33,19 +33,19 @@ impl Client {
         rpc_service: RpcServiceHandle,
         config: ClientConfig,
         ec: Option<ErasureCoder>,
-    ) -> Self {
+    ) -> Result<Self> {
         let mds = MdsClient::new(
             logger.clone(),
             rpc_service.clone(),
             config.cluster.clone(),
             config.mds.clone(),
         );
-        let storage = StorageClient::new(logger.clone(), config, rpc_service, ec);
-        Client {
+        let storage = track!(StorageClient::new(logger.clone(), config, rpc_service, ec))?;
+        Ok(Client {
             logger,
             mds,
             storage,
-        }
+        })
     }
 
     /// オブジェクトを取得する。

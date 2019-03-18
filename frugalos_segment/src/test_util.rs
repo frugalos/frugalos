@@ -139,7 +139,10 @@ pub mod tests {
         }
 
         /// Registers all the nodes in the `members`.
-        fn register_nodes(&mut self, members: &Vec<(NodeId, DeviceId, DeviceHandle)>) {
+        fn register_nodes(
+            &mut self,
+            members: &Vec<(NodeId, DeviceId, DeviceHandle)>,
+        ) -> Result<()> {
             let cluster: ClusterMembers = self
                 .cluster_config
                 .members
@@ -148,6 +151,7 @@ pub mod tests {
                 .collect();
 
             for (node_id, _, device_handle) in members {
+                let client = track!(self.make_segment_client())?;
                 self.service_handle
                     .add_node(
                         node_id.clone(),
@@ -155,11 +159,12 @@ pub mod tests {
                             futures::future::ok::<DeviceHandle, Error>(device_handle.clone())
                                 .map_err(|e| ErrorKind::Other.takes_over(e).into()),
                         ),
-                        self.make_segment_client(),
+                        client,
                         cluster.clone(),
                     )
                     .unwrap();
             }
+            Ok(())
         }
 
         /// Boots this cluster with the given members.
@@ -176,9 +181,8 @@ pub mod tests {
                 });
             }
 
-            self.register_nodes(&members);
-
-            Ok(self.make_segment_client())
+            track!(self.register_nodes(&members))?;
+            self.make_segment_client().map_err(|e| track!(e))
         }
 
         /// Returns a new node.
@@ -212,7 +216,7 @@ pub mod tests {
         }
 
         /// Creates a new SegmentClient.
-        pub fn make_segment_client(&self) -> Client {
+        pub fn make_segment_client(&self) -> Result<Client> {
             Client::new(
                 self.logger(),
                 self.rpc_service_handle.clone(),
@@ -224,6 +228,7 @@ pub mod tests {
                 },
                 None,
             )
+            .map_err(|e| track!(e))
         }
 
         /// Creates a new `NodeId`.

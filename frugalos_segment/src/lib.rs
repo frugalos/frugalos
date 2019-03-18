@@ -40,6 +40,7 @@ pub mod config;
 
 mod client;
 mod error;
+mod metrics;
 mod service;
 mod synchronizer;
 mod test_util;
