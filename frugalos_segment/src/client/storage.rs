@@ -26,6 +26,7 @@ use config::{
     ClientConfig, ClusterConfig, ClusterMember, DispersedClientConfig, DispersedConfig,
     Participants, ReplicatedConfig,
 };
+use metrics::{DispersedClientMetrics, PutAllMetrics, ReplicatedClientMetrics};
 use util::Phase;
 use {Error, ErrorKind, ObjectValue, Result};
 
@@ -47,21 +48,31 @@ impl StorageClient {
         config: ClientConfig,
         rpc_service: RpcServiceHandle,
         ec: Option<ErasureCoder>,
-    ) -> Self {
+    ) -> Result<Self> {
         use config::Storage;
         match config.storage {
-            Storage::Metadata => StorageClient::Metadata,
+            Storage::Metadata => Ok(StorageClient::Metadata),
             Storage::Replicated(c) => {
-                StorageClient::Replicated(ReplicatedClient::new(config.cluster, c, rpc_service))
+                let metrics = track!(ReplicatedClientMetrics::new())?;
+                Ok(StorageClient::Replicated(ReplicatedClient::new(
+                    metrics,
+                    config.cluster,
+                    c,
+                    rpc_service,
+                )))
             }
-            Storage::Dispersed(c) => StorageClient::Dispersed(DispersedClient::new(
-                logger,
-                config.cluster,
-                c,
-                config.dispersed_client,
-                rpc_service,
-                ec,
-            )),
+            Storage::Dispersed(c) => {
+                let metrics = track!(DispersedClientMetrics::new())?;
+                Ok(StorageClient::Dispersed(DispersedClient::new(
+                    logger,
+                    metrics,
+                    config.cluster,
+                    c,
+                    config.dispersed_client,
+                    rpc_service,
+                    ec,
+                )))
+            }
         }
     }
     pub fn is_metadata(&self) -> bool {
@@ -113,17 +124,20 @@ impl StorageClient {
 
 #[derive(Debug, Clone)]
 pub struct ReplicatedClient {
+    metrics: ReplicatedClientMetrics,
     cluster: Arc<ClusterConfig>,
     config: ReplicatedConfig,
     rpc_service: RpcServiceHandle,
 }
 impl ReplicatedClient {
     pub fn new(
+        metrics: ReplicatedClientMetrics,
         cluster: ClusterConfig,
         config: ReplicatedConfig,
         rpc_service: RpcServiceHandle,
     ) -> Self {
         ReplicatedClient {
+            metrics,
             cluster: Arc::new(cluster),
             config,
             rpc_service,
@@ -195,7 +209,7 @@ impl ReplicatedClient {
                 );
                 future
             });
-        let put_all = match track!(PutAll::new(futures, 1)) {
+        let put_all = match track!(PutAll::new(self.metrics.put_all.clone(), futures, 1)) {
             Ok(put_all) => put_all,
             Err(error) => return Box::new(futures::failed(error)),
         };
@@ -258,12 +272,13 @@ impl Future for ReplicatedGet {
 }
 
 pub struct PutAll {
+    metrics: PutAllMetrics,
     future: future::SelectAll<BoxFuture<()>>,
     ok_count: usize,
     required_ok_count: usize,
 }
 impl PutAll {
-    pub fn new<I>(futures: I, required_ok_count: usize) -> Result<Self>
+    pub fn new<I>(metrics: PutAllMetrics, futures: I, required_ok_count: usize) -> Result<Self>
     where
         I: Iterator<Item = BoxFuture<()>>,
     {
@@ -277,6 +292,7 @@ impl PutAll {
         }
         let future = future::select_all(futures);
         Ok(PutAll {
+            metrics,
             future,
             ok_count: 0,
             required_ok_count,
@@ -290,7 +306,9 @@ impl Future for PutAll {
         loop {
             let remainings = match self.future.poll() {
                 Err((e, _, remainings)) => {
+                    self.metrics.lost_fragments_total.increment();
                     if remainings.len() + self.ok_count < self.required_ok_count {
+                        self.metrics.failures_total.increment();
                         return Err(track!(e));
                     }
                     remainings
@@ -328,6 +346,7 @@ pub fn build_ec(data_fragments: usize, parity_fragments: usize) -> ErasureCoder 
 #[derive(Clone)]
 pub struct DispersedClient {
     logger: Logger,
+    metrics: DispersedClientMetrics,
     cluster: Arc<ClusterConfig>,
     config: DispersedConfig,
     client_config: DispersedClientConfig,
@@ -338,6 +357,7 @@ pub struct DispersedClient {
 impl DispersedClient {
     pub fn new(
         logger: Logger,
+        metrics: DispersedClientMetrics,
         cluster: ClusterConfig,
         config: DispersedConfig,
         client_config: DispersedClientConfig,
@@ -349,6 +369,7 @@ impl DispersedClient {
         let ec = ec.unwrap_or_else(|| build_ec(data_fragments, parity_fragments));
         DispersedClient {
             logger,
+            metrics,
             cluster: Arc::new(cluster),
             config,
             client_config,
@@ -474,6 +495,8 @@ impl DispersedClient {
                 result
             });
         Box::new(DispersedPut {
+            // NOTE: 他のメトリクスを追加するタイミングで `DispersedPut` 用の metrics に変更する
+            metrics: self.metrics.put_all,
             cluster: self.cluster.clone(),
             version,
             deadline,
@@ -486,6 +509,7 @@ impl DispersedClient {
 }
 
 pub struct DispersedPut {
+    metrics: PutAllMetrics,
     cluster: Arc<ClusterConfig>,
     version: ObjectVersion,
     deadline: Deadline,
@@ -559,7 +583,11 @@ impl Future for DispersedPut {
                             );
                             future
                         });
-                    Phase::B(track!(PutAll::new(futures, self.data_fragments))?)
+                    Phase::B(track!(PutAll::new(
+                        self.metrics.clone(),
+                        futures,
+                        self.data_fragments
+                    ))?)
                 }
                 Phase::B(()) => {
                     return Ok(Async::Ready(()));
@@ -883,17 +911,18 @@ mod tests {
 
     #[test]
     fn put_all_new_works() -> TestResult {
+        let metrics = track!(PutAllMetrics::new("test_client"))?;
         let futures: Vec<BoxFuture<_>> = vec![];
-        assert!(PutAll::new(futures.into_iter(), 2).is_err());
+        assert!(PutAll::new(metrics.clone(), futures.into_iter(), 2).is_err());
 
         let futures: Vec<BoxFuture<_>> = vec![Box::new(futures::future::ok(()))];
-        assert!(PutAll::new(futures.into_iter(), 2).is_err());
+        assert!(PutAll::new(metrics.clone(), futures.into_iter(), 2).is_err());
 
         let futures: Vec<BoxFuture<_>> = vec![
             Box::new(futures::future::ok(())),
             Box::new(futures::future::ok(())),
         ];
-        let put = track!(PutAll::new(futures.into_iter(), 2))?;
+        let put = track!(PutAll::new(metrics.clone(), futures.into_iter(), 2))?;
         assert!(wait(put).is_ok());
 
         let futures: Vec<BoxFuture<_>> = vec![
@@ -901,7 +930,7 @@ mod tests {
             Box::new(futures::future::ok(())),
             Box::new(futures::future::ok(())),
         ];
-        let put = track!(PutAll::new(futures.into_iter(), 2))?;
+        let put = track!(PutAll::new(metrics.clone(), futures.into_iter(), 2))?;
         assert!(wait(put).is_ok());
 
         Ok(())
@@ -914,7 +943,8 @@ mod tests {
             Box::new(futures::future::ok(())),
             Box::new(futures::future::err(ErrorKind::Other.into())),
         ];
-        let put = track!(PutAll::new(futures.into_iter(), 2))?;
+        let metrics = track!(PutAllMetrics::new("test_client"))?;
+        let put = track!(PutAll::new(metrics, futures.into_iter(), 2))?;
         assert!(wait(put).is_err());
         Ok(())
     }
@@ -926,7 +956,8 @@ mod tests {
             Box::new(futures::future::err(ErrorKind::Other.into())),
             Box::new(futures::future::ok(())),
         ];
-        let put = track!(PutAll::new(futures.into_iter(), 2))?;
+        let metrics = track!(PutAllMetrics::new("test_client"))?;
+        let put = track!(PutAll::new(metrics, futures.into_iter(), 2))?;
         assert!(wait(put).is_err());
         Ok(())
     }

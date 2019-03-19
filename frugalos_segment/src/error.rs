@@ -4,6 +4,7 @@ use fibers::sync::oneshot::MonitorError;
 use frugalos_mds;
 use libfrugalos;
 use libfrugalos::entity::object::ObjectVersion;
+use prometrics;
 use raftlog;
 use std::io;
 use std::sync::mpsc::RecvError;
@@ -95,5 +96,10 @@ impl From<MonitorError<Error>> for Error {
                 .cause("Monitor channel disconnected")
                 .into()
         })
+    }
+}
+impl From<prometrics::Error> for Error {
+    fn from(f: prometrics::Error) -> Self {
+        ErrorKind::Other.takes_over(f).into()
     }
 }

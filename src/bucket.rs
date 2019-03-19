@@ -9,6 +9,8 @@ use siphasher;
 use slog::Logger;
 use std::iter;
 
+use Result;
+
 #[derive(Clone)]
 pub struct Bucket {
     logger: Logger,
@@ -24,7 +26,7 @@ impl Bucket {
         rpc_service: RpcServiceHandle,
         config: &BucketConfig,
         segment_config: FrugalosSegmentConfig,
-    ) -> Self {
+    ) -> Result<Self> {
         let ec = match config {
             BucketConfig::Metadata(_) => None,
             BucketConfig::Replicated(_) => None,
@@ -59,38 +61,39 @@ impl Bucket {
             storage: storage_config.clone(),
             mds: segment_config.mds_client.clone(),
         };
-        let segment = Segment::new(
+        let segment = track!(Segment::new(
             logger.clone(),
             rpc_service.clone(),
             client_config,
             ec.clone(),
-        );
+        ))?;
         let segments = iter::repeat(segment)
             .take(config.segment_count() as usize)
             .collect();
-        Bucket {
+        Ok(Bucket {
             logger,
             rpc_service,
             ec,
             storage_config,
             segments,
             segment_config,
-        }
+        })
     }
-    pub fn update_segment(&mut self, segment_no: u16, members: Vec<ClusterMember>) {
+    pub fn update_segment(&mut self, segment_no: u16, members: Vec<ClusterMember>) -> Result<()> {
         let segment_config = frugalos_segment::config::ClientConfig {
             cluster: frugalos_segment::config::ClusterConfig { members },
             dispersed_client: self.segment_config.dispersed_client.clone(),
             storage: self.storage_config.clone(),
             mds: self.segment_config.mds_client.clone(),
         };
-        let segment = Segment::new(
+        let segment = track!(Segment::new(
             self.logger.clone(),
             self.rpc_service.clone(),
             segment_config,
             self.ec.clone(),
-        );
+        ))?;
         self.segments[segment_no as usize] = segment;
+        Ok(())
     }
     pub fn get_segment(&self, id: &ObjectId) -> &Segment {
         use std::hash::{Hash, Hasher};

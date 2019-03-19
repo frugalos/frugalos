@@ -160,12 +160,12 @@ where
         self.bucket_no_to_id
             .insert(bucket_config.seqno(), id.clone());
 
-        let bucket = Bucket::new(
+        let bucket = track!(Bucket::new(
             self.logger.clone(),
             self.rpc_service.clone(),
             &bucket_config,
             self.segment_config.clone(),
-        );
+        ))?;
         let mut buckets = (&*self.buckets.load()).clone();
         buckets.insert(id, bucket);
         self.buckets.store(buckets);
@@ -206,7 +206,7 @@ where
                         device: self.seqno_to_device[&device_no].id.clone().into_string(),
                     })
                     .collect();
-                bucket.update_segment(segment_no, members);
+                track!(bucket.update_segment(segment_no, members))?;
                 segment = bucket.segments()[segment_no as usize].clone();
             }
             self.buckets.store(buckets);
