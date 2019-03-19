@@ -65,6 +65,9 @@ pub struct FrugalosSegmentConfig {
     /// A configuration for a dispersed client.
     #[serde(default)]
     pub dispersed_client: config::DispersedClientConfig,
+    /// A configuration for a replicated client.
+    #[serde(default)]
+    pub replicated_client: config::ReplicatedClientConfig,
     /// A configuration for `MdsClient`.
     #[serde(default)]
     pub mds_client: config::MdsClientConfig,
@@ -74,6 +77,7 @@ impl Default for FrugalosSegmentConfig {
     fn default() -> Self {
         Self {
             dispersed_client: Default::default(),
+            replicated_client: Default::default(),
             mds_client: Default::default(),
         }
     }

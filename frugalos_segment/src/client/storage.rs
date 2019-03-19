@@ -8,7 +8,7 @@ use cannyls_rpc::DeviceId;
 use ecpool::liberasurecode::LibErasureCoderBuilder;
 use ecpool::ErasureCoderPool;
 use fibers::time::timer;
-use fibers_rpc::client::{ClientServiceHandle as RpcServiceHandle, Options as RpcOptions};
+use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_raft::NodeId;
 use futures::future;
 use futures::{self, Async, Future, Poll};
@@ -23,18 +23,14 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use config::{
-    ClientConfig, ClusterConfig, ClusterMember, DispersedClientConfig, DispersedConfig,
-    Participants, ReplicatedConfig,
+    CannyLsClientConfig, ClientConfig, ClusterConfig, ClusterMember, DispersedClientConfig,
+    DispersedConfig, Participants, ReplicatedClientConfig, ReplicatedConfig,
 };
 use metrics::{DispersedClientMetrics, PutAllMetrics, ReplicatedClientMetrics};
 use util::Phase;
 use {Error, ErrorKind, ObjectValue, Result};
 
 type BoxFuture<T> = Box<Future<Item = T, Error = Error> + Send + 'static>;
-
-// TODO: パラメータ化
-const CANNYLS_MAX_QUEUE_LEN: usize = 4096;
-const RPC_MAX_QUEUE_LEN: u64 = 512;
 
 #[derive(Clone)]
 pub enum StorageClient {
@@ -58,6 +54,7 @@ impl StorageClient {
                     metrics,
                     config.cluster,
                     c,
+                    config.replicated_client,
                     rpc_service,
                 )))
             }
@@ -127,6 +124,7 @@ pub struct ReplicatedClient {
     metrics: ReplicatedClientMetrics,
     cluster: Arc<ClusterConfig>,
     config: ReplicatedConfig,
+    client_config: ReplicatedClientConfig,
     rpc_service: RpcServiceHandle,
 }
 impl ReplicatedClient {
@@ -134,12 +132,14 @@ impl ReplicatedClient {
         metrics: ReplicatedClientMetrics,
         cluster: ClusterConfig,
         config: ReplicatedConfig,
+        client_config: ReplicatedClientConfig,
         rpc_service: RpcServiceHandle,
     ) -> Self {
         ReplicatedClient {
             metrics,
             cluster: Arc::new(cluster),
             config,
+            client_config,
             rpc_service,
         }
     }
@@ -164,6 +164,7 @@ impl ReplicatedClient {
         let future = ReplicatedGet {
             version,
             deadline,
+            cannyls_config: self.client_config.cannyls.clone(),
             candidates,
             rpc_service: self.rpc_service,
             future: Box::new(futures::finished(None)),
@@ -184,6 +185,7 @@ impl ReplicatedClient {
             Ok(data) => data,
             Err(error) => return Box::new(futures::failed(Error::from(error))),
         };
+        let cannyls_config = self.client_config.cannyls.clone();
 
         let futures = self
             .cluster
@@ -192,17 +194,14 @@ impl ReplicatedClient {
             .map(move |m| {
                 let client = CannyLsClient::new(m.node.addr, rpc_service.clone());
                 let mut request = client.request();
-                request.rpc_options(RpcOptions {
-                    max_queue_len: Some(RPC_MAX_QUEUE_LEN),
-                    ..Default::default()
-                });
+                request.rpc_options(cannyls_config.rpc_options());
 
                 let device_id = DeviceId::new(m.device.clone());
                 let lump_id = m.make_lump_id(version);
                 let future: BoxFuture<_> = Box::new(
                     request
                         .deadline(deadline)
-                        .max_queue_len(CANNYLS_MAX_QUEUE_LEN)
+                        .max_queue_len(cannyls_config.device_max_queue_len)
                         .put_lump(device_id, lump_id, data.clone())
                         .map(|_is_new| ())
                         .map_err(|e| track!(Error::from(e))),
@@ -220,6 +219,7 @@ impl ReplicatedClient {
 pub struct ReplicatedGet {
     version: ObjectVersion,
     deadline: Deadline,
+    cannyls_config: CannyLsClientConfig,
     candidates: Vec<ClusterMember>,
     future: BoxFuture<Option<Vec<u8>>>,
     rpc_service: RpcServiceHandle,
@@ -243,10 +243,7 @@ impl Future for ReplicatedGet {
                         .ok_or_else(|| ErrorKind::Corrupted.error(),))?;
                     let client = CannyLsClient::new(m.node.addr, self.rpc_service.clone());
                     let mut request = client.request();
-                    request.rpc_options(RpcOptions {
-                        max_queue_len: Some(RPC_MAX_QUEUE_LEN),
-                        ..Default::default()
-                    });
+                    request.rpc_options(self.cannyls_config.rpc_options());
 
                     let lump_id = m.make_lump_id(self.version);
                     let future = request
@@ -413,6 +410,7 @@ impl DispersedClient {
             spares,
             version,
             deadline: Deadline::Infinity,
+            cannyls_config: self.client_config.cannyls.clone(),
             rpc_service: self.rpc_service,
             parent: Span::inactive().handle(), // TODO
             timeout: None,
@@ -453,6 +451,7 @@ impl DispersedClient {
             spares,
             version,
             deadline,
+            cannyls_config: self.client_config.cannyls.clone(),
             rpc_service: self.rpc_service,
             parent: span.handle(),
             timeout: Some(timer::timeout(self.client_config.get_timeout)),
@@ -500,6 +499,7 @@ impl DispersedClient {
             cluster: self.cluster.clone(),
             version,
             deadline,
+            cannyls_config: self.client_config.cannyls.clone(),
             data_fragments: self.data_fragments,
             rpc_service: self.rpc_service,
             phase: Phase::A(Box::new(future)),
@@ -513,6 +513,7 @@ pub struct DispersedPut {
     cluster: Arc<ClusterConfig>,
     version: ObjectVersion,
     deadline: Deadline,
+    cannyls_config: CannyLsClientConfig,
     data_fragments: usize,
     rpc_service: RpcServiceHandle,
     phase: Phase<BoxFuture<Vec<Vec<u8>>>, PutAll>,
@@ -528,6 +529,7 @@ impl Future for DispersedPut {
                     let parent = self.parent.handle();
                     let version = self.version;
                     let deadline = self.deadline;
+                    let cannyls_config = self.cannyls_config.clone();
                     let rpc_service = self.rpc_service.clone();
                     let futures = self
                         .cluster
@@ -537,10 +539,7 @@ impl Future for DispersedPut {
                             append_checksum(&mut content);
                             let client = CannyLsClient::new(m.node.addr, rpc_service.clone());
                             let mut request = client.request();
-                            request.rpc_options(RpcOptions {
-                                max_queue_len: Some(RPC_MAX_QUEUE_LEN),
-                                ..Default::default()
-                            });
+                            request.rpc_options(cannyls_config.rpc_options());
 
                             let device_id = m.device.clone();
                             let lump_id = m.make_lump_id(version);
@@ -567,7 +566,7 @@ impl Future for DispersedPut {
                             let future: BoxFuture<_> = Box::new(
                                 request
                                     .deadline(deadline)
-                                    .max_queue_len(CANNYLS_MAX_QUEUE_LEN)
+                                    .max_queue_len(cannyls_config.device_max_queue_len)
                                     .put_lump(DeviceId::new(device_id), lump_id, data)
                                     .map(|_is_new| ())
                                     .map_err(|e| track!(Error::from(e)))
@@ -651,6 +650,7 @@ pub struct CollectFragments {
     spares: Vec<ClusterMember>,
     version: ObjectVersion,
     deadline: Deadline,
+    cannyls_config: CannyLsClientConfig,
     rpc_service: RpcServiceHandle,
     parent: SpanHandle,
 
@@ -711,10 +711,7 @@ impl CollectFragments {
             });
 
             let mut request = client.request();
-            request.rpc_options(RpcOptions {
-                max_queue_len: Some(RPC_MAX_QUEUE_LEN),
-                ..Default::default()
-            });
+            request.rpc_options(self.cannyls_config.rpc_options());
 
             let future = request
                 .deadline(self.deadline)

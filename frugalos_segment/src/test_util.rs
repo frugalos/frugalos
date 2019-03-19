@@ -223,6 +223,7 @@ pub mod tests {
                 ClientConfig {
                     cluster: self.cluster_config.clone(),
                     dispersed_client: Default::default(),
+                    replicated_client: Default::default(),
                     storage: self.make_dispersed_storage(),
                     mds: MdsClientConfig::default(),
                 },
