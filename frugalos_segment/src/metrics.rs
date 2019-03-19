@@ -11,7 +11,7 @@ pub struct PutAllMetrics {
 }
 
 impl PutAllMetrics {
-    pub(crate) fn new(client_name: &str) -> Result<Self> {
+    pub(crate) fn new(client_name: &'static str) -> Result<Self> {
         let failures_total = track!(CounterBuilder::new("put_all_failures_total")
             .namespace("frugalos")
             .subsystem("segment")
