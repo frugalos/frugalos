@@ -23,7 +23,8 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use config::{
-    ClientConfig, ClusterConfig, ClusterMember, DispersedConfig, Participants, ReplicatedConfig,
+    ClientConfig, ClusterConfig, ClusterMember, DispersedClientConfig, DispersedConfig,
+    Participants, ReplicatedConfig,
 };
 use util::Phase;
 use {Error, ErrorKind, ObjectValue, Result};
@@ -57,6 +58,7 @@ impl StorageClient {
                 logger,
                 config.cluster,
                 c,
+                config.dispersed_client,
                 rpc_service,
                 ec,
             )),
@@ -193,7 +195,11 @@ impl ReplicatedClient {
                 );
                 future
             });
-        Box::new(PutAll::new(futures, 1))
+        let put_all = match track!(PutAll::new(futures, 1)) {
+            Ok(put_all) => put_all,
+            Err(error) => return Box::new(futures::failed(error)),
+        };
+        Box::new(put_all)
     }
 }
 
@@ -257,16 +263,24 @@ pub struct PutAll {
     required_ok_count: usize,
 }
 impl PutAll {
-    pub fn new<I>(futures: I, required_ok_count: usize) -> Self
+    pub fn new<I>(futures: I, required_ok_count: usize) -> Result<Self>
     where
         I: Iterator<Item = BoxFuture<()>>,
     {
+        let (_, upper_bound) = futures.size_hint();
+        let len = track!(upper_bound.ok_or_else(
+            || ErrorKind::Invalid.cause("The upper bound of the given futures is unknown.")
+        ))?;
+        if len < required_ok_count {
+            let e = ErrorKind::Invalid.cause(format!("The length of the given futures is too short:  required_ok_count={}, futures.len={}", required_ok_count, len));
+            return Err(track!(Error::from(e)));
+        }
         let future = future::select_all(futures);
-        PutAll {
+        Ok(PutAll {
             future,
             ok_count: 0,
             required_ok_count,
-        }
+        })
     }
 }
 impl Future for PutAll {
@@ -276,7 +290,7 @@ impl Future for PutAll {
         loop {
             let remainings = match self.future.poll() {
                 Err((e, _, remainings)) => {
-                    if remainings.is_empty() && self.ok_count < self.required_ok_count {
+                    if remainings.len() + self.ok_count < self.required_ok_count {
                         return Err(track!(e));
                     }
                     remainings
@@ -316,6 +330,7 @@ pub struct DispersedClient {
     logger: Logger,
     cluster: Arc<ClusterConfig>,
     config: DispersedConfig,
+    client_config: DispersedClientConfig,
     data_fragments: usize,
     ec: ErasureCoder,
     rpc_service: RpcServiceHandle,
@@ -325,6 +340,7 @@ impl DispersedClient {
         logger: Logger,
         cluster: ClusterConfig,
         config: DispersedConfig,
+        client_config: DispersedClientConfig,
         rpc_service: RpcServiceHandle,
         ec: Option<ErasureCoder>,
     ) -> Self {
@@ -335,6 +351,7 @@ impl DispersedClient {
             logger,
             cluster: Arc::new(cluster),
             config,
+            client_config,
             ec,
             data_fragments,
             rpc_service,
@@ -378,6 +395,7 @@ impl DispersedClient {
             rpc_service: self.rpc_service,
             parent: Span::inactive().handle(), // TODO
             timeout: None,
+            next_timeout_duration: self.client_config.get_timeout,
         };
         GetDispersedFragment {
             phase: Phase::A(future),
@@ -416,7 +434,8 @@ impl DispersedClient {
             deadline,
             rpc_service: self.rpc_service,
             parent: span.handle(),
-            timeout: Some(timer::timeout(Duration::from_secs(2))), // TODO: ハードコーディングは止める
+            timeout: Some(timer::timeout(self.client_config.get_timeout)),
+            next_timeout_duration: self.client_config.get_timeout,
         };
         Box::new(DispersedGet {
             phase: Phase::A(future),
@@ -540,7 +559,7 @@ impl Future for DispersedPut {
                             );
                             future
                         });
-                    Phase::B(PutAll::new(futures, self.data_fragments))
+                    Phase::B(track!(PutAll::new(futures, self.data_fragments))?)
                 }
                 Phase::B(()) => {
                     return Ok(Async::Ready(()));
@@ -619,6 +638,9 @@ pub struct CollectFragments {
     //
     // TODO: `deadline`を考慮した値を使うようにする
     timeout: Option<timer::Timeout>,
+
+    /// How long to wait before aborting the next get operation.
+    next_timeout_duration: Duration,
 }
 impl CollectFragments {
     fn fill_shortage_from_spare(&mut self, mut force: bool) -> Result<()> {
@@ -725,14 +747,15 @@ impl Future for CollectFragments {
                 // TODO: ログは出さなくする(かわりにprometheusを使う)
                 info!(
                     self.logger,
-                    "Collecting fragments timeout expired: add new candidate"
+                    "Collecting fragments timeout expired: add new candidate. next_timeout={:?}",
+                    self.next_timeout_duration
                 );
                 self.timeout = None;
                 if !self.spares.is_empty() {
                     if let Err(e) = track!(self.fill_shortage_from_spare(true)) {
                         warn!(self.logger, "{}", e);
                     } else {
-                        self.timeout = Some(timer::timeout(Duration::from_secs(2)));
+                        self.timeout = Some(timer::timeout(self.next_timeout_duration));
                         continue;
                     }
                 }
@@ -856,6 +879,56 @@ mod tests {
             .candidates(version.clone())
             .position(|candidate| *candidate == member)
             .unwrap()
+    }
+
+    #[test]
+    fn put_all_new_works() -> TestResult {
+        let futures: Vec<BoxFuture<_>> = vec![];
+        assert!(PutAll::new(futures.into_iter(), 2).is_err());
+
+        let futures: Vec<BoxFuture<_>> = vec![Box::new(futures::future::ok(()))];
+        assert!(PutAll::new(futures.into_iter(), 2).is_err());
+
+        let futures: Vec<BoxFuture<_>> = vec![
+            Box::new(futures::future::ok(())),
+            Box::new(futures::future::ok(())),
+        ];
+        let put = track!(PutAll::new(futures.into_iter(), 2))?;
+        assert!(wait(put).is_ok());
+
+        let futures: Vec<BoxFuture<_>> = vec![
+            Box::new(futures::future::ok(())),
+            Box::new(futures::future::ok(())),
+            Box::new(futures::future::ok(())),
+        ];
+        let put = track!(PutAll::new(futures.into_iter(), 2))?;
+        assert!(wait(put).is_ok());
+
+        Ok(())
+    }
+
+    #[test]
+    fn put_all_fails_correctly() -> TestResult {
+        let futures: Vec<BoxFuture<_>> = vec![
+            Box::new(futures::future::err(ErrorKind::Other.into())),
+            Box::new(futures::future::ok(())),
+            Box::new(futures::future::err(ErrorKind::Other.into())),
+        ];
+        let put = track!(PutAll::new(futures.into_iter(), 2))?;
+        assert!(wait(put).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn put_all_fails_even_if_last_operation_succeeds() -> TestResult {
+        let futures: Vec<BoxFuture<_>> = vec![
+            Box::new(futures::future::err(ErrorKind::Other.into())),
+            Box::new(futures::future::err(ErrorKind::Other.into())),
+            Box::new(futures::future::ok(())),
+        ];
+        let put = track!(PutAll::new(futures.into_iter(), 2))?;
+        assert!(wait(put).is_err());
+        Ok(())
     }
 
     #[test]

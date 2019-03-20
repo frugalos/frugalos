@@ -22,20 +22,26 @@ extern crate patricia_tree;
 extern crate prometrics;
 #[macro_use]
 extern crate protobuf_codec;
+extern crate frugalos_core;
 extern crate frugalos_raft;
 extern crate raftlog;
 extern crate rand;
 extern crate rustracing;
 #[macro_use]
 extern crate slog;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 #[macro_use]
 extern crate trackable;
 
+pub use config::FrugalosMdsConfig;
 pub use error::{Error, ErrorKind};
 pub use node::{Event, Node};
 pub use service::{Service, ServiceHandle};
 
 mod codec;
+mod config;
 mod error;
 mod machine;
 mod node;

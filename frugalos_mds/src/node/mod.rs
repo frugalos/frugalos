@@ -16,6 +16,7 @@ pub use self::node::Node;
 
 mod handle;
 mod node;
+mod snapshot;
 
 type Reply<T> = Monitored<T, Error>;
 

@@ -186,6 +186,7 @@ impl<'a> SegmentsBuilder<'a> {
     }
 
     #[allow(clippy::mut_from_ref)]
+    #[allow(clippy::cast_ref_to_mut)]
     fn get_ring(&self, device_no: DeviceNo) -> &mut HashRing {
         // NOTE: 現状のRustの借用チェックの制約を回避するためのワークアラウンド
         let ring = &self.device_states[&device_no].ring;

@@ -9,6 +9,7 @@ use libfrugalos;
 use libfrugalos::entity::object::ObjectVersion;
 use prometrics;
 use raftlog;
+use serde_yaml;
 use std;
 use std::io;
 use trackable::error::TrackableError;
@@ -48,6 +49,11 @@ impl From<cannyls::Error> for Error {
 }
 impl From<fibers_tasque::AsyncCallError> for Error {
     fn from(f: fibers_tasque::AsyncCallError) -> Self {
+        ErrorKind::Other.cause(f).into()
+    }
+}
+impl From<serde_yaml::Error> for Error {
+    fn from(f: serde_yaml::Error) -> Self {
         ErrorKind::Other.cause(f).into()
     }
 }
@@ -94,14 +100,24 @@ impl From<libfrugalos::Error> for Error {
         kind.cause(f).into()
     }
 }
-impl From<std::sync::mpsc::RecvError> for Error {
-    fn from(f: std::sync::mpsc::RecvError) -> Self {
-        ErrorKind::Other.cause(f).into()
+impl From<std::net::AddrParseError> for Error {
+    fn from(f: std::net::AddrParseError) -> Self {
+        ErrorKind::InvalidInput.cause(f).into()
+    }
+}
+impl From<std::num::ParseFloatError> for Error {
+    fn from(f: std::num::ParseFloatError) -> Self {
+        ErrorKind::InvalidInput.cause(f).into()
     }
 }
 impl From<std::num::ParseIntError> for Error {
     fn from(f: std::num::ParseIntError) -> Self {
         ErrorKind::InvalidInput.cause(f).into()
+    }
+}
+impl From<std::sync::mpsc::RecvError> for Error {
+    fn from(f: std::sync::mpsc::RecvError) -> Self {
+        ErrorKind::Other.cause(f).into()
     }
 }
 

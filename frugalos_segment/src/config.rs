@@ -7,6 +7,7 @@ use libfrugalos::time::Seconds;
 use raftlog::cluster::ClusterMembers;
 use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
+use std::time::Duration;
 
 // TODO: LumpIdの名前空間の使い方に関してWikiに記載する
 pub(crate) const LUMP_NAMESPACE_CONTENT: u8 = 1;
@@ -39,9 +40,13 @@ pub(crate) fn make_lump_id(node: &NodeId, version: ObjectVersion) -> LumpId {
 }
 
 /// Configuration for `MdsClient`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct MdsClientConfig {
     /// Timeout in seconds, which is used to determine an actual `Deadline` on putting a content.
+    #[serde(
+        rename = "put_content_timeout_secs",
+        default = "default_mds_client_put_content_timeout"
+    )]
     pub put_content_timeout: Seconds,
 }
 
@@ -49,17 +54,47 @@ impl Default for MdsClientConfig {
     fn default() -> Self {
         MdsClientConfig {
             // This default value is a heuristic.
-            put_content_timeout: Seconds(60),
+            put_content_timeout: default_mds_client_put_content_timeout(),
         }
     }
 }
 
-// FIXME: rename
+fn default_mds_client_put_content_timeout() -> Seconds {
+    Seconds(60)
+}
+
+/// Configuration for `DispersedClient`.
+/// This struct mainly focuses on a client configurations.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DispersedClientConfig {
+    /// How long to wait before aborting a get operation.
+    #[serde(
+        rename = "get_timeout_millis",
+        default = "default_dispersed_client_get_timeout",
+        with = "frugalos_core::serde_ext::duration_millis"
+    )]
+    pub get_timeout: Duration,
+}
+
+impl Default for DispersedClientConfig {
+    fn default() -> Self {
+        DispersedClientConfig {
+            get_timeout: default_dispersed_client_get_timeout(),
+        }
+    }
+}
+
+fn default_dispersed_client_get_timeout() -> Duration {
+    Duration::from_secs(2)
+}
+
+// FIXME: rename (config.rs で定義されている struct は名前、責務、依存関係を整理した方がよい)
 /// クライアントがセグメントにアクセスする際に使用する構成情報。
 #[allow(missing_docs)]
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
     pub cluster: ClusterConfig,
+    pub dispersed_client: DispersedClientConfig,
     pub storage: Storage,
     pub mds: MdsClientConfig,
 }

@@ -17,30 +17,31 @@ use libfrugalos::entity::server::Server;
 use libfrugalos::time::Seconds;
 use sloggers::Build;
 use std::env;
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::ToSocketAddrs;
 use std::time::Duration;
-use trackable::error::Failure;
+use trackable::error::{ErrorKindExt, Failure};
 
-use frugalos::{Error, Result};
-use frugalos_segment::config::MdsClientConfig;
+use frugalos::FrugalosConfig;
+use frugalos::{Error, ErrorKind, Result};
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 #[allow(clippy::cyclomatic_complexity)]
 fn main() {
+    let rpc_server_bind_addr = default_rpc_server_bind_addr();
     let matches = App::new("frugalos")
         .version(env!("CARGO_PKG_VERSION"))
         .subcommand(
             SubCommand::with_name("create")
                 .arg(server_id_arg())
-                .arg(server_addr_arg())
+                .arg(server_addr_arg(&rpc_server_bind_addr))
                 .arg(data_dir_arg()),
         )
         .subcommand(
             SubCommand::with_name("join")
                 .arg(server_id_arg())
-                .arg(server_addr_arg())
+                .arg(server_addr_arg(&rpc_server_bind_addr))
                 .arg(contact_server_addr_arg())
                 .arg(data_dir_arg()),
         )
@@ -50,12 +51,18 @@ fn main() {
                 .arg(data_dir_arg()),
         )
         .subcommand(
+            SubCommand::with_name("repair-local-dat")
+                .arg(server_id_arg())
+                .arg(server_addr_arg(&rpc_server_bind_addr).required(true))
+                .arg(server_seqno_arg().required(true))
+                .arg(data_dir_arg()),
+        )
+        .subcommand(
             SubCommand::with_name("start")
                 .arg(
                     Arg::with_name("SAMPLING_RATE")
                         .long("sampling-rate")
-                        .takes_value(true)
-                        .default_value("0.001"),
+                        .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("EXECUTOR_THREADS")
@@ -65,26 +72,22 @@ fn main() {
                 .arg(
                     Arg::with_name("HTTP_SERVER_BIND_ADDR")
                         .long("http-server-bind-addr")
-                        .takes_value(true)
-                        .default_value("0.0.0.0:3000"),
+                        .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("STOP_WAITING_TIME_MILLIS")
                         .long("stop-waiting-time-millis")
-                        .takes_value(true)
-                        .default_value("10"),
+                        .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("RPC_CONNECT_TIMEOUT_MILLIS")
                         .long("rpc-connect-timeout-millis")
-                        .takes_value(true)
-                        .default_value("5000"),
+                        .takes_value(true),
                 )
                 .arg(
                     Arg::with_name("RPC_WRITE_TIMEOUT_MILLIS")
                         .long("rpc-write-timeout-millis")
-                        .takes_value(true)
-                        .default_value("5000"),
+                        .takes_value(true),
                 )
                 .arg(data_dir_arg())
                 .arg(put_content_timeout_arg()),
@@ -94,7 +97,7 @@ fn main() {
                 Arg::with_name("RPC_ADDR")
                     .long("rpc-addr")
                     .takes_value(true)
-                    .default_value("127.0.0.1:14278"),
+                    .default_value(&rpc_server_bind_addr),
             ),
         )
         .subcommand(
@@ -102,7 +105,7 @@ fn main() {
                 Arg::with_name("RPC_ADDR")
                     .long("rpc-addr")
                     .takes_value(true)
-                    .default_value("127.0.0.1:14278"),
+                    .default_value(&rpc_server_bind_addr),
             ),
         )
         .arg(
@@ -110,42 +113,53 @@ fn main() {
                 .short("l")
                 .long("loglevel")
                 .takes_value(true)
-                .possible_values(&["debug", "info", "warning", "error", "critical"])
-                .default_value("info"),
+                .possible_values(&["debug", "info", "warning", "error", "critical"]),
         )
         .arg(
             Arg::with_name("MAX_CONCURRENT_LOGS")
                 .long("max_concurrent_logs")
-                .takes_value(true)
-                .default_value("4096"),
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("CONFIG_FILE")
+                .long("config-file")
+                .takes_value(true),
         )
         .get_matches();
 
+    let mut config: FrugalosConfig =
+        track_try_unwrap!(track_any_err!(get_frugalos_config(&matches)));
+
     // Logger
-    let loglevel = match matches.value_of("LOGLEVEL").unwrap() {
-        "debug" => sloggers::types::Severity::Debug,
-        "info" => sloggers::types::Severity::Info,
-        "warning" => sloggers::types::Severity::Warning,
-        "error" => sloggers::types::Severity::Error,
-        "critical" => sloggers::types::Severity::Critical,
-        _ => unreachable!(),
-    };
-    let max_concurrent_logs = track_try_unwrap!(matches
-        .value_of("MAX_CONCURRENT_LOGS")
-        .unwrap()
-        .parse()
-        .map_err(Failure::from_error));
-    let logger_builder = if let Some(filepath) = matches.value_of("LOGFILE") {
-        let mut builder = sloggers::file::FileLoggerBuilder::new(filepath);
-        builder.level(loglevel);
-        builder.channel_size(max_concurrent_logs);
-        sloggers::LoggerBuilder::File(builder)
-    } else {
-        let mut builder = sloggers::terminal::TerminalLoggerBuilder::new();
-        builder.level(loglevel);
-        builder.channel_size(max_concurrent_logs);
-        sloggers::LoggerBuilder::Terminal(builder)
-    };
+    config.loglevel = matches
+        .value_of("LOGLEVEL")
+        .map(|v| match v {
+            "debug" => sloggers::types::Severity::Debug,
+            "info" => sloggers::types::Severity::Info,
+            "warning" => sloggers::types::Severity::Warning,
+            "error" => sloggers::types::Severity::Error,
+            "critical" => sloggers::types::Severity::Critical,
+            _ => unreachable!(),
+        })
+        .unwrap_or(config.loglevel);
+    if let Some(v) = matches.value_of("MAX_CONCURRENT_LOGS") {
+        config.max_concurrent_logs = track_try_unwrap!(v.parse().map_err(Error::from));
+    }
+    let logger_builder;
+    {
+        let maybe_log_file = config.log_file.as_ref().and_then(|p| p.to_str());
+        logger_builder = if let Some(filepath) = matches.value_of("LOGFILE").or(maybe_log_file) {
+            let mut builder = sloggers::file::FileLoggerBuilder::new(filepath);
+            builder.level(config.loglevel);
+            builder.channel_size(config.max_concurrent_logs);
+            sloggers::LoggerBuilder::File(builder)
+        } else {
+            let mut builder = sloggers::terminal::TerminalLoggerBuilder::new();
+            builder.level(config.loglevel);
+            builder.channel_size(config.max_concurrent_logs);
+            sloggers::LoggerBuilder::Terminal(builder)
+        };
+    }
 
     // SubCommands
     if let Some(matches) = matches.subcommand_matches("create") {
@@ -156,7 +170,7 @@ fn main() {
             .or_else(hostname::get_hostname)
             .unwrap();
         let server_addr = matches.value_of("SERVER_ADDR").unwrap();
-        let data_dir = get_data_dir(&matches);
+        set_data_dir(&matches, &mut config);
 
         let logger = track_try_unwrap!(logger_builder.build());
         let logger = logger.new(o!("server" => format!("{}@{}", server_id, server_addr)));
@@ -164,7 +178,12 @@ fn main() {
             server_id.to_string(),
             track_try_unwrap!(server_addr.parse().map_err(Failure::from_error)),
         );
-        track_try_unwrap!(frugalos_config::cluster::create(&logger, server, data_dir));
+        debug!(logger, "config: {:?}", config);
+        track_try_unwrap!(frugalos_config::cluster::create(
+            &logger,
+            server,
+            config.data_dir
+        ));
     } else if let Some(matches) = matches.subcommand_matches("join") {
         // JOIN CLUSTER
         let server_id = matches
@@ -174,7 +193,7 @@ fn main() {
             .unwrap();
         let server_addr = matches.value_of("SERVER_ADDR").unwrap();
         let contact_server_addr = matches.value_of("CONTACT_SERVER_ADDR").unwrap();
-        let data_dir = get_data_dir(&matches);
+        set_data_dir(&matches, &mut config);
 
         let logger = track_try_unwrap!(logger_builder.build());
         let logger = logger.new(o!("server" => format!("{}@{}", server_id, server_addr)));
@@ -184,57 +203,76 @@ fn main() {
         );
         let contact_server =
             track_try_unwrap!(contact_server_addr.parse().map_err(Failure::from_error));
+        debug!(logger, "config: {:?}", config);
         track_try_unwrap!(frugalos_config::cluster::join(
             &logger,
             &server,
-            data_dir,
+            config.data_dir,
             contact_server,
         ));
     } else if let Some(matches) = matches.subcommand_matches("leave") {
         // LEAVE CLUSTER
         let contact_server_addr = matches.value_of("CONTACT_SERVER_ADDR").unwrap();
-        let data_dir = get_data_dir(&matches);
+        set_data_dir(&matches, &mut config);
 
         let contact_server =
             track_try_unwrap!(contact_server_addr.parse().map_err(Failure::from_error));
         let logger = track_try_unwrap!(logger_builder.build());
+        debug!(logger, "config: {:?}", config);
         track_try_unwrap!(frugalos_config::cluster::leave(
             &logger,
-            data_dir,
+            config.data_dir,
             contact_server,
+        ));
+    } else if let Some(matches) = matches.subcommand_matches("repair-local-dat") {
+        let server_id = matches
+            .value_of("SERVER_ID")
+            .map(|v| v.to_string())
+            .or_else(hostname::get_hostname)
+            .unwrap();
+        let server_addr = matches.value_of("SERVER_ADDR").unwrap();
+        set_data_dir(&matches, &mut config);
+
+        let logger = track_try_unwrap!(logger_builder.build());
+        let logger = logger.new(o!("server" => format!("{}@{}", server_id, server_addr)));
+        let mut server = Server::new(
+            server_id.to_string(),
+            track_try_unwrap!(server_addr.parse().map_err(Failure::from_error)),
+        );
+        server.seqno = track_try_unwrap!(get_server_seqno(matches));
+        debug!(logger, "config: {:?}", config);
+        track_try_unwrap!(frugalos_config::cluster::save_local_server_info(
+            config.data_dir,
+            server,
         ));
     } else if let Some(matches) = matches.subcommand_matches("start") {
         // START SERVER
         let logger = track_try_unwrap!(logger_builder.build());
-        let mut daemon = frugalos::daemon::FrugalosDaemonBuilder::new(logger);
-
-        let data_dir = get_data_dir(&matches);
-        let http_addr: SocketAddr = track_try_unwrap!(track_any_err!(matches
-            .value_of("HTTP_SERVER_BIND_ADDR")
-            .unwrap()
-            .parse()));
-        let sampling_rate: f64 = track_try_unwrap!(track_any_err!(matches
-            .value_of("SAMPLING_RATE")
-            .unwrap()
-            .parse()));
-        daemon.sampling_rate = sampling_rate;
-        daemon.rpc_client_channel_options =
-            track_try_unwrap!(get_rpc_client_channel_options(&matches));
-        daemon.mds_client_config =
-            track_try_unwrap!(track_any_err!(get_mds_client_config(&matches)));
-
-        if let Some(threads) = matches.value_of("EXECUTOR_THREADS") {
-            let threads: usize = track_try_unwrap!(track_any_err!(threads.parse()));
-            daemon.executor_threads = threads;
-        }
-
-        let mut config = frugalos::daemon::FrugalosRunConfig::default();
-        config.stop_waiting_time = track_try_unwrap!(get_stop_waiting_time(&matches));
-
-        let daemon = track_try_unwrap!(daemon.finish(data_dir, http_addr,));
-        track_try_unwrap!(daemon.run(config));
+        set_data_dir(&matches, &mut config);
+        track_try_unwrap!(track_any_err!(set_daemon_config(
+            &matches,
+            &mut config.daemon
+        )));
+        track_try_unwrap!(track_any_err!(set_http_server_config(
+            &matches,
+            &mut config.http_server
+        )));
+        track_try_unwrap!(track_any_err!(set_rpc_client_config(
+            &matches,
+            &mut config.rpc_client
+        )));
+        track_try_unwrap!(track_any_err!(set_segment_config(
+            &matches,
+            &mut config.segment
+        )));
+        let daemon = track_try_unwrap!(frugalos::daemon::FrugalosDaemon::new(
+            &logger,
+            config.clone()
+        ));
+        track_try_unwrap!(daemon.run(config.daemon.clone()));
         // NOTE: ログ出力(非同期)用に少し待機
         std::thread::sleep(std::time::Duration::from_millis(100));
+        debug!(logger, "config: {:?}", config);
     } else if let Some(matches) = matches.subcommand_matches("stop") {
         // STOP SERVER
         let logger = track_try_unwrap!(logger_builder.build());
@@ -248,6 +286,7 @@ fn main() {
 
         // NOTE: ログ出力(非同期)用に少し待機
         std::thread::sleep(std::time::Duration::from_millis(100));
+        debug!(logger, "config: {:?}", config);
     } else if let Some(matches) = matches.subcommand_matches("take-snapshot") {
         // TAKE SNAPSHOT
         let logger = track_try_unwrap!(logger_builder.build());
@@ -261,6 +300,7 @@ fn main() {
 
         // NOTE: ログ出力(非同期)用に少し待機
         std::thread::sleep(std::time::Duration::from_millis(100));
+        debug!(logger, "config: {:?}", config);
     } else {
         println!("Usage: {}", matches.usage());
         std::process::exit(1);
@@ -275,12 +315,19 @@ fn server_id_arg<'a, 'b>() -> Arg<'a, 'b> {
 }
 
 // NOTE: The address of RPC server
-fn server_addr_arg<'a, 'b>() -> Arg<'a, 'b> {
+fn server_addr_arg<'a, 'b>(default_value: &'a str) -> Arg<'a, 'b> {
     Arg::with_name("SERVER_ADDR")
         .long("addr")
         .alias("rpc-addr")
         .takes_value(true)
-        .default_value("127.0.0.1:14278")
+        .default_value(default_value)
+}
+
+fn server_seqno_arg<'a, 'b>() -> Arg<'a, 'b> {
+    Arg::with_name("SERVER_SEQNO")
+        .help("seqno of this server")
+        .long("seqno")
+        .takes_value(true)
 }
 
 fn contact_server_addr_arg<'a, 'b>() -> Arg<'a, 'b> {
@@ -305,70 +352,109 @@ fn put_content_timeout_arg<'a, 'b>() -> Arg<'a, 'b> {
         .help("Sets timeout in seconds on putting a content.")
         .long("put-content-timeout")
         .takes_value(true)
-        .default_value("60")
 }
 
-fn get_data_dir(matches: &ArgMatches) -> String {
+fn default_rpc_server_bind_addr() -> String {
+    "127.0.0.1:14278".to_owned()
+}
+
+fn get_server_seqno(matches: &ArgMatches) -> Result<u32> {
+    matches
+        .value_of("SERVER_SEQNO")
+        .map(|v| v.parse::<u32>().map_err(|e| track!(Error::from(e))))
+        .unwrap_or_else(|| {
+            Err(Error::from(
+                ErrorKind::InvalidInput.cause("server seqno must be specified"),
+            ))
+        })
+}
+
+fn set_data_dir(matches: &ArgMatches, config: &mut FrugalosConfig) {
     if let Some(value) = matches
         .value_of("DATA_DIR")
         .map(|v| v.to_string())
         .or_else(|| env::var("FRUGALOS_DATA_DIR").ok())
     {
-        value
-    } else {
+        config.data_dir = value;
+    }
+
+    if config.data_dir.is_empty() {
         println!(
-            "[ERROR] Must set either the `data-dir` argument or the `FRUGALOS_DATA_DIR` environment variable"
+            "[ERROR] Must set one of the `data-dir` argument, the `FRUGALOS_DATA_DIR` environment variable or the `frugalos.data_dir` key of a configuration file"
         );
         std::process::exit(1);
     }
 }
 
-/// Gets waiting time when frugalos stops.
-fn get_stop_waiting_time(matches: &ArgMatches) -> Result<Duration> {
-    matches.value_of("STOP_WAITING_TIME_MILLIS").map_or_else(
-        || Ok(Duration::from_millis(10)),
-        |v| {
-            v.parse::<u64>()
-                .map(Duration::from_millis)
-                .map_err(|e| track!(Error::from(e)))
-        },
+/// Gets `FrugalosConfig`.
+fn get_frugalos_config(matches: &ArgMatches) -> Result<FrugalosConfig> {
+    matches.value_of("CONFIG_FILE").map_or_else(
+        || Ok(FrugalosConfig::default()),
+        |v| FrugalosConfig::from_yaml(v).map_err(|e| track!(e)),
     )
 }
 
-/// Gets `ChannelOptions` for RPC clients.
-fn get_rpc_client_channel_options(
+/// Sets configurations for frugalos daemon.
+fn set_daemon_config(
     matches: &ArgMatches,
-) -> Result<fibers_rpc::channel::ChannelOptions> {
-    let mut options: fibers_rpc::channel::ChannelOptions = Default::default();
-    options.tcp_connect_timeout = matches.value_of("RPC_CONNECT_TIMEOUT_MILLIS").map_or_else(
-        || Ok(Duration::from_millis(5000)),
-        |v| {
-            v.parse::<u64>()
-                .map(Duration::from_millis)
-                .map_err(|e| track!(Error::from(e)))
-        },
-    )?;
-    options.tcp_write_timeout = matches.value_of("RPC_WRITE_TIMEOUT_MILLIS").map_or_else(
-        || Ok(Duration::from_millis(5000)),
-        |v| {
-            v.parse::<u64>()
-                .map(Duration::from_millis)
-                .map_err(|e| track!(Error::from(e)))
-        },
-    )?;
-    Ok(options)
+    config: &mut frugalos::FrugalosDaemonConfig,
+) -> Result<()> {
+    if let Some(threads) = matches.value_of("EXECUTOR_THREADS") {
+        config.executor_threads = threads.parse().map_err(|e| track!(Error::from(e)))?;
+    }
+    if let Some(v) = matches.value_of("SAMPLING_RATE") {
+        config.sampling_rate = v.parse().map_err(|e| track!(Error::from(e)))?;
+    }
+    if let Some(v) = matches.value_of("STOP_WAITING_TIME_MILLIS") {
+        config.stop_waiting_time = v
+            .parse::<u64>()
+            .map(Duration::from_millis)
+            .map_err(|e| track!(Error::from(e)))?;
+    }
+    Ok(())
 }
 
-/// Gets `MdsClientConfig` from CLI arguments.
-fn get_mds_client_config(matches: &ArgMatches) -> Result<MdsClientConfig> {
-    let mut config = MdsClientConfig::default();
-    config.put_content_timeout = matches.value_of("PUT_CONTENT_TIMEOUT").map_or_else(
-        || Ok(config.put_content_timeout),
-        |v| {
-            v.parse::<u64>()
-                .map(Seconds)
-                .map_err(|e| track!(Error::from(e)))
-        },
-    )?;
-    Ok(config)
+/// Sets configurations for a HTTP server.
+fn set_http_server_config(
+    matches: &ArgMatches,
+    config: &mut frugalos::FrugalosHttpServerConfig,
+) -> Result<()> {
+    if let Some(v) = matches.value_of("HTTP_SERVER_BIND_ADDR") {
+        config.bind_addr = v.parse().map_err(|e| track!(Error::from(e)))?;
+    }
+    Ok(())
+}
+
+/// Sets configurations for a RPC client.
+fn set_rpc_client_config(
+    matches: &ArgMatches,
+    config: &mut frugalos::FrugalosRpcClientConfig,
+) -> Result<()> {
+    if let Some(v) = matches.value_of("RPC_CONNECT_TIMEOUT_MILLIS") {
+        config.tcp_connect_timeout = v
+            .parse::<u64>()
+            .map(Duration::from_millis)
+            .map_err(|e| track!(Error::from(e)))?;
+    }
+    if let Some(v) = matches.value_of("RPC_WRITE_TIMEOUT_MILLIS") {
+        config.tcp_write_timeout = v
+            .parse::<u64>()
+            .map(Duration::from_millis)
+            .map_err(|e| track!(Error::from(e)))?;
+    }
+    Ok(())
+}
+
+/// Sets configurations for frugalos segment.
+fn set_segment_config(
+    matches: &ArgMatches,
+    config: &mut frugalos_segment::FrugalosSegmentConfig,
+) -> Result<()> {
+    if let Some(v) = matches.value_of("PUT_CONTENT_TIMEOUT") {
+        config.mds_client.put_content_timeout = v
+            .parse::<u64>()
+            .map(Seconds)
+            .map_err(|e| track!(Error::from(e)))?;
+    }
+    Ok(())
 }
