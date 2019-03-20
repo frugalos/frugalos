@@ -14,7 +14,7 @@ pub struct SignalSender(mpsc::Sender<()>);
 impl SignalSender {
     /// 対応するReceiverにsignalを送信する。
     pub fn send_signal(&mut self) -> Result<(), Error> {
-        self.0.send(()).map_err(Error::from)
+        self.0.send(()).map_err(|e| track!(Error::from(e)))
     }
 }
 
@@ -22,7 +22,7 @@ impl SignalReceiver {
     /// signalを取り出そうとする。
     /// このメソッドは受信できるsignalがない場合にはエラーを返す。
     pub fn try_recv_signal(&self) -> Result<(), Error> {
-        self.0.try_recv().map_err(Error::from)
+        self.0.try_recv().map_err(|e| track!(Error::from(e)))
     }
 }
 
@@ -49,41 +49,43 @@ pub fn make_channel() -> (SignalSender, SignalReceiver) {
     (SignalSender(sender), SignalReceiver(receiver))
 }
 
-/// `future: Future<Item = (), Error = ()>`からキャンセル可能なFutureを作るための構造体である。
+/// `future: Future<Item = (), Error = Error>`からキャンセル可能なFutureを作るための構造体。
 /// # Example
 ///
 /// ```ignore
-/// let mut executor = track!(ThreadPoolExecutor::new().map_err(Error::from))?;
-/// let mut rpc_server_builder = RpcServerBuilder::new(node.addr);
-/// ...
-/// let rpc_server = rpc_server_builder.finish(executor.handle());
-/// let (cancelable_rpc_server, cancelizer) =
-///     Cancelable::new(rpc_server.map_err(move |e| panic!("Error: {}", e)));
-/// ...
-/// executor.spawn(cancelable_rpc_server);
-/// ...
-/// // `some_future`は終了直前に、`rpc_server`を終させるために、`cancelizer.send_signal()`を呼ぶ。
-/// executor.run_future(some_future).unwrap();
+/// fn some_function() -> Result<()> {
+///     let mut executor = track!(ThreadPoolExecutor::new().map_err(Error::from))?;
+///     let mut rpc_server_builder = RpcServerBuilder::new(node.addr);
+///     ...
+///     let rpc_server = rpc_server_builder.finish(executor.handle()).map_err(Error::from);
+///     let (cancelable_rpc_server, cancelizer) = Cancelable::new(rpc_server);
+///     ...
+///     executor.spawn(cancelable_rpc_server.map_err(move |e| panic!("Error: {}", e)));
+///     ...
+///     // `some_function`の終了直前に、`rpc_server`を終了させるために、`cancelizer.send_signal()`を呼ぶ。
+///     track!(cancelizer.send_signal)?;
+///     Ok(())
+/// }
 /// ```
-pub struct Cancelable {
+pub struct Cancelable<F> {
     signal_rx: SignalReceiver,
-    inner: Box<Future<Item = (), Error = ()> + Send + 'static>,
+    inner: F,
 }
 
-impl Cancelable {
+impl<F> Cancelable<F>
+where
+    F: Future<Item = (), Error = Error> + Send + 'static,
+{
     /// 受け取ったfutureをキャンセル可能なfutureに変換する。  
     /// `let (cancelable_future, cancelizer) = Cancelable::new(future)`  
     /// において、`cancelable_future`がキャンセル可能なfutureであり、  
     /// このfutureをキャンセルしたくなった時点で `cancelizer.send_signal()` を呼び出せば、  
-    /// シグナル送信以降は `cancelable_future.poll() == Ok(Async::Ready())` を即時返却するようになる。
-    pub fn new<F>(future: F) -> (Self, SignalSender)
-    where
-        F: Future<Item = (), Error = ()> + Send + 'static,
-    {
+    /// シグナル送信以降は `cancelable_future.poll() == Ok(Async::Ready(()))` を即時返却するようになる。
+    pub fn new(future: F) -> (Self, SignalSender) {
         let (signal_tx, signal_rx) = make_channel();
         (
             Cancelable {
-                inner: Box::new(future),
+                inner: future,
                 signal_rx,
             },
             signal_tx,
@@ -91,11 +93,14 @@ impl Cancelable {
     }
 }
 
-impl Future for Cancelable {
+impl<F> Future for Cancelable<F>
+where
+    F: Future<Item = (), Error = Error> + Send + 'static,
+{
     type Item = ();
-    type Error = ();
+    type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        if let Async::Ready(_) = self.signal_rx.poll().unwrap() {
+        if let Async::Ready(_) = track!(self.signal_rx.poll())? {
             return Ok(Async::Ready(()));
         } else {
             self.inner.poll()
@@ -106,33 +111,16 @@ impl Future for Cancelable {
 #[cfg(test)]
 mod tests {
     use super::Cancelable;
+    use fibers::time::timer as fibers_timer;
     use fibers::{Executor, ThreadPoolExecutor};
-    use futures::{Async, Future, Poll};
+    use futures::Future;
+    use trackable::error::ErrorKindExt;
     use trackable::result::TestResult;
     use {Error, ErrorKind};
 
-    struct S {
-        start: std::time::Instant,
-        timeout: u64,
-    }
-    impl S {
-        pub fn new(timeout: u64) -> Self {
-            S {
-                timeout,
-                start: std::time::Instant::now(),
-            }
-        }
-    }
-    // This future will stop with an Error after `self.timeout`-seconds.
-    impl Future for S {
-        type Item = ();
-        type Error = ();
-        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-            if self.start.elapsed().as_secs() > self.timeout {
-                Err(())
-            } else {
-                Ok(Async::NotReady)
-            }
+    impl From<std::sync::mpsc::RecvError> for Error {
+        fn from(f: std::sync::mpsc::RecvError) -> Self {
+            ErrorKind::Other.cause(f).into()
         }
     }
 
@@ -140,16 +128,24 @@ mod tests {
     // 停止までに長い時間を要するFutureを作成し、途中でcancelする。
     fn it_stops_loop_future() -> TestResult {
         let mut executor = track!(ThreadPoolExecutor::new().map_err(Error::from))?;
-        let (cancelable_future, mut cancelizer) = Cancelable::new(S::new(5));
+        let timer = fibers_timer::timeout(std::time::Duration::from_secs(5));
+        let timer = timer.map_err(Error::from);
+        let (cancelable_future, mut cancelizer) = Cancelable::new(timer);
 
+        // 下の(*)地点でfutureを起動して5秒経過するまでの間に
+        // cancel signalを送るためのスレッド。
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_secs(1));
             cancelizer.send_signal().unwrap();
         });
 
-        let result = executor.run_future(cancelable_future).unwrap();
-
+        let now = std::time::Instant::now();
+        // (*)
+        // run_futureはcancelなしの場合に停止までに5秒要するが、
+        // 上で別スレッドがそれまでにcancelを送るため、5秒かからずに終了する。
+        let result = track!(executor.run_future(cancelable_future).map_err(Error::from))?;
         assert!(result.is_ok());
+        assert!(now.elapsed().as_secs() < 3);
 
         Ok(())
     }
@@ -158,7 +154,9 @@ mod tests {
     // 既にキャンセル済みのfutureに対してsignalを送った場合にはエラーになる。
     fn error_occurs_if_send_stop_signal_to_canceled_future() -> TestResult {
         let mut executor = track!(ThreadPoolExecutor::new().map_err(Error::from))?;
-        let (cancelable_future, mut cancelizer) = Cancelable::new(S::new(5));
+        let timer = fibers_timer::timeout(std::time::Duration::from_secs(5));
+        let timer = timer.map_err(Error::from);
+        let (cancelable_future, mut cancelizer) = Cancelable::new(timer);
         let mut c = cancelizer.clone();
 
         std::thread::spawn(move || {
@@ -166,10 +164,13 @@ mod tests {
             c.send_signal().unwrap();
         });
 
-        executor.run_future(cancelable_future).unwrap().unwrap();
+        let now = std::time::Instant::now();
+        let run_result = track!(executor.run_future(cancelable_future).map_err(Error::from))?;
+        assert!(run_result.is_ok());
+        assert!(now.elapsed().as_secs() < 3);
 
+        // 既にcancelされているためエラーとなることを確認する。
         let result = cancelizer.send_signal();
-
         match result {
             Ok(_) => unreachable!(),
             Err(e) => assert_eq!(*e.kind(), ErrorKind::Other),

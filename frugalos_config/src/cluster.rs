@@ -139,13 +139,14 @@ pub fn create<P: AsRef<Path>>(logger: &Logger, mut local: Server, data_dir: P) -
         .finish(executor.handle());
     let rpc_service_handle = rpc_service.handle();
     let (cancelable_rpc_service, mut rpc_service_cancelizer) =
-        Cancelable::new(rpc_service.map_err(move |e| panic!("Error: {}", e)));
+        Cancelable::new(rpc_service.map_err(Error::from));
 
     let mut rpc_server_builder = RpcServerBuilder::new(node.addr);
     let raft_service = frugalos_raft::Service::new(logger.clone(), &mut rpc_server_builder);
-    let rpc_server = rpc_server_builder.finish(executor.handle());
-    let (cancelable_rpc_server, mut rpc_server_cancelizer) =
-        Cancelable::new(rpc_server.map_err(move |e| panic!("Error: {}", e)));
+    let rpc_server = rpc_server_builder
+        .finish(executor.handle())
+        .map_err(Error::from);
+    let (cancelable_rpc_server, mut rpc_server_cancelizer) = Cancelable::new(rpc_server);
 
     let (device, rlog) = track!(make_rlog(
         logger.clone(),
@@ -156,9 +157,9 @@ pub fn create<P: AsRef<Path>>(logger: &Logger, mut local: Server, data_dir: P) -
         raft_service.handle(),
         vec![local.clone()],
     ))?;
-    executor.spawn(cancelable_rpc_server);
+    executor.spawn(cancelable_rpc_server.map_err(move |e| panic!("Error: {}", e)));
     executor.spawn(raft_service.map_err(move |e| panic!("Error: {}", e)));
-    executor.spawn(cancelable_rpc_service);
+    executor.spawn(cancelable_rpc_service.map_err(move |e| panic!("Error: {}", e)));
 
     // クラスタ構成に自サーバを登録
     let monitor = executor.spawn_monitor(CreateCluster::new(logger.clone(), rlog, local.clone()));
@@ -206,8 +207,8 @@ pub fn join<P: AsRef<Path>>(
     let rpc_service_handle = rpc_service.handle();
     let client = Client::new(contact_server, rpc_service_handle);
     let (cancelable_rpc_service, mut rpc_service_cancelizer) =
-        Cancelable::new(rpc_service.map_err(move |e| panic!("Error: {}", e)));
-    executor.spawn(cancelable_rpc_service);
+        Cancelable::new(rpc_service.map_err(Error::from));
+    executor.spawn(cancelable_rpc_service.map_err(move |e| panic!("Error: {}", e)));
 
     let monitor = executor.spawn_monitor(client.put_server(local.clone()));
     let result = track!(executor.run_fiber(monitor).map_err(Error::from))?;
@@ -250,8 +251,8 @@ pub fn leave<P: AsRef<Path>>(
         .finish(executor.handle());
     let client = Client::new(contact_server, rpc_service.handle());
     let (cancelable_rpc_service, mut rpc_service_cancelizer) =
-        Cancelable::new(rpc_service.map_err(move |e| panic!("Error: {}", e)));
-    executor.spawn(cancelable_rpc_service);
+        Cancelable::new(rpc_service.map_err(Error::from));
+    executor.spawn(cancelable_rpc_service.map_err(move |e| panic!("Error: {}", e)));
 
     let monitor = executor.spawn_monitor(client.delete_server(local.id.clone()));
     let result = track!(executor.run_fiber(monitor).map_err(Error::from))?;

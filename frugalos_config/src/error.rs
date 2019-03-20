@@ -59,7 +59,11 @@ impl From<libfrugalos::Error> for Error {
         kind.takes_over(f).into()
     }
 }
-
+impl From<fibers_rpc::Error> for Error {
+    fn from(f: fibers_rpc::Error) -> Self {
+        ErrorKind::Other.takes_over(f).into()
+    }
+}
 impl<T> From<std::sync::mpsc::SendError<T>> for Error
 where
     T: Send + Sync + 'static,
@@ -68,7 +72,6 @@ where
         ErrorKind::Other.cause(f).into()
     }
 }
-
 impl From<std::sync::mpsc::TryRecvError> for Error {
     fn from(f: std::sync::mpsc::TryRecvError) -> Self {
         let kind = match f {
