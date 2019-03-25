@@ -9,6 +9,8 @@ use std::str;
 use http::{make_json_response, HttpResult};
 use {FrugalosConfig, Result};
 
+/// 現在稼働しているFrugalosサーバのパラメータ群を保持し
+/// HTTP APIリクエストに応じるための構造体。
 #[derive(Clone)]
 pub struct ParameterServer {
     logger: Logger,
