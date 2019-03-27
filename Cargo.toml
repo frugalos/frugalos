@@ -53,5 +53,8 @@ url = "1"
 # TODO tempfile を使いたいが現状はコンパイルできないので諸々直す
 tempdir = "0.3"
 
+[build-dependencies]
+trackable = "^0.2.21"
+
 [workspace]
 members = ["frugalos_core", "frugalos_config", "frugalos_mds", "frugalos_raft", "frugalos_segment"]
