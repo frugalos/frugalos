@@ -31,7 +31,7 @@ use codec::{AsyncEncoder, ObjectResultEncoder};
 use http::{
     make_json_response, make_object_response, not_found, BucketStatistics, HttpResult, TraceHeader,
 };
-use {Error, ErrorKind, Result};
+use {Error, ErrorKind, FrugalosConfig, Result};
 
 // TODO: 冗長化設定等を反映した正確な上限を使用する
 const MAX_PUT_OBJECT_SIZE: usize = 50 * 1024 * 1024;
@@ -57,6 +57,7 @@ macro_rules! try_badarg {
 #[derive(Clone)]
 pub struct Server {
     logger: Logger,
+    config: FrugalosConfig,
     client: FrugalosClient,
     tracer: Arc<Mutex<Tracer>>,
 
@@ -64,9 +65,15 @@ pub struct Server {
     large_object_count: Arc<AtomicUsize>,
 }
 impl Server {
-    pub fn new(logger: Logger, client: FrugalosClient, tracer: Tracer) -> Self {
+    pub fn new(
+        logger: Logger,
+        config: FrugalosConfig,
+        client: FrugalosClient,
+        tracer: Tracer,
+    ) -> Self {
         Server {
             logger,
+            config,
             client,
             tracer: Arc::new(Mutex::new(tracer)),
             large_object_count: Arc::default(),
@@ -82,6 +89,7 @@ impl Server {
         track!(builder.add_handler(WithMetrics::new(PutObject(self.clone()))))?;
         track!(builder.add_handler(WithMetrics::new(GetBucketStatistics(self.clone()))))?;
         track!(builder.add_handler(JemallocStats))?;
+        track!(builder.add_handler(CurrentConfigurations(self.config)))?;
         Ok(())
     }
 
@@ -619,6 +627,25 @@ impl HandleRequest for JemallocStats {
         let mut buf = Vec::new();
         let _ = jemalloc_ctl::stats_print::stats_print(&mut buf, Default::default());
         Box::new(futures::finished(Res::new(Status::Ok, buf)))
+    }
+}
+
+/// 現在稼働しているFrugalosプロセスのconfigurationを保持し
+/// HTTP GETリクエストに応じるための構造体。
+pub struct CurrentConfigurations(FrugalosConfig);
+impl HandleRequest for CurrentConfigurations {
+    const METHOD: &'static str = "GET";
+    const PATH: &'static str = "/v1/frugalos/configurations";
+
+    type ReqBody = ();
+    type ResBody = HttpResult<FrugalosConfig>;
+    type Decoder = BodyDecoder<NullDecoder>;
+    type Encoder = BodyEncoder<JsonEncoder<Self::ResBody>>;
+    type Reply = Reply<Self::ResBody>;
+
+    fn handle_request(&self, _req: Req<Self::ReqBody>) -> Self::Reply {
+        let response = make_json_response(Status::Ok, Ok(self.0.clone()));
+        Box::new(futures::finished(response))
     }
 }
 

@@ -57,7 +57,6 @@ mod codec;
 mod config_server;
 mod error;
 mod http;
-mod parameter_server;
 mod rpc_server;
 mod server;
 mod service;

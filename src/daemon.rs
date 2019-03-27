@@ -26,7 +26,6 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use config_server::ConfigServer;
-use parameter_server::ParameterServer;
 use rpc_server::RpcServer;
 use server::{spawn_report_spans_thread, Server};
 use service;
@@ -108,16 +107,13 @@ impl FrugalosDaemon {
             &mut rpc_server_builder,
         );
 
-        let server = Server::new(logger.clone(), client, tracer);
+        let server = Server::new(logger.clone(), cloned_config, client, tracer);
         track!(server.register(&mut http_server_builder))?;
 
         track!(http_server_builder.add_handler(WithMetrics::new(MetricsHandler)))?;
 
         let config_server = ConfigServer::new(rpc_service.handle(), rpc_addr);
         track!(config_server.register(&mut http_server_builder))?;
-
-        let parameter_server = ParameterServer::new(logger.clone(), cloned_config);
-        track!(parameter_server.register(&mut http_server_builder))?;
 
         Ok(FrugalosDaemon {
             logger: logger.clone(),
