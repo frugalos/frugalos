@@ -58,6 +58,7 @@ impl Bucket {
                 members: Vec::new(),
             },
             dispersed_client: segment_config.dispersed_client.clone(),
+            replicated_client: segment_config.replicated_client.clone(),
             storage: storage_config.clone(),
             mds: segment_config.mds_client.clone(),
         };
@@ -83,6 +84,7 @@ impl Bucket {
         let segment_config = frugalos_segment::config::ClientConfig {
             cluster: frugalos_segment::config::ClusterConfig { members },
             dispersed_client: self.segment_config.dispersed_client.clone(),
+            replicated_client: self.segment_config.replicated_client.clone(),
             storage: self.storage_config.clone(),
             mds: self.segment_config.mds_client.clone(),
         };

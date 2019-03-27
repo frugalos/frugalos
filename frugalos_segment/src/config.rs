@@ -1,6 +1,7 @@
 //! セグメント構成に関係する構造体等。
 use byteorder::{BigEndian, ByteOrder};
 use cannyls::lump::LumpId;
+use fibers_rpc::client::Options as RpcOptions;
 use frugalos_raft::NodeId;
 use libfrugalos::entity::object::ObjectVersion;
 use libfrugalos::time::Seconds;
@@ -39,6 +40,51 @@ pub(crate) fn make_lump_id(node: &NodeId, version: ObjectVersion) -> LumpId {
     LumpId::new(BigEndian::read_u128(&id[..]))
 }
 
+/// Configuration for CannyLS.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CannyLsClientConfig {
+    /// The max length of a cannyls device queue.
+    #[serde(
+        rename = "cannyls_device_max_queue_len",
+        default = "default_cannyls_device_max_queue_len"
+    )]
+    pub device_max_queue_len: usize,
+
+    /// The max length of a RPC request queue.
+    #[serde(
+        rename = "cannyls_rpc_max_queue_len",
+        default = "default_cannyls_rpc_max_queue_len"
+    )]
+    pub rpc_max_queue_len: u64,
+}
+
+impl CannyLsClientConfig {
+    /// Returns a RPC option.
+    pub fn rpc_options(&self) -> RpcOptions {
+        RpcOptions {
+            max_queue_len: Some(self.rpc_max_queue_len),
+            ..Default::default()
+        }
+    }
+}
+
+impl Default for CannyLsClientConfig {
+    fn default() -> Self {
+        Self {
+            device_max_queue_len: default_cannyls_device_max_queue_len(),
+            rpc_max_queue_len: default_cannyls_rpc_max_queue_len(),
+        }
+    }
+}
+
+fn default_cannyls_device_max_queue_len() -> usize {
+    4096
+}
+
+fn default_cannyls_rpc_max_queue_len() -> u64 {
+    512
+}
+
 /// Configuration for `MdsClient`.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct MdsClientConfig {
@@ -74,18 +120,31 @@ pub struct DispersedClientConfig {
         with = "frugalos_core::serde_ext::duration_millis"
     )]
     pub get_timeout: Duration,
+
+    /// Configuration for `CannyLsClient`.
+    #[serde(flatten)]
+    pub cannyls: CannyLsClientConfig,
 }
 
 impl Default for DispersedClientConfig {
     fn default() -> Self {
         DispersedClientConfig {
             get_timeout: default_dispersed_client_get_timeout(),
+            cannyls: Default::default(),
         }
     }
 }
 
 fn default_dispersed_client_get_timeout() -> Duration {
     Duration::from_secs(2)
+}
+
+/// Configuration for `ReplicatedClient`.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Default)]
+pub struct ReplicatedClientConfig {
+    /// Configuration for `CannyLsClient`.
+    #[serde(flatten)]
+    pub cannyls: CannyLsClientConfig,
 }
 
 // FIXME: rename (config.rs で定義されている struct は名前、責務、依存関係を整理した方がよい)
@@ -95,6 +154,7 @@ fn default_dispersed_client_get_timeout() -> Duration {
 pub struct ClientConfig {
     pub cluster: ClusterConfig,
     pub dispersed_client: DispersedClientConfig,
+    pub replicated_client: ReplicatedClientConfig,
     pub storage: Storage,
     pub mds: MdsClientConfig,
 }

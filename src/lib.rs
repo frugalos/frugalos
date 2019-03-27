@@ -294,6 +294,11 @@ frugalos:
   segment:
     dispersed_client:
       get_timeout_millis: 4000
+      cannyls_device_max_queue_len: 64
+      cannyls_rpc_max_queue_len: 128
+    replicated_client:
+      cannyls_device_max_queue_len: 2048
+      cannyls_rpc_max_queue_len: 32
     mds_client:
       put_content_timeout_secs: 32"##;
         let dir = track_any_err!(TempDir::new("frugalos_test"))?;
@@ -322,6 +327,18 @@ frugalos:
         expected.mds.snapshot_threshold_min = 100;
         expected.mds.snapshot_threshold_max = 200;
         expected.segment.dispersed_client.get_timeout = Duration::from_secs(4);
+        expected
+            .segment
+            .dispersed_client
+            .cannyls
+            .device_max_queue_len = 64;
+        expected.segment.dispersed_client.cannyls.rpc_max_queue_len = 128;
+        expected
+            .segment
+            .replicated_client
+            .cannyls
+            .device_max_queue_len = 2048;
+        expected.segment.replicated_client.cannyls.rpc_max_queue_len = 32;
         expected.segment.mds_client.put_content_timeout = Seconds(32);
 
         assert_eq!(expected, actual);
@@ -380,6 +397,8 @@ frugalos:
 
     #[test]
     fn frugalos_config_from_yaml_reports_unknown_fields() -> TestResult {
+        // NOTE: serde_ignored で認識されないケースについて
+        // https://github.com/frugalos/frugalos/pull/130#issuecomment-476986133
         let content = r##"---
         frugalos:
           this_is_invalid_field:
@@ -387,8 +406,8 @@ frugalos:
           daemon:
             executor_threadz: "typo of executor_threads"
           segment:
-            dispersed_client:
-              get_timeout_secs: "DispersedClientConfig only has get_time_millis"
+            mds_client:
+              put_content_timeout_millis: "MdsClient only has put_content_timeout_secs"
         "##;
         let dir = track_any_err!(TempDir::new("frugalos_test"))?;
         let filepath = dir.path().join("frugalos5.yml");
@@ -403,7 +422,7 @@ frugalos:
             unknowns,
             vec![
                 "frugalos.daemon.executor_threadz",
-                "frugalos.segment.dispersed_client.get_timeout_secs",
+                "frugalos.segment.mds_client.put_content_timeout_millis",
                 "frugalos.this_is_invalid_field"
             ]
         );
