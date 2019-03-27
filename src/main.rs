@@ -30,15 +30,10 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 #[allow(clippy::cyclomatic_complexity)]
 fn main() {
     let rpc_server_bind_addr = default_rpc_server_bind_addr();
-    let long_version_str: &str = &format!(
-        "{}\nBuilt by {}-mode with {}",
-        env!("CARGO_PKG_VERSION"),
-        frugalos::build_informations::BUILD_PROFILE,
-        frugalos::build_informations::BUILD_VERSION
-    );
+    let long_version = track_try_unwrap!(make_long_version());
     let matches = App::new("frugalos")
         .version(env!("CARGO_PKG_VERSION"))
-        .long_version(long_version_str)
+        .long_version(long_version.as_str())
         .subcommand(
             SubCommand::with_name("create")
                 .arg(server_id_arg())
@@ -480,4 +475,15 @@ fn warn_if_there_are_unknown_fields(logger: &mut slog::Logger, unknown_fields: &
             "The following unknown fields were passed:\n{:?}", unknown_fields
         );
     }
+}
+
+fn make_long_version() -> Result<String> {
+    use frugalos::build_information::*;
+    use std::fmt::Write;
+
+    let mut s = String::new();
+    track!(writeln!(&mut s, env!("CARGO_PKG_VERSION")).map_err(Error::from))?;
+    track!(writeln!(&mut s, "build-mode: {}", BUILD_PROFILE).map_err(Error::from))?;
+    track!(writeln!(&mut s, "rustc-version: {}", BUILD_VERSION).map_err(Error::from))?;
+    Ok(s.trim().to_owned())
 }

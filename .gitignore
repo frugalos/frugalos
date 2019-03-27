@@ -1,6 +1,5 @@
 target
 node_modules
-src/build_informations.rs
 
 # vagrant
 .vagrant

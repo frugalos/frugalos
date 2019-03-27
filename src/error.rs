@@ -120,6 +120,11 @@ impl From<std::sync::mpsc::RecvError> for Error {
         ErrorKind::Other.cause(f).into()
     }
 }
+impl From<std::fmt::Error> for Error {
+    fn from(f: std::fmt::Error) -> Self {
+        ErrorKind::InvalidInput.cause(f).into()
+    }
+}
 
 /// エラーの種類。
 #[allow(missing_docs)]
