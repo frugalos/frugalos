@@ -127,7 +127,7 @@ fn main() {
         )
         .get_matches();
 
-    let mut config: FrugalosConfig =
+    let (mut config, unknown_fields): (FrugalosConfig, Vec<String>) =
         track_try_unwrap!(track_any_err!(get_frugalos_config(&matches)));
 
     // Logger
@@ -172,7 +172,8 @@ fn main() {
         let server_addr = matches.value_of("SERVER_ADDR").unwrap();
         set_data_dir(&matches, &mut config);
 
-        let logger = track_try_unwrap!(logger_builder.build());
+        let mut logger = track_try_unwrap!(logger_builder.build());
+        warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
         let logger = logger.new(o!("server" => format!("{}@{}", server_id, server_addr)));
         let server = Server::new(
             server_id.to_string(),
@@ -195,7 +196,8 @@ fn main() {
         let contact_server_addr = matches.value_of("CONTACT_SERVER_ADDR").unwrap();
         set_data_dir(&matches, &mut config);
 
-        let logger = track_try_unwrap!(logger_builder.build());
+        let mut logger = track_try_unwrap!(logger_builder.build());
+        warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
         let logger = logger.new(o!("server" => format!("{}@{}", server_id, server_addr)));
         let server = Server::new(
             server_id.to_string(),
@@ -217,7 +219,8 @@ fn main() {
 
         let contact_server =
             track_try_unwrap!(contact_server_addr.parse().map_err(Failure::from_error));
-        let logger = track_try_unwrap!(logger_builder.build());
+        let mut logger = track_try_unwrap!(logger_builder.build());
+        warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
         debug!(logger, "config: {:?}", config);
         track_try_unwrap!(frugalos_config::cluster::leave(
             &logger,
@@ -233,7 +236,8 @@ fn main() {
         let server_addr = matches.value_of("SERVER_ADDR").unwrap();
         set_data_dir(&matches, &mut config);
 
-        let logger = track_try_unwrap!(logger_builder.build());
+        let mut logger = track_try_unwrap!(logger_builder.build());
+        warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
         let logger = logger.new(o!("server" => format!("{}@{}", server_id, server_addr)));
         let mut server = Server::new(
             server_id.to_string(),
@@ -247,7 +251,8 @@ fn main() {
         ));
     } else if let Some(matches) = matches.subcommand_matches("start") {
         // START SERVER
-        let logger = track_try_unwrap!(logger_builder.build());
+        let mut logger = track_try_unwrap!(logger_builder.build());
+        warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
         set_data_dir(&matches, &mut config);
         track_try_unwrap!(track_any_err!(set_daemon_config(
             &matches,
@@ -275,7 +280,8 @@ fn main() {
         debug!(logger, "config: {:?}", config);
     } else if let Some(matches) = matches.subcommand_matches("stop") {
         // STOP SERVER
-        let logger = track_try_unwrap!(logger_builder.build());
+        let mut logger = track_try_unwrap!(logger_builder.build());
+        warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
         let mut rpc_addrs = track_try_unwrap!(track_any_err!(matches
             .value_of("RPC_ADDR")
             .unwrap()
@@ -289,7 +295,8 @@ fn main() {
         debug!(logger, "config: {:?}", config);
     } else if let Some(matches) = matches.subcommand_matches("take-snapshot") {
         // TAKE SNAPSHOT
-        let logger = track_try_unwrap!(logger_builder.build());
+        let mut logger = track_try_unwrap!(logger_builder.build());
+        warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
         let mut rpc_addrs = track_try_unwrap!(track_any_err!(matches
             .value_of("RPC_ADDR")
             .unwrap()
@@ -387,9 +394,9 @@ fn set_data_dir(matches: &ArgMatches, config: &mut FrugalosConfig) {
 }
 
 /// Gets `FrugalosConfig`.
-fn get_frugalos_config(matches: &ArgMatches) -> Result<FrugalosConfig> {
+fn get_frugalos_config(matches: &ArgMatches) -> Result<(FrugalosConfig, Vec<String>)> {
     matches.value_of("CONFIG_FILE").map_or_else(
-        || Ok(FrugalosConfig::default()),
+        || Ok((FrugalosConfig::default(), Vec::new())),
         |v| FrugalosConfig::from_yaml(v).map_err(|e| track!(e)),
     )
 }
@@ -457,4 +464,13 @@ fn set_segment_config(
             .map_err(|e| track!(Error::from(e)))?;
     }
     Ok(())
+}
+
+fn warn_if_there_are_unknown_fields(logger: &mut slog::Logger, unknown_fields: &[String]) {
+    if !unknown_fields.is_empty() {
+        warn!(
+            logger,
+            "The following unknown fields were passed:\n{:?}", unknown_fields
+        );
+    }
 }
