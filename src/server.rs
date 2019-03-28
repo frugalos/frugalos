@@ -6,6 +6,7 @@ use fibers_http_server::metrics::WithMetrics;
 use fibers_http_server::{
     HandleRequest, Reply, Req, Res, ServerBuilder as HttpServerBuilder, Status,
 };
+use frugalos_core::tracer::ThreadLocalTracer;
 use futures::{self, Future, Stream};
 use httpcodec::{BodyDecoder, BodyEncoder, HeadBodyEncoder, Header};
 use libfrugalos::entity::object::{
@@ -15,12 +16,10 @@ use libfrugalos::expect::Expect;
 use rustracing::tag::{StdTag, Tag};
 use rustracing_jaeger::reporter::JaegerCompactReporter;
 use rustracing_jaeger::span::{SpanContext, SpanReceiver};
-use rustracing_jaeger::{Span, Tracer};
 use slog::Logger;
-use std::cell::RefCell;
 use std::str;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
@@ -35,10 +34,6 @@ use {Error, ErrorKind, FrugalosConfig, Result};
 
 // TODO: 冗長化設定等を反映した正確な上限を使用する
 const MAX_PUT_OBJECT_SIZE: usize = 50 * 1024 * 1024;
-
-thread_local! {
-    static TRACER: RefCell<Option<Tracer>> = RefCell::new(None);
-}
 
 macro_rules! try_badarg {
     ($e:expr) => {
@@ -59,7 +54,7 @@ pub struct Server {
     logger: Logger,
     config: FrugalosConfig,
     client: FrugalosClient,
-    tracer: Arc<Mutex<Tracer>>,
+    tracer: ThreadLocalTracer,
 
     // TODO: remove
     large_object_count: Arc<AtomicUsize>,
@@ -69,13 +64,13 @@ impl Server {
         logger: Logger,
         config: FrugalosConfig,
         client: FrugalosClient,
-        tracer: Tracer,
+        tracer: ThreadLocalTracer,
     ) -> Self {
         Server {
             logger,
             config,
             client,
-            tracer: Arc::new(Mutex::new(tracer)),
+            tracer,
             large_object_count: Arc::default(),
         }
     }
@@ -91,24 +86,6 @@ impl Server {
         track!(builder.add_handler(JemallocStats))?;
         track!(builder.add_handler(CurrentConfigurations(self.config)))?;
         Ok(())
-    }
-
-    fn tracer<F>(&self, f: F) -> Span
-    where
-        F: FnOnce(&Tracer) -> Span,
-    {
-        TRACER.with(|local_tracer| {
-            if local_tracer.borrow().is_none() {
-                if let Ok(global_tracer) = self.tracer.try_lock() {
-                    *local_tracer.borrow_mut() = Some(global_tracer.clone());
-                }
-            }
-            if let Some(ref t) = *local_tracer.borrow() {
-                f(t)
-            } else {
-                Span::inactive()
-            }
-        })
     }
 }
 
@@ -231,7 +208,8 @@ impl HandleRequest for GetObject {
             .and_then(|c| c);
         let mut span = self
             .0
-            .tracer(|t| t.span("get_object").child_of(&client_span).start());
+            .tracer
+            .span(|t| t.span("get_object").child_of(&client_span).start());
         span.set_tag(|| StdTag::http_method("GET"));
         span.set_tag(|| Tag::new("bucket.id", bucket_id.clone()));
         span.set_tag(|| Tag::new("object.id", object_id.clone()));
@@ -305,7 +283,8 @@ impl HandleRequest for HeadObject {
             .and_then(|c| c);
         let mut span = self
             .0
-            .tracer(|t| t.span("head_object").child_of(&client_span).start());
+            .tracer
+            .span(|t| t.span("head_object").child_of(&client_span).start());
         span.set_tag(|| StdTag::http_method("HEAD"));
         span.set_tag(|| Tag::new("bucket.id", bucket_id.clone()));
         span.set_tag(|| Tag::new("object.id", object_id.clone()));
@@ -375,7 +354,8 @@ impl HandleRequest for DeleteObject {
             .and_then(|c| c);
         let mut span = self
             .0
-            .tracer(|t| t.span("delete_object").child_of(&client_span).start());
+            .tracer
+            .span(|t| t.span("delete_object").child_of(&client_span).start());
         span.set_tag(|| StdTag::http_method("DELETE"));
         span.set_tag(|| Tag::new("bucket.id", bucket_id.clone()));
         span.set_tag(|| Tag::new("object.id", object_id.clone()));
@@ -448,7 +428,7 @@ impl HandleRequest for DeleteObjectByPrefix {
         let client_span = SpanContext::extract_from_http_header(&TraceHeader(req.header()))
             .ok()
             .and_then(|c| c);
-        let mut span = self.0.tracer(|t| {
+        let mut span = self.0.tracer.span(|t| {
             t.span("delete_object_by_prefix")
                 .child_of(&client_span)
                 .start()
@@ -558,7 +538,8 @@ impl HandleRequest for PutObject {
             .and_then(|c| c);
         let mut span = self
             .0
-            .tracer(|t| t.span("put_object").child_of(&client_span).start());
+            .tracer
+            .span(|t| t.span("put_object").child_of(&client_span).start());
         span.set_tag(|| StdTag::http_method("PUT"));
         span.set_tag(|| Tag::new("bucket.id", bucket_id.clone()));
         span.set_tag(|| Tag::new("object.id", object_id.clone()));

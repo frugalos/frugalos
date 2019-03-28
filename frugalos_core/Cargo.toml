@@ -12,6 +12,8 @@ license = "MIT"
 travis-ci = {repository = "frugalos/frugalos"}
 
 [dependencies]
+rustracing = "0.1"
+rustracing_jaeger = "0.1"
 serde = "1"
 serde_derive = "1"
 serde_yaml = "0.8"

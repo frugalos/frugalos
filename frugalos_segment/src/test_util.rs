@@ -12,6 +12,7 @@ pub mod tests {
     use fibers_global;
     use fibers_rpc::client::{ClientService, ClientServiceHandle};
     use fibers_rpc::server::ServerBuilder;
+    use frugalos_core;
     use frugalos_mds;
     use frugalos_raft::{self, LocalNodeId, NodeId};
     use futures;
@@ -97,6 +98,7 @@ pub mod tests {
                 &mut rpc_server_builder,
                 raft_service_handle,
                 frugalos_mds::FrugalosMdsConfig::default(),
+                frugalos_core::tracer::make_null_tracer(),
             )?;
             let service_handle = service.handle();
             let device_registry_handle = service.device_registry().handle();
