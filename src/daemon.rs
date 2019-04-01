@@ -44,6 +44,7 @@ pub struct FrugalosDaemon {
 impl FrugalosDaemon {
     /// Creates a new `FrugalosDaemon`.
     pub fn new(logger: &Logger, config: FrugalosConfig) -> Result<Self> {
+        let cloned_config = config.clone();
         let data_dir = config.data_dir;
         let http_addr = config.http_server.bind_addr;
         let logger = Logger::root(
@@ -106,7 +107,7 @@ impl FrugalosDaemon {
             &mut rpc_server_builder,
         );
 
-        let server = Server::new(logger.clone(), client, tracer);
+        let server = Server::new(logger.clone(), cloned_config, client, tracer);
         track!(server.register(&mut http_server_builder))?;
 
         track!(http_server_builder.add_handler(WithMetrics::new(MetricsHandler)))?;
