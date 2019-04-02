@@ -2,6 +2,7 @@ use cannyls;
 use cannyls::device::DeviceHandle;
 use fibers::sync::mpsc;
 use futures::{Async, Future, Stream};
+use prometrics::metrics::{Histogram, HistogramBuilder, MetricBuilder};
 use raftlog::election::Ballot;
 use raftlog::log::{LogIndex, LogPosition, LogPrefix, LogSuffix};
 use raftlog::{Error, ErrorKind, Result};
@@ -58,10 +59,16 @@ pub struct Storage {
     event_rx: mpsc::Receiver<Event>,
     event_tx: mpsc::Sender<Event>,
     phase: Phase,
+    metrics: StorageMetrics,
 }
 impl Storage {
     /// 新しい`Storage`インスタンスを生成する.
-    pub fn new(logger: Logger, node_id: LocalNodeId, device: DeviceHandle) -> Self {
+    pub fn new(
+        logger: Logger,
+        node_id: LocalNodeId,
+        device: DeviceHandle,
+        metrics: StorageMetrics,
+    ) -> Self {
         let (event_tx, event_rx) = mpsc::channel();
         Storage {
             handle: Handle {
@@ -73,6 +80,7 @@ impl Storage {
             event_rx,
             event_tx,
             phase: Phase::Started,
+            metrics,
         }
     }
 
@@ -94,7 +102,7 @@ impl Storage {
     }
     pub(crate) fn load_log(&mut self, start: LogIndex, end: Option<LogIndex>) -> LoadLog {
         if let Err(e) = track!(self.poll_and_handle_event()) {
-            return LoadLog(log::LoadLogInner::Failed(e));
+            return LoadLog::new(log::LoadLogInner::Failed(e), self.metrics.clone());
         }
 
         // XXX: 全体的に`raftlog`の実装内容に依存しており、あまり良くはない
@@ -140,7 +148,7 @@ impl Storage {
             assert_eq!(start, self.log_suffix.head.index);
             log::LoadLogInner::LoadLogSuffix(log_suffix::LoadLogSuffix::new(self))
         };
-        LoadLog(future)
+        LoadLog::new(future, self.metrics.clone())
     }
     pub(crate) fn save_log_suffix(&mut self, suffix: &LogSuffix) -> SaveLog {
         if self.phase != Phase::Initialized {
@@ -154,7 +162,7 @@ impl Storage {
         }
 
         if let Err(e) = track!(self.poll_and_handle_event()) {
-            return SaveLog(log::SaveLogInner::Failed(e));
+            return SaveLog::new(log::SaveLogInner::Failed(e), self.metrics.clone());
         }
 
         // ローカルバッファに追記後に、永続化ストレージに保存する.
@@ -167,7 +175,7 @@ impl Storage {
         } else {
             log_suffix::SaveLogSuffix::new(self, suffix)
         };
-        SaveLog(log::SaveLogInner::Suffix(future))
+        SaveLog::new(log::SaveLogInner::Suffix(future), self.metrics.clone())
     }
     pub(crate) fn save_log_prefix(&mut self, prefix: LogPrefix) -> SaveLog {
         if self.phase != Phase::Initialized {
@@ -185,7 +193,7 @@ impl Storage {
         } else {
             log::SaveLogInner::Prefix(log_prefix::SaveLogPrefix::new(self, prefix))
         };
-        SaveLog(inner)
+        SaveLog::new(inner, self.metrics.clone())
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -333,4 +341,97 @@ enum Phase {
     Started,
     Initializing,
     Initialized,
+}
+
+/// Metrics for `storage`.
+#[derive(Debug, Clone)]
+pub struct StorageMetrics {
+    pub(crate) load_log_duration_seconds: Histogram,
+    pub(crate) save_log_duration_seconds: Histogram,
+    pub(crate) load_log_prefix_duration_seconds: Histogram,
+    pub(crate) save_log_prefix_duration_seconds: Histogram,
+    pub(crate) load_log_suffix_duration_seconds: Histogram,
+    pub(crate) save_log_suffix_duration_seconds: Histogram,
+    pub(crate) load_ballot_duration_seconds: Histogram,
+    pub(crate) save_ballot_duration_seconds: Histogram,
+}
+impl StorageMetrics {
+    /// Makes a new `StorageMetrics` instance.
+    pub fn new() -> Self {
+        let mut builder = MetricBuilder::new();
+        builder.namespace("frugalos_raft").subsystem("storage");
+        let load_log_duration_seconds = make_histogram(
+            builder
+                .histogram("load_log_duration_seconds")
+                .help("Log loading duration"),
+        );
+        let save_log_duration_seconds = make_histogram(
+            builder
+                .histogram("save_log_duration_seconds")
+                .help("Log saving duration"),
+        );
+        let load_log_prefix_duration_seconds = make_histogram(
+            builder
+                .histogram("load_log_prefix_duration_seconds")
+                .help("LogPrefix loading duration"),
+        );
+        let save_log_prefix_duration_seconds = make_histogram(
+            builder
+                .histogram("save_log_prefix_duration_seconds")
+                .help("LogPrefix saving duration"),
+        );
+        let load_log_suffix_duration_seconds = make_histogram(
+            builder
+                .histogram("load_log_suffix_duration_seconds")
+                .help("LogPrefix loading duration"),
+        );
+        let save_log_suffix_duration_seconds = make_histogram(
+            builder
+                .histogram("save_log_suffix_duration_seconds")
+                .help("LogPrefix saving duration"),
+        );
+        let load_ballot_duration_seconds = make_histogram(
+            builder
+                .histogram("load_ballot_duration_seconds")
+                .help("Ballot loading duration"),
+        );
+        let save_ballot_duration_seconds = make_histogram(
+            builder
+                .histogram("save_ballot_duration_seconds")
+                .help("Ballot saving duration"),
+        );
+        Self {
+            load_log_duration_seconds,
+            save_log_duration_seconds,
+            load_log_prefix_duration_seconds,
+            save_log_prefix_duration_seconds,
+            load_log_suffix_duration_seconds,
+            save_log_suffix_duration_seconds,
+            load_ballot_duration_seconds,
+            save_ballot_duration_seconds,
+        }
+    }
+}
+impl Default for StorageMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn make_histogram(builder: &mut HistogramBuilder) -> Histogram {
+    builder
+        .bucket(0.0001)
+        .bucket(0.0005)
+        .bucket(0.001)
+        .bucket(0.005)
+        .bucket(0.01)
+        .bucket(0.05)
+        .bucket(0.1)
+        .bucket(0.5)
+        .bucket(1.0)
+        .bucket(5.0)
+        .bucket(10.0)
+        .bucket(50.0)
+        .finish()
+        .expect("Never fails")
 }

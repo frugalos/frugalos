@@ -6,9 +6,11 @@ use futures::{self, Async, Future, Poll};
 use raftlog::log::{LogEntry, LogIndex, LogSuffix};
 use raftlog::Error;
 use std::mem;
+use std::time::Instant;
 
 use super::{into_box_future, BoxFuture, Event, Handle, Storage};
 use protobuf;
+use StorageMetrics;
 
 // #[derive(Debug)]
 pub struct LoadLogSuffix {
@@ -17,6 +19,8 @@ pub struct LoadLogSuffix {
     suffix: LogSuffix,
     future: LoadLogEntry,
     event_tx: mpsc::Sender<Event>,
+    started_at: Instant,
+    metrics: StorageMetrics,
 }
 impl LoadLogSuffix {
     pub fn new(storage: &Storage) -> Self {
@@ -32,6 +36,8 @@ impl LoadLogSuffix {
             current: head.index,
             future: LoadLogEntry::new(handle, head.index),
             event_tx: storage.event_tx.clone(),
+            started_at: Instant::now(),
+            metrics: storage.metrics.clone(),
         }
     }
 }
@@ -50,6 +56,10 @@ impl Future for LoadLogSuffix {
                     "[FINISH] LoadLogSuffix: {}",
                     dump!(self.current)
                 );
+                let elapsed = prometrics::timestamp::duration_to_seconds(self.started_at.elapsed());
+                self.metrics
+                    .load_log_suffix_duration_seconds
+                    .observe(elapsed);
                 let suffix = mem::replace(&mut self.suffix, LogSuffix::default());
                 let _ = self.event_tx.send(Event::LogSuffixLoaded(suffix.clone()));
                 return Ok(Async::Ready(suffix));
@@ -111,6 +121,8 @@ pub struct SaveLogSuffix {
     next_index: LogIndex,
     entries: Vec<LogEntry>,
     future: Either<Done<bool, Error>, BoxFuture<bool>>,
+    started_at: Instant,
+    metrics: StorageMetrics,
 }
 impl SaveLogSuffix {
     pub fn new(storage: &Storage, suffix: &LogSuffix) -> Self {
@@ -128,6 +140,8 @@ impl SaveLogSuffix {
             next_index: suffix.head.index,
             entries,
             future,
+            started_at: Instant::now(),
+            metrics: storage.metrics.clone(),
         }
     }
     pub fn failed(storage: &Storage, e: Error) -> Self {
@@ -136,6 +150,8 @@ impl SaveLogSuffix {
             next_index: LogIndex::new(0),
             entries: Vec::new(),
             future: Either::A(futures::done(Err(e))),
+            started_at: Instant::now(),
+            metrics: storage.metrics.clone(),
         }
     }
 }
@@ -164,6 +180,10 @@ impl Future for SaveLogSuffix {
                 self.future = Either::B(into_box_future(future));
             } else {
                 debug!(self.handle.logger, "[FINISH] SaveLogSuffix");
+                let elapsed = prometrics::timestamp::duration_to_seconds(self.started_at.elapsed());
+                self.metrics
+                    .save_log_suffix_duration_seconds
+                    .observe(elapsed);
                 return Ok(Async::Ready(()));
             }
         }

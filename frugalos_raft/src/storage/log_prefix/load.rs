@@ -5,16 +5,20 @@ use raftlog::log::LogPrefix;
 use raftlog::Error;
 use std::mem;
 use std::ops::Range;
+use std::time::Instant;
 
 use super::super::{into_box_future, BoxFuture, Handle, Storage};
 use protobuf;
 use util::Phase;
+use StorageMetrics;
 
 // #[derive(Debug)]
 pub struct LoadLogPrefix {
     handle: Handle,
     phase: Phase<LoadLogPrefixIndex, LoadLogPrefixBytes>,
     prefix_index: Range<u64>,
+    started_at: Instant,
+    metrics: StorageMetrics,
 }
 impl LoadLogPrefix {
     pub fn new(storage: &Storage) -> Self {
@@ -25,6 +29,8 @@ impl LoadLogPrefix {
             handle,
             phase,
             prefix_index: Range { start: 0, end: 0 },
+            started_at: Instant::now(),
+            metrics: storage.metrics.clone(),
         }
     }
 }
@@ -39,6 +45,11 @@ impl Future for LoadLogPrefix {
                         self.handle.logger,
                         "[FINISH] LoadLogPrefix: Index Not Found"
                     );
+                    let elapsed =
+                        prometrics::timestamp::duration_to_seconds(self.started_at.elapsed());
+                    self.metrics
+                        .load_log_prefix_duration_seconds
+                        .observe(elapsed);
                     return Ok(Async::Ready(None));
                 }
                 Phase::A(Some(index)) => {
@@ -46,6 +57,11 @@ impl Future for LoadLogPrefix {
                         // リトライ前後でインデックスが変わらない場合には、
                         // 保存処理と競合した訳ではなく、そもそもデータが存在しないことを意味する.
                         info!(self.handle.logger, "[FINISH] LoadLogPrefix: Data Not Found");
+                        let elapsed =
+                            prometrics::timestamp::duration_to_seconds(self.started_at.elapsed());
+                        self.metrics
+                            .load_log_prefix_duration_seconds
+                            .observe(elapsed);
                         return Ok(Async::Ready(None));
                     } else {
                         self.prefix_index = index.clone();
@@ -60,6 +76,11 @@ impl Future for LoadLogPrefix {
                             "[FINISH] LoadLogPrefix: {}",
                             dump!(prefix.tail, prefix.config, bytes.len())
                         );
+                        let elapsed =
+                            prometrics::timestamp::duration_to_seconds(self.started_at.elapsed());
+                        self.metrics
+                            .load_log_prefix_duration_seconds
+                            .observe(elapsed);
                         return Ok(Async::Ready(Some(prefix)));
                     } else {
                         // 対応するlumpが見つからなかった.

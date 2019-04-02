@@ -22,7 +22,7 @@ use trackable::Trackable;
 use node::{LocalNodeId, NodeId};
 use raft_io::RaftIo;
 use rpc::{Mailer, Service, ServiceHandle};
-use storage::{Handle, Storage};
+use storage::{Handle, Storage, StorageMetrics};
 use timer::Timer;
 
 pub type NodeIndex = usize;
@@ -155,11 +155,21 @@ impl System {
 
         let local_node_id = LocalNodeId::new([0, 0, 0, 0, 0, 0, self.node_seqno]);
         self.node_seqno += 1;
+        let node_id = NodeId {
+            local_id: local_node_id,
+            instance: 0,
+            addr: self.rpc_server_addr,
+        };
 
         let logger = Logger::root(Discard, o!());
         let nvm = MemoryNvm::new(vec![0; 10 * 1024 * 1024]);
         let device = DeviceBuilder::new().spawn(|| track!(cannyls::storage::Storage::create(nvm)));
-        let storage = Storage::new(logger, local_node_id, device.handle());
+        let storage = Storage::new(
+            logger,
+            local_node_id,
+            device.handle(),
+            StorageMetrics::new(),
+        );
         let handle = storage.handle();
         let io = track!(RaftIo::new(
             self.raft_service.clone(),
@@ -168,11 +178,6 @@ impl System {
             timer
         ))?;
 
-        let node_id = NodeId {
-            local_id: local_node_id,
-            instance: 0,
-            addr: self.rpc_server_addr,
-        };
         Ok((node_id, io, device, handle))
     }
 }
