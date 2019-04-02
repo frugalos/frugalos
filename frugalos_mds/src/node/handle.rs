@@ -8,6 +8,7 @@ use libfrugalos::entity::object::{
 use libfrugalos::expect::Expect;
 use libfrugalos::time::Seconds;
 use std::ops::Range;
+use std::time::Instant;
 
 use super::Request;
 use Error;
@@ -40,7 +41,7 @@ impl NodeHandle {
     }
     pub fn get_leader(&self) -> impl Future<Item = RemoteNodeId, Error = Error> {
         let (monitored, monitor) = oneshot::monitor();
-        let request = Request::GetLeader(monitored);
+        let request = Request::GetLeader(Instant::now(), monitored);
         future_try!(self.request_tx.send(request));
         let future = monitor
             .map(|node| (node.addr, node.local_id.to_string()))
@@ -79,7 +80,7 @@ impl NodeHandle {
         expect: Expect,
     ) -> impl Future<Item = Option<Metadata>, Error = Error> {
         let (monitored, monitor) = oneshot::monitor();
-        let request = Request::Get(object_id, expect, monitored);
+        let request = Request::Get(object_id, expect, Instant::now(), monitored);
         future_try!(self.request_tx.send(request));
         let future = monitor.map_err(|e| track!(Error::from(e)));
         Either::A(future)
@@ -103,7 +104,7 @@ impl NodeHandle {
         expect: Expect,
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
         let (monitored, monitor) = oneshot::monitor();
-        let request = Request::Delete(object_id, expect, monitored);
+        let request = Request::Delete(object_id, expect, Instant::now(), monitored);
         future_try!(self.request_tx.send(request));
         let future = monitor.map_err(|e| track!(Error::from(e)));
         Either::A(future)
@@ -184,7 +185,14 @@ impl NodeHandle {
         put_content_timeout: Seconds,
     ) -> impl Future<Item = (ObjectVersion, Option<ObjectVersion>), Error = Error> {
         let (monitored, monitor) = oneshot::monitor();
-        let request = Request::Put(object_id, body, expect, put_content_timeout, monitored);
+        let request = Request::Put(
+            object_id,
+            body,
+            expect,
+            put_content_timeout,
+            Instant::now(),
+            monitored,
+        );
         future_try!(self.request_tx.send(request));
         let future = monitor.map_err(|e| track!(Error::from(e)));
         Either::A(future)
