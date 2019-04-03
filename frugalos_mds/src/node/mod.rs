@@ -17,6 +17,7 @@ pub use self::handle::NodeHandle;
 pub use self::node::Node;
 
 mod handle;
+mod metrics;
 mod node;
 mod snapshot;
 
@@ -153,54 +154,21 @@ impl ProposalMetrics {
             .label("node", &node)
             .default_registry()
             .finish())?;
-        let committed_proposal_duration_seconds = track!(builder
-            .histogram("committed_proposal_duration_seconds")
-            .label("node", &node)
-            .bucket(0.0001)
-            .bucket(0.0005)
-            .bucket(0.001)
-            .bucket(0.005)
-            .bucket(0.01)
-            .bucket(0.05)
-            .bucket(0.1)
-            .bucket(0.5)
-            .bucket(1.0)
-            .bucket(5.0)
-            .bucket(10.0)
-            .default_registry()
-            .finish())?;
-        let rejected_proposal_duration_seconds = track!(builder
-            .histogram("rejected_proposal_duration_seconds")
-            .label("node", &node)
-            .bucket(0.0001)
-            .bucket(0.0005)
-            .bucket(0.001)
-            .bucket(0.005)
-            .bucket(0.01)
-            .bucket(0.05)
-            .bucket(0.1)
-            .bucket(0.5)
-            .bucket(1.0)
-            .bucket(5.0)
-            .bucket(10.0)
-            .default_registry()
-            .finish())?;
-        let failed_proposal_duration_seconds = track!(builder
-            .histogram("failed_proposal_duration_seconds")
-            .label("node", &node)
-            .bucket(0.0001)
-            .bucket(0.0005)
-            .bucket(0.001)
-            .bucket(0.005)
-            .bucket(0.01)
-            .bucket(0.05)
-            .bucket(0.1)
-            .bucket(0.5)
-            .bucket(1.0)
-            .bucket(5.0)
-            .bucket(10.0)
-            .default_registry()
-            .finish())?;
+        let committed_proposal_duration_seconds = track!(metrics::make_histogram(
+            builder
+                .histogram("committed_proposal_duration_seconds")
+                .label("node", &node)
+        ))?;
+        let rejected_proposal_duration_seconds = track!(metrics::make_histogram(
+            builder
+                .histogram("rejected_proposal_duration_seconds")
+                .label("node", &node)
+        ))?;
+        let failed_proposal_duration_seconds = track!(metrics::make_histogram(
+            builder
+                .histogram("failed_proposal_duration_seconds")
+                .label("node", &node)
+        ))?;
         Ok(Self {
             committed_proposal_total,
             rejected_proposal_total,

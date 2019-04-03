@@ -22,6 +22,7 @@ use std::ops::Range;
 use std::time::{Duration, Instant};
 use trackable::error::ErrorKindExt;
 
+use super::metrics::make_histogram;
 use super::snapshot::SnapshotThreshold;
 use super::{Event, NodeHandle, Proposal, ProposalMetrics, Request, Seconds};
 use codec;
@@ -31,24 +32,6 @@ use protobuf;
 use {Error, ErrorKind, Result, ServiceHandle};
 
 type RaftEvent = raftlog::Event;
-
-fn make_histogram(builder: &mut HistogramBuilder) -> Result<Histogram> {
-    builder
-        .bucket(0.0001)
-        .bucket(0.0005)
-        .bucket(0.001)
-        .bucket(0.005)
-        .bucket(0.01)
-        .bucket(0.05)
-        .bucket(0.1)
-        .bucket(0.5)
-        .bucket(1.0)
-        .bucket(5.0)
-        .bucket(10.0)
-        .default_registry()
-        .finish()
-        .map_err(|e| track!(Error::from(e)))
-}
 
 /// proposal キューが長すぎる(リーダーが重い)と判断する基準となる閾値。
 #[derive(Debug)]
@@ -151,12 +134,22 @@ impl Metrics {
                 .subsystem("mds")
                 .label("node", &node)
         ))?;
-        let node_stopping_duration_seconds = track!(make_histogram(
-            HistogramBuilder::new("node_stopping_duration_seconds")
+        let node_stopping_duration_seconds =
+            track!(HistogramBuilder::new("node_stopping_duration_seconds")
                 .namespace("frugalos")
                 .subsystem("mds")
                 .label("node", &node)
-        ))?;
+                .bucket(0.1)
+                .bucket(0.5)
+                .bucket(1.0)
+                .bucket(5.0)
+                .bucket(10.0)
+                .bucket(30.0)
+                .bucket(60.1)
+                .bucket(300.0)
+                .bucket(500.0)
+                .default_registry()
+                .finish())?;
         Ok(Metrics {
             objects,
             snapshots_total,
