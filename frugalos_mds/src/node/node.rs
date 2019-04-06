@@ -111,41 +111,35 @@ impl Metrics {
             .default_registry()
             .finish())?;
         let snapshot_encoding_duration_seconds = track!(make_histogram(
-            HistogramBuilder::new("snapshot_encoding_duration_seconds")
+            &mut HistogramBuilder::new("snapshot_encoding_duration_seconds")
                 .namespace("frugalos")
                 .subsystem("mds")
-                .label("node", &node)
         ))?;
         let snapshot_decoding_duration_seconds = track!(make_histogram(
-            HistogramBuilder::new("snapshot_decoding_duration_seconds")
+            &mut HistogramBuilder::new("snapshot_decoding_duration_seconds")
                 .namespace("frugalos")
                 .subsystem("mds")
-                .label("node", &node)
         ))?;
         let get_request_duration_seconds = track!(make_histogram(
-            HistogramBuilder::new("get_request_duration_seconds")
+            &mut HistogramBuilder::new("get_request_duration_seconds")
                 .namespace("frugalos")
                 .subsystem("mds")
-                .label("node", &node)
         ))?;
         let leader_waiting_duration_seconds = track!(make_histogram(
-            HistogramBuilder::new("leader_waiting_duration_seconds")
+            &mut HistogramBuilder::new("leader_waiting_duration_seconds")
                 .namespace("frugalos")
                 .subsystem("mds")
-                .label("node", &node)
         ))?;
         let node_stopping_duration_seconds =
             track!(HistogramBuilder::new("node_stopping_duration_seconds")
                 .namespace("frugalos")
                 .subsystem("mds")
-                .label("node", &node)
                 .bucket(0.1)
                 .bucket(0.5)
                 .bucket(1.0)
-                .bucket(5.0)
                 .bucket(10.0)
                 .bucket(30.0)
-                .bucket(60.1)
+                .bucket(60.0)
                 .bucket(300.0)
                 .bucket(500.0)
                 .default_registry()
@@ -278,7 +272,7 @@ impl Node {
         );
 
         let metrics = track!(Metrics::new(&node_id))?;
-        let proposal_metrics = track!(ProposalMetrics::new(&node_id))?;
+        let proposal_metrics = track!(ProposalMetrics::new())?;
         Ok(Node {
             logger,
             service,

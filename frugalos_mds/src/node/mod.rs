@@ -135,39 +135,29 @@ struct ProposalMetrics {
     failed_proposal_duration_seconds: Histogram,
 }
 impl ProposalMetrics {
-    pub fn new(node_id: &NodeId) -> Result<Self> {
-        let node = node_id.to_string();
+    pub fn new() -> Result<Self> {
         let mut builder = MetricBuilder::new();
         builder.subsystem("frugalos_mds");
         let committed_proposal_total = track!(builder
             .counter("committed_proposal_total")
-            .label("node", &node)
             .default_registry()
             .finish())?;
         let rejected_proposal_total = track!(builder
             .counter("rejected_proposal_total")
-            .label("node", &node)
             .default_registry()
             .finish())?;
         let failed_proposal_total = track!(builder
             .counter("failed_proposal_total")
-            .label("node", &node)
             .default_registry()
             .finish())?;
         let committed_proposal_duration_seconds = track!(metrics::make_histogram(
-            builder
-                .histogram("committed_proposal_duration_seconds")
-                .label("node", &node)
+            &mut builder.histogram("committed_proposal_duration_seconds")
         ))?;
         let rejected_proposal_duration_seconds = track!(metrics::make_histogram(
-            builder
-                .histogram("rejected_proposal_duration_seconds")
-                .label("node", &node)
+            &mut builder.histogram("rejected_proposal_duration_seconds")
         ))?;
         let failed_proposal_duration_seconds = track!(metrics::make_histogram(
-            builder
-                .histogram("failed_proposal_duration_seconds")
-                .label("node", &node)
+            &mut builder.histogram("failed_proposal_duration_seconds")
         ))?;
         Ok(Self {
             committed_proposal_total,
