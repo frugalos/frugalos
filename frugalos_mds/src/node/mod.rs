@@ -137,7 +137,9 @@ struct ProposalMetrics {
 impl ProposalMetrics {
     pub fn new() -> Result<Self> {
         let mut builder = MetricBuilder::new();
-        builder.subsystem("frugalos_mds");
+        // namespace と subsystem の選択については以下のURLを参照
+        // See https://github.com/frugalos/frugalos/pull/139#discussion_r272780913
+        builder.namespace("frugalos").subsystem("mds");
         let committed_proposal_total = track!(builder
             .counter("committed_proposal_total")
             .default_registry()
