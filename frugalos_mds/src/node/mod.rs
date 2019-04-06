@@ -255,7 +255,7 @@ mod tests {
             instance: 2,
             addr: "127.0.0.1:80".parse().unwrap(),
         };
-        let metrics = track!(ProposalMetrics::new(&node_id))?;
+        let metrics = track!(ProposalMetrics::new())?;
         let proposal_id = ProposalId {
             term: Term::new(0),
             index: LogIndex::new(0),
