@@ -80,7 +80,6 @@ struct Metrics {
     proposal_queue_len: Gauge,
     get_request_duration_seconds: Histogram,
     leader_waiting_duration_seconds: Histogram,
-    node_stopping_duration_seconds: Histogram,
 }
 impl Metrics {
     pub fn new(node_id: &NodeId) -> Result<Self> {
@@ -130,20 +129,6 @@ impl Metrics {
                 .namespace("frugalos")
                 .subsystem("mds")
         ))?;
-        let node_stopping_duration_seconds =
-            track!(HistogramBuilder::new("node_stopping_duration_seconds")
-                .namespace("frugalos")
-                .subsystem("mds")
-                .bucket(0.1)
-                .bucket(0.5)
-                .bucket(1.0)
-                .bucket(10.0)
-                .bucket(30.0)
-                .bucket(60.0)
-                .bucket(300.0)
-                .bucket(500.0)
-                .default_registry()
-                .finish())?;
         Ok(Metrics {
             objects,
             snapshots_total,
@@ -153,7 +138,6 @@ impl Metrics {
             proposal_queue_len,
             get_request_duration_seconds,
             leader_waiting_duration_seconds,
-            node_stopping_duration_seconds,
         })
     }
 }
@@ -211,8 +195,6 @@ pub struct Node {
     polling_timer: timer::Timeout,
     polling_timer_interval: Duration,
     phase: Phase,
-    /// 停止リクエストを受信した時間.
-    stop_requested_at: Option<Instant>,
     rpc_service: RpcServiceHandle,
 
     // リーダが重い場合に再選出を行うための変数群
@@ -297,7 +279,6 @@ impl Node {
             polling_timer: timer::timeout(config.node_polling_interval),
             polling_timer_interval: config.node_polling_interval,
             phase: Phase::Running,
-            stop_requested_at: None,
             large_queue_rounds: 0,
             large_queue_threshold,
             reelection_threshold,
@@ -481,7 +462,6 @@ impl Node {
             Request::Stop => {
                 if self.phase == Phase::Running {
                     info!(self.logger, "Starts stopping the node");
-                    self.stop_requested_at = Some(Instant::now());
                     unsafe {
                         self.rlog.io_mut().stop();
                     }
@@ -914,11 +894,6 @@ impl Stream for Node {
         // FIXME: もっと適切な場所に移動
         if self.phase == Phase::Stopped {
             info!(self.logger, "Stopped");
-            if let Some(stop_requested_at) = self.stop_requested_at.take() {
-                let elapsed =
-                    prometrics::timestamp::duration_to_seconds(stop_requested_at.elapsed());
-                self.metrics.node_stopping_duration_seconds.observe(elapsed);
-            }
             return Ok(Async::Ready(None));
         }
 
