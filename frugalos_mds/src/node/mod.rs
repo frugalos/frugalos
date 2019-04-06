@@ -252,11 +252,6 @@ mod tests {
     fn it_proposes_delete_by_prefix() -> TestResult {
         let (monitored, monitor) = make_monitor();
         let monitor = monitor.map_err(Error::from);
-        let node_id = NodeId {
-            local_id: "1".parse().unwrap(),
-            instance: 2,
-            addr: "127.0.0.1:80".parse().unwrap(),
-        };
         let metrics = track!(ProposalMetrics::new())?;
         let proposal_id = ProposalId {
             term: Term::new(0),
