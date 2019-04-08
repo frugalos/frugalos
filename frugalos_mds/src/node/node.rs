@@ -383,10 +383,9 @@ impl Node {
             Request::Stop => {
                 if self.phase == Phase::Running {
                     info!(self.logger, "Starts stopping the node");
-                    unsafe {
-                        self.rlog.io_mut().stop();
+                    if let Err(e) = self.propose_retire() {
+                        warn!(self.logger, "Cannot propose a leader retirement: {}", e);
                     }
-                    self.start_reelection();
                     match track!(self.take_snapshot()) {
                         Err(e) => {
                             error!(self.logger, "Cannot take snapshot: {}", e);
@@ -551,14 +550,11 @@ impl Node {
                 let leader = track!(NodeId::from_raft_node_id(
                     &self.rlog.local_node().ballot.voted_for
                 ))?;
-                for x in self.leader_waitings.drain(..) {
-                    x.exit(Ok(leader));
-                }
                 info!(
                     self.logger,
                     "New leader is elected: {:?} (commit:{:?})", leader, commit
                 );
-                self.leader = Some(leader);
+                self.change_leader(leader);
             }
             LogEntry::Command { command, .. } => {
                 self.commit_timeout = None;
@@ -570,6 +566,16 @@ impl Node {
                         Ok(old) => proposal.notify_committed(&old),
                     }
                 }
+            }
+            LogEntry::Retire { successor, .. } => {
+                let leader = track!(NodeId::from_raft_node_id(&successor))?;
+                info!(
+                    self.logger,
+                    "Old leader has been retired and new leader is elected: {:?}(commit:{:?})",
+                    leader,
+                    commit
+                );
+                self.change_leader(leader);
             }
             LogEntry::Config { config, .. } => self.handle_config(commit, &config),
         }
@@ -672,6 +678,29 @@ impl Node {
                 client.recommend_to_leader();
             }
         }
+    }
+    fn propose_retire(&mut self) -> Result<()> {
+        if self.rlog.local_node().role == Role::Leader {
+            self.rlog
+                .propose_retire()
+                .map(|proposal_id| {
+                    if let Some(id) = proposal_id {
+                        info!(
+                            self.logger,
+                            "A leader retirement has been succeeded(proposal:{:?})", id
+                        )
+                    }
+                })
+                .map_err(|e| track!(Error::from(e)))
+        } else {
+            Ok(())
+        }
+    }
+    fn change_leader(&mut self, leader: NodeId) {
+        for x in self.leader_waitings.drain(..) {
+            x.exit(Ok(leader));
+        }
+        self.leader = Some(leader);
     }
 }
 impl Drop for Node {

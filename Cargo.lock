@@ -293,7 +293,7 @@ dependencies = [
  "libfrugalos 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "num_cpus 1.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "prometrics 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
- "raftlog 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "raftlog 0.4.1",
  "rustracing 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustracing_jaeger 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.80 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -323,7 +323,7 @@ dependencies = [
  "libfrugalos 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "prometrics 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "protobuf_codec 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "raftlog 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "raftlog 0.4.1",
  "rendezvous_hash 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "trackable 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -358,7 +358,7 @@ dependencies = [
  "patricia_tree 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "prometrics 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "protobuf_codec 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "raftlog 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "raftlog 0.4.1",
  "rand 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustracing 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.80 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -382,8 +382,8 @@ dependencies = [
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "prometrics 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "protobuf_codec 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "raftlog 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "raftlog_protobuf 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "raftlog 0.4.1",
+ "raftlog_protobuf 0.1.0",
  "rand 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.80 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.80 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -409,7 +409,7 @@ dependencies = [
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "libfrugalos 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "prometrics 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
- "raftlog 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "raftlog 0.4.1",
  "rand 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustracing 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustracing_jaeger 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -768,7 +768,6 @@ dependencies = [
 [[package]]
 name = "raftlog"
 version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "trackable 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -777,11 +776,10 @@ dependencies = [
 [[package]]
 name = "raftlog_protobuf"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "bytecodec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "protobuf_codec 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "raftlog 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "raftlog 0.4.1",
  "trackable 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -1365,8 +1363,6 @@ dependencies = [
 "checksum prometrics 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)" = "f7eb3e65f1053a5d62bd464c71de8e75c25c739cdbcd6e19b527e4d31ea64026"
 "checksum protobuf_codec 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)" = "e4341aa6631dac24b35b10fd19d3d3ca3eb15e695da103d84e9f0bd6a8a26e25"
 "checksum quote 0.6.8 (registry+https://github.com/rust-lang/crates.io-index)" = "dd636425967c33af890042c483632d33fa7a18f19ad1d7ea72e8998c6ef8dea5"
-"checksum raftlog 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "2d291b674cb95b8835a9baf6565ee71396e367597fd264fc82500460314da272"
-"checksum raftlog_protobuf 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c38029ea5a1b1d85db39ecc8cc8b7947a115c8d9be35fca064b9b6d97b55b00d"
 "checksum rand 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)" = "552840b97013b1a26992c11eac34bdd778e464601a4c2054b5f0bff7c6761293"
 "checksum rand 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)" = "e464cd887e869cddcae8792a4ee31d23c7edd516700695608f5b98c67ee0131c"
 "checksum rand_core 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "1961a422c4d189dfb50ffa9320bf1f2a9bd54ecb92792fb9477f99a1045f3372"
