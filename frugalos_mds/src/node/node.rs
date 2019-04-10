@@ -11,7 +11,7 @@ use libfrugalos::entity::object::{Metadata, ObjectVersion};
 use prometrics::metrics::{Counter, CounterBuilder, Gauge, GaugeBuilder};
 use raftlog::cluster::{ClusterConfig, ClusterMembers};
 use raftlog::election::Role;
-use raftlog::log::{LogEntry, LogIndex, LogPosition};
+use raftlog::log::{LogEntry, LogIndex, LogPosition, ProposalId};
 use raftlog::{self, ReplicatedLog};
 use slog::Logger;
 use std::collections::VecDeque;
@@ -148,6 +148,8 @@ pub struct Node {
     phase: Phase,
     rpc_service: RpcServiceHandle,
 
+    wait_retire: Option<ProposalId>,
+
     // リーダが重い場合に再選出を行うための変数群
     large_queue_rounds: usize,
     large_queue_threshold: LargeProposalQueueThreshold,
@@ -234,6 +236,7 @@ impl Node {
             commit_timeout: None,
             commit_timeout_threshold: config.commit_timeout_threshold,
             rpc_service,
+            wait_retire: None,
         })
     }
 
@@ -383,8 +386,13 @@ impl Node {
             Request::Stop => {
                 if self.phase == Phase::Running {
                     info!(self.logger, "Starts stopping the node");
-                    if let Err(e) = self.propose_retire() {
-                        warn!(self.logger, "Cannot propose a leader retirement: {}", e);
+                    match self.propose_retire() {
+                        Err(e) => {
+                            warn!(self.logger, "Cannot propose a leader retirement: {}", e);
+                        }
+                        Ok(x) => {
+                            self.wait_retire = x;
+                        }
                     }
                     match track!(self.take_snapshot()) {
                         Err(e) => {
@@ -568,6 +576,13 @@ impl Node {
                 }
             }
             LogEntry::Retire { successor, .. } => {
+                if let Some(proposal_id) = self.wait_retire {
+                    // TODO: termも見る?
+                    if proposal_id.index == commit {
+                        self.wait_retire = None;
+                    }
+                }
+
                 let leader = track!(NodeId::from_raft_node_id(&successor))?;
                 info!(
                     self.logger,
@@ -679,7 +694,7 @@ impl Node {
             }
         }
     }
-    fn propose_retire(&mut self) -> Result<()> {
+    fn propose_retire(&mut self) -> Result<Option<ProposalId>> {
         if self.rlog.local_node().role == Role::Leader {
             self.rlog
                 .propose_retire()
@@ -690,10 +705,11 @@ impl Node {
                             "A leader retirement has been succeeded(proposal:{:?})", id
                         )
                     }
+                    proposal_id
                 })
                 .map_err(|e| track!(Error::from(e)))
         } else {
-            Ok(())
+            Ok(None)
         }
     }
     fn change_leader(&mut self, leader: NodeId) {
@@ -827,7 +843,7 @@ impl Stream for Node {
         }
 
         // FIXME: もっと適切な場所に移動
-        if self.phase == Phase::Stopped {
+        if self.phase == Phase::Stopped && self.wait_retire.is_none() {
             info!(self.logger, "Stopped");
             return Ok(Async::Ready(None));
         }
