@@ -4,6 +4,7 @@ use fibers::sync::oneshot::MonitorError;
 use libfrugalos;
 use raftlog;
 use std;
+use std::convert::Into;
 use trackable::error::TrackableError;
 use trackable::error::{ErrorKind as TrackableErrorKind, ErrorKindExt};
 
@@ -42,7 +43,7 @@ impl From<bytecodec::Error> for Error {
 }
 impl<E: Into<Error>> From<MonitorError<E>> for Error {
     fn from(f: MonitorError<E>) -> Self {
-        f.map(|e| e.into()).unwrap_or_else(|| {
+        f.map(Into::into).unwrap_or_else(|| {
             ErrorKind::Other
                 .cause("Monitor channel disconnected")
                 .into()

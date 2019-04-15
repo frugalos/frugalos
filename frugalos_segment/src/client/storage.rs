@@ -614,7 +614,7 @@ impl Future for DispersedGet {
                         span.tag(StdTag::component(module_path!()))
                             .tag(Tag::new(
                                 "fragments.bytes",
-                                fragments.iter().map(|f| f.len()).sum::<usize>() as i64,
+                                fragments.iter().map(Vec::len).sum::<usize>() as i64,
                             ))
                             .start()
                     });
