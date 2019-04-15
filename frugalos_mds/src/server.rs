@@ -4,6 +4,7 @@ use fibers_rpc::server::{
 use frugalos_raft::LocalNodeId;
 use futures::Future;
 use libfrugalos::schema::mds as rpc;
+use std::time::Instant;
 use trackable::error::ErrorKindExt;
 
 use error::to_rpc_error;
@@ -72,7 +73,11 @@ impl HandleCall<rpc::GetLeaderRpc> for Server {
     fn handle_call(&self, node_id: String) -> Reply<rpc::GetLeaderRpc> {
         let node_id = rpc_try!(node_id.parse().map_err(Error::from));
         let node = rpc_try!(self.get_node(node_id));
-        Reply::future(node.get_leader().map_err(to_rpc_error).then(Ok))
+        Reply::future(
+            node.get_leader(Instant::now())
+                .map_err(to_rpc_error)
+                .then(Ok),
+        )
     }
 }
 impl HandleCall<rpc::ListObjectsRpc> for Server {
@@ -104,7 +109,7 @@ impl HandleCall<rpc::GetObjectRpc> for Server {
         let node_id = rpc_try!(request.node_id.parse().map_err(Error::from));
         let node = rpc_try!(self.get_node(node_id));
         Reply::future(
-            node.get_object(request.object_id, request.expect)
+            node.get_object(request.object_id, request.expect, Instant::now())
                 .map_err(to_rpc_error)
                 .then(Ok),
         )
@@ -131,6 +136,7 @@ impl HandleCall<rpc::PutObjectRpc> for Server {
                 request.metadata,
                 request.expect,
                 request.put_content_timeout.into(),
+                Instant::now(),
             )
             .map_err(to_rpc_error)
             .then(Ok),
@@ -142,7 +148,7 @@ impl HandleCall<rpc::DeleteObjectRpc> for Server {
         let node_id = rpc_try!(request.node_id.parse().map_err(Error::from));
         let node = rpc_try!(self.get_node(node_id));
         Reply::future(
-            node.delete_object(request.object_id, request.expect)
+            node.delete_object(request.object_id, request.expect, Instant::now())
                 .map_err(to_rpc_error)
                 .then(Ok),
         )

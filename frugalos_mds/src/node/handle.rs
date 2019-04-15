@@ -39,9 +39,12 @@ impl NodeHandle {
     pub fn start_reelection(&self) {
         let _ = self.request_tx.send(Request::StartElection);
     }
-    pub fn get_leader(&self) -> impl Future<Item = RemoteNodeId, Error = Error> {
+    pub fn get_leader(
+        &self,
+        started_at: Instant,
+    ) -> impl Future<Item = RemoteNodeId, Error = Error> {
         let (monitored, monitor) = oneshot::monitor();
-        let request = Request::GetLeader(Instant::now(), monitored);
+        let request = Request::GetLeader(started_at, monitored);
         future_try!(self.request_tx.send(request));
         let future = monitor
             .map(|node| (node.addr, node.local_id.to_string()))
@@ -78,9 +81,10 @@ impl NodeHandle {
         &self,
         object_id: ObjectId,
         expect: Expect,
+        started_at: Instant,
     ) -> impl Future<Item = Option<Metadata>, Error = Error> {
         let (monitored, monitor) = oneshot::monitor();
-        let request = Request::Get(object_id, expect, Instant::now(), monitored);
+        let request = Request::Get(object_id, expect, started_at, monitored);
         future_try!(self.request_tx.send(request));
         let future = monitor.map_err(|e| track!(Error::from(e)));
         Either::A(future)
@@ -102,9 +106,10 @@ impl NodeHandle {
         &self,
         object_id: ObjectId,
         expect: Expect,
+        started_at: Instant,
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
         let (monitored, monitor) = oneshot::monitor();
-        let request = Request::Delete(object_id, expect, Instant::now(), monitored);
+        let request = Request::Delete(object_id, expect, started_at, monitored);
         future_try!(self.request_tx.send(request));
         let future = monitor.map_err(|e| track!(Error::from(e)));
         Either::A(future)
@@ -183,6 +188,7 @@ impl NodeHandle {
         body: Vec<u8>,
         expect: Expect,
         put_content_timeout: Seconds,
+        started_at: Instant,
     ) -> impl Future<Item = (ObjectVersion, Option<ObjectVersion>), Error = Error> {
         let (monitored, monitor) = oneshot::monitor();
         let request = Request::Put(
@@ -190,7 +196,7 @@ impl NodeHandle {
             body,
             expect,
             put_content_timeout,
-            Instant::now(),
+            started_at,
             monitored,
         );
         future_try!(self.request_tx.send(request));
