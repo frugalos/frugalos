@@ -2,11 +2,23 @@
 
 set -eux
 
-WIN=frugalos_test
+WIN=srv0
 WORK_DIR=/tmp/frugalos_test/
 MODE=debug
 RPC_PORT=14278
 PORT=3100
+# 追加で必要なサーバー数(クラスタ初期化用に1つは必ず作られる)
+# Note: 1 <= SERVER_COUNT
+SERVER_COUNT=${SERVER_COUNT:-2}
+# 各サーバーに追加するデバイス数
+# Note: 1 <= DEVICE_COUNT
+DEVICE_COUNT=${DEVICE_COUNT:-1}
+# Note: tolerable_faults が 0 になるのを避けつつ、フラグメントが各サーバーに1つずつ
+# 配置されるようにデフォルト値を決める。
+TOLERABLE_FAULTS=${TOLERABLE_FAULTS:-$(( ($SERVER_COUNT / 2 - 1) >= 1 ? ($SERVER_COUNT / 2 - 1) : 1 ))}
+# Note: $SERVER_COUNT + 1 は contact-server の分を $SERVER_COUNT に追加している。
+DATA_FRAGMENTS=${DATA_FRAGMENTS:-$(( ($SERVER_COUNT + 1 - $TOLERABLE_FAULTS) >= 1 ? ($SERVER_COUNT + 1 - $TOLERABLE_FAULTS) : 1 ))}
+FRUGALOS_START_FLAGS=${FRUGALOS_START_FLAGS:- --sampling-rate 1.0}
 
 ##
 ## Initialize working directory
@@ -26,29 +38,43 @@ tmux new-window -n $WIN -c $WORK_DIR
 ## Starts frugalos cluster
 ##
 tmux send-keys -t $WIN.0 "bin/frugalos create --id srv0 --addr 127.0.0.1:${RPC_PORT} --data-dir srv0" C-m
-tmux send-keys -t $WIN.0 "bin/frugalos start --data-dir srv0 --sampling-rate 1.0 --http-server-bind-addr 127.0.0.1:${PORT}" C-m
+tmux send-keys -t $WIN.0 "bin/frugalos start --data-dir srv0 ${FRUGALOS_START_FLAGS} --http-server-bind-addr 127.0.0.1:${PORT}" C-m
 sleep 6
+
+for s in $(seq 1 ${SERVER_COUNT})
+do
+    server="srv${s}"
+    http=$((${PORT} + ${s}))
+    rpc=$((${RPC_PORT} + ${s}))
+    tmux kill-window -t ${server} || echo "OK: ${server}"
+    tmux new-window -d -n "${server}.0" -c ${WORK_DIR}
+    tmux send-keys -t ${server}.0 "bin/frugalos join --id ${server} --addr 127.0.0.1:${rpc} --data-dir ${server} --contact-server 127.0.0.1:${RPC_PORT}" C-m
+    sleep 1
+    tmux send-keys -t ${server}.0 "bin/frugalos start --data-dir ${server} ${FRUGALOS_START_FLAGS} --http-server-bind-addr 127.0.0.1:${http}" C-m
+    sleep 3
+done
 
 ##
 ## Put devices
 ##
 DEVICES=""
-for s in `echo srv{0..0}`
+for s in $(seq 0 $SERVER_COUNT)
 do
-    for d in `echo {0..0}`
+    server="srv${s}"
+    for d in $(seq 0 $(( $DEVICE_COUNT - 1)))
     do
-        echo "# server=${s}, device=dev${d}"
+        echo "# server=${server}, device=dev${d}"
 
         JSON=$(cat <<EOF
 {"file": {
-  "id": "${s}_dev${d}",
-  "server": "${s}",
-  "filepath": "$WORK_DIR/$s/$d/dev.lusf"
+  "id": "${server}_dev${d}",
+  "server": "${server}",
+  "filepath": "$WORK_DIR/$server/$d/dev.lusf"
 }}
 EOF
             )
-        curl -XPUT -d "$JSON" http://localhost:${PORT}/v1/devices/${s}_dev${d}
-        DEVICES="${DEVICES} \"${s}_dev${d}\""
+        curl -XPUT -d "$JSON" http://localhost:${PORT}/v1/devices/${server}_dev${d}
+        DEVICES="${DEVICES} \"${server}_dev${d}\""
     done
 done
 
@@ -71,7 +97,7 @@ JSON=$(cat <<EOF
 {"metadata": {
   "id": "live_archive_metadata",
   "device": "rack0",
-  "tolerable_faults": 4
+  "tolerable_faults": ${TOLERABLE_FAULTS}
 }}
 EOF
 )
@@ -81,8 +107,8 @@ JSON=$(cat <<EOF
 {"dispersed": {
   "id": "live_archive_chunk",
   "device": "rack0",
-  "tolerable_faults": 4,
-  "data_fragment_count": 8
+  "tolerable_faults": ${TOLERABLE_FAULTS},
+  "data_fragment_count": ${DATA_FRAGMENTS}
 }}
 EOF
 )
