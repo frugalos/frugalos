@@ -11,7 +11,7 @@ use fibers_tasque;
 use fibers_tasque::TaskQueueExt;
 use frugalos_config::{DeviceGroup, Event as ConfigEvent, Service as ConfigService};
 use frugalos_mds;
-use frugalos_raft::Service as RaftService;
+use frugalos_raft::{NodeId, Service as RaftService};
 use frugalos_segment;
 use frugalos_segment::FrugalosSegmentConfig;
 use frugalos_segment::Service as SegmentService;
@@ -180,7 +180,6 @@ where
         // このグループに対応するRaftクラスタのメンバ群を用意
         let mut members = Vec::new();
         for (member_no, device_no) in (0..group.members.len()).zip(group.members.iter()) {
-            use frugalos_raft::NodeId;
             let owner = &self.servers[&self.seqno_to_device[device_no].server];
             let node: NodeId = track!(format!(
                 "00{:06x}{:04x}{:02x}.{:x}@{}:{}",
@@ -213,12 +212,12 @@ where
 
             // このサーバが扱うべきRaftノードを起動
             for (node, device_no) in members.iter().zip(group.members.iter()) {
-                let device_id = if let Some(id) = self.local_devices.get(&device_no).map(|d| d.id())
-                {
-                    id
-                } else {
-                    continue;
-                };
+                let device_id =
+                    if let Some(id) = self.local_devices.get(&device_no).map(LocalDevice::id) {
+                        id
+                    } else {
+                        continue;
+                    };
 
                 // TODO: 既に起動済みではないものだけを起動する
                 info!(
@@ -235,7 +234,7 @@ where
                             .map_err(|e| frugalos_segment::ErrorKind::Other.takes_over(e).into())
                     ),
                     segment.clone(),
-                    members.iter().map(|n| n.to_raft_node_id()).collect(),
+                    members.iter().map(NodeId::to_raft_node_id).collect(),
                 ))?;
             }
         } else {
