@@ -512,7 +512,7 @@ impl Service {
                 }
             }
             Request::ListServers { reply } => {
-                reply.exit(Ok(self.servers.values().map(|s| s.to_summary()).collect()));
+                reply.exit(Ok(self.servers.values().map(Server::to_summary).collect()));
             }
             Request::GetServer { id, reply } => reply.exit(Ok(self.servers.get(&id).cloned())),
             Request::PutServer { server, reply } => {
@@ -536,7 +536,7 @@ impl Service {
                 }
             }
             Request::ListDevices { reply } => {
-                reply.exit(Ok(self.devices.values().map(|s| s.to_summary()).collect()));
+                reply.exit(Ok(self.devices.values().map(Device::to_summary).collect()));
             }
             Request::GetDevice { id, reply } => reply.exit(Ok(self.devices.get(&id).cloned())),
             Request::PutDevice { device, reply } => {
@@ -560,7 +560,7 @@ impl Service {
                 }
             }
             Request::ListBuckets { reply } => {
-                reply.exit(Ok(self.buckets.values().map(|s| s.to_summary()).collect()));
+                reply.exit(Ok(self.buckets.values().map(Bucket::to_summary).collect()));
             }
             Request::GetBucket { id, reply } => reply.exit(Ok(self.buckets.get(&id).cloned())),
             Request::PutBucket { bucket, reply } => {

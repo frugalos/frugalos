@@ -28,7 +28,7 @@ mod log_suffix;
 //
 // 最終的にはもう少し上手い仕組みを考えたい.
 // (個々のRaftノードに独立した仕組みにできるのとベスト)
-static INITIALIZATION_LOCK: AtomicUsize = atomic::ATOMIC_USIZE_INIT;
+static INITIALIZATION_LOCK: AtomicUsize = AtomicUsize::new(0);
 
 fn acquire_initialization_lock() -> bool {
     INITIALIZATION_LOCK.compare_and_swap(0, 1, atomic::Ordering::SeqCst) == 0

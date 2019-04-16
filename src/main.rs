@@ -18,6 +18,7 @@ use libfrugalos::time::Seconds;
 use sloggers::Build;
 use std::env;
 use std::net::ToSocketAddrs;
+use std::string::ToString;
 use std::time::Duration;
 use trackable::error::{ErrorKindExt, Failure};
 
@@ -168,7 +169,7 @@ fn main() {
         // CREATE CLUSTER
         let server_id = matches
             .value_of("SERVER_ID")
-            .map(|v| v.to_string())
+            .map(ToString::to_string)
             .or_else(hostname::get_hostname)
             .unwrap();
         let server_addr = matches.value_of("SERVER_ADDR").unwrap();
@@ -191,7 +192,7 @@ fn main() {
         // JOIN CLUSTER
         let server_id = matches
             .value_of("SERVER_ID")
-            .map(|v| v.to_string())
+            .map(ToString::to_string)
             .or_else(hostname::get_hostname)
             .unwrap();
         let server_addr = matches.value_of("SERVER_ADDR").unwrap();
@@ -232,7 +233,7 @@ fn main() {
     } else if let Some(matches) = matches.subcommand_matches("repair-local-dat") {
         let server_id = matches
             .value_of("SERVER_ID")
-            .map(|v| v.to_string())
+            .map(ToString::to_string)
             .or_else(hostname::get_hostname)
             .unwrap();
         let server_addr = matches.value_of("SERVER_ADDR").unwrap();
@@ -381,7 +382,7 @@ fn get_server_seqno(matches: &ArgMatches) -> Result<u32> {
 fn set_data_dir(matches: &ArgMatches, config: &mut FrugalosConfig) {
     if let Some(value) = matches
         .value_of("DATA_DIR")
-        .map(|v| v.to_string())
+        .map(ToString::to_string)
         .or_else(|| env::var("FRUGALOS_DATA_DIR").ok())
     {
         config.data_dir = value;
