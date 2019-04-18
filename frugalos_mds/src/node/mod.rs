@@ -1,6 +1,7 @@
 #![allow(clippy::module_inception)]
 use fibers::sync::oneshot::Monitored;
 use frugalos_raft::NodeId;
+use libfrugalos::consistency::ReadConsistency;
 use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, Metadata, ObjectId, ObjectPrefix, ObjectSummary, ObjectVersion,
 };
@@ -180,8 +181,19 @@ enum Request {
     List(Reply<Vec<ObjectSummary>>),
     LatestVersion(Reply<Option<ObjectSummary>>),
     ObjectCount(Reply<u64>),
-    Get(ObjectId, Expect, Instant, Reply<Option<Metadata>>),
-    Head(ObjectId, Expect, Reply<Option<ObjectVersion>>),
+    Get(
+        ObjectId,
+        Expect,
+        ReadConsistency,
+        Instant,
+        Reply<Option<Metadata>>,
+    ),
+    Head(
+        ObjectId,
+        Expect,
+        ReadConsistency,
+        Reply<Option<ObjectVersion>>,
+    ),
     Put(
         ObjectId,
         Vec<u8>,
@@ -205,8 +217,8 @@ impl Request {
             Request::List(tx) => tx.exit(Err(track!(e))),
             Request::LatestVersion(tx) => tx.exit(Err(track!(e))),
             Request::ObjectCount(tx) => tx.exit(Err(track!(e))),
-            Request::Get(_, _, _, tx) => tx.exit(Err(track!(e))),
-            Request::Head(_, _, tx) => tx.exit(Err(track!(e))),
+            Request::Get(_, _, _, _, tx) => tx.exit(Err(track!(e))),
+            Request::Head(_, _, _, tx) => tx.exit(Err(track!(e))),
             Request::Put(_, _, _, _, _, tx) => tx.exit(Err(track!(e))),
             Request::Delete(_, _, _, tx) => tx.exit(Err(track!(e))),
             Request::DeleteByVersion(_, tx) => tx.exit(Err(track!(e))),

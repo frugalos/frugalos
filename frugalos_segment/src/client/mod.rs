@@ -2,6 +2,7 @@ use cannyls::deadline::Deadline;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use futures::future::Either;
 use futures::{self, Future};
+use libfrugalos::consistency::ReadConsistency;
 use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, ObjectId, ObjectPrefix, ObjectSummary, ObjectVersion,
 };
@@ -53,30 +54,34 @@ impl Client {
         &self,
         id: ObjectId,
         deadline: Deadline,
+        consistency: ReadConsistency,
         parent: SpanHandle,
     ) -> impl Future<Item = Option<ObjectValue>, Error = Error> {
         let storage = self.storage.clone();
-        self.mds.get(id, parent.clone()).and_then(move |object| {
-            if let Some(object) = object {
-                let version = object.version;
-                let future = storage
-                    .get(object, deadline, parent)
-                    .map(move |content| ObjectValue { version, content })
-                    .map(Some);
-                Either::A(future)
-            } else {
-                Either::B(futures::finished(None))
-            }
-        })
+        self.mds
+            .get(id, consistency, parent.clone())
+            .and_then(move |object| {
+                if let Some(object) = object {
+                    let version = object.version;
+                    let future = storage
+                        .get(object, deadline, parent)
+                        .map(move |content| ObjectValue { version, content })
+                        .map(Some);
+                    Either::A(future)
+                } else {
+                    Either::B(futures::finished(None))
+                }
+            })
     }
 
     /// オブジェクトの存在確認を行う。
     pub fn head(
         &self,
         id: ObjectId,
+        consistency: ReadConsistency,
         parent: SpanHandle,
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
-        self.mds.head(id, parent)
+        self.mds.head(id, consistency, parent)
     }
 
     /// オブジェクトを保存する。

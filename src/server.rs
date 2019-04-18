@@ -9,6 +9,7 @@ use fibers_http_server::{
 use frugalos_core::tracer::ThreadLocalTracer;
 use futures::{self, Future, Stream};
 use httpcodec::{BodyDecoder, BodyEncoder, HeadBodyEncoder, Header};
+use libfrugalos::consistency::ReadConsistency;
 use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, ObjectPrefix, ObjectSummary, ObjectVersion,
 };
@@ -218,6 +219,7 @@ impl HandleRequest for GetObject {
         let logger = self.0.logger.clone();
         let expect = try_badarg!(get_expect(&req.header()));
         let deadline = try_badarg!(get_deadline(&req.url()));
+        let consistency = try_badarg!(get_consistency(&req.url()));
         let future = self
             .0
             .client
@@ -225,7 +227,7 @@ impl HandleRequest for GetObject {
             .deadline(deadline)
             .expect(expect)
             .span(&span)
-            .get(object_id)
+            .get(object_id, consistency)
             .then(move |result| {
                 let response = match track!(result) {
                     Ok(None) => {
@@ -293,6 +295,7 @@ impl HandleRequest for HeadObject {
         let logger = self.0.logger.clone();
         let expect = try_badarg!(get_expect(&req.header()));
         let deadline = try_badarg!(get_deadline(&req.url()));
+        let consistency = try_badarg!(get_consistency(&req.url()));
         let future = self
             .0
             .client
@@ -300,7 +303,7 @@ impl HandleRequest for HeadObject {
             .deadline(deadline)
             .expect(expect)
             .span(&span)
-            .head(object_id)
+            .head(object_id, consistency)
             .then(move |result| {
                 let response = match track!(result) {
                     Ok(None) => {
@@ -724,4 +727,34 @@ fn get_deadline(url: &Url) -> Result<Deadline> {
         }
     }
     Ok(Deadline::Within(Duration::from_secs(5)))
+}
+
+fn get_subset(url: &Url) -> Result<usize> {
+    for (k, v) in url.query_pairs() {
+        if k == "subset" {
+            return track!(v.parse::<usize>().map_err(Error::from));
+        }
+    }
+    Ok(1)
+}
+
+fn get_consistency(url: &Url) -> Result<ReadConsistency> {
+    for (k, v) in url.query_pairs() {
+        if k == "consistency" {
+            let consistency = match v.as_ref() {
+                "consistent" => Ok(ReadConsistency::Consistent),
+                "stale" => Ok(ReadConsistency::Stale),
+                "quorum" => Ok(ReadConsistency::Quorum),
+                "subset" => {
+                    let n = track!(get_subset(url))?;
+                    Ok(ReadConsistency::Subset(n))
+                }
+                _ => Err(ErrorKind::InvalidInput
+                    .cause(format!("Undefined consistency level: {}", v))
+                    .into()),
+            };
+            return consistency;
+        }
+    }
+    Ok(Default::default())
 }
