@@ -331,7 +331,6 @@ where
                     self.client.clear_leader();
                 }
                 if self.max_retry == 0 {
-                    use trackable::error::ErrorKindExt;
                     return Err(
                         track!(ErrorKind::Busy.takes_over(e), "node={:?}", self.peer).into(),
                     );
