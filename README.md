@@ -23,7 +23,7 @@ Documentation
 -------------
 
 - [Rustdoc](https://docs.rs/frugalos)
-- [Wiki (Japanese only)](https://github.com/frugalos/frugalos/wiki)
+- [Wiki (Japanese version only)](https://github.com/frugalos/frugalos/wiki)
 - [Real World Example in Niconico (used for recording live video streams)][niconico example]
 
 [niconico example]: https://dwango.github.io/articles/frugalos/
