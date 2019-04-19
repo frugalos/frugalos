@@ -16,11 +16,6 @@ script:
   - cargo test --all
   - cargo clippy --all
 
-matrix:
-  allow_failures:
-    - rust: beta
-    - rust: nightly
-
 env:
   global:
   - RUSTFLAGS="-D warnings"

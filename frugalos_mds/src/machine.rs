@@ -94,7 +94,6 @@ impl Machine {
         &mut self,
         object_version: ObjectVersion,
     ) -> Result<Option<ObjectVersion>> {
-        use std::string::String;
 
         let owner_id: Option<Vec<u8>> = self
             .id_to_version
