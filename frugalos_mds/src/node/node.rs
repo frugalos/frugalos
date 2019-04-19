@@ -8,7 +8,9 @@ use fibers_tasque::{self, AsyncCall, TaskQueueExt};
 use frugalos_raft::{NodeId, RaftIo};
 use futures::{Async, Future, Poll, Stream};
 use libfrugalos::entity::object::{Metadata, ObjectVersion};
-use prometrics::metrics::{Counter, CounterBuilder, Gauge, GaugeBuilder};
+use prometrics::metrics::{
+    Counter, CounterBuilder, Gauge, GaugeBuilder, Histogram, HistogramBuilder,
+};
 use raftlog::cluster::{ClusterConfig, ClusterMembers};
 use raftlog::election::Role;
 use raftlog::log::{LogEntry, LogIndex, LogPosition};
@@ -17,10 +19,12 @@ use slog::Logger;
 use std::collections::VecDeque;
 use std::env;
 use std::ops::Range;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use trackable::error::ErrorKindExt;
 
+use super::metrics::make_histogram;
 use super::snapshot::SnapshotThreshold;
-use super::{Event, NodeHandle, Proposal, Request, Seconds};
+use super::{Event, NodeHandle, Proposal, ProposalMetrics, Request, Seconds};
 use codec;
 use config::FrugalosMdsConfig;
 use machine::{Command, Machine};
@@ -71,7 +75,11 @@ struct Metrics {
     objects: Gauge,
     snapshots_total: Counter,
     snapshot_bytes_total: Counter,
+    snapshot_encoding_duration_seconds: Histogram,
+    snapshot_decoding_duration_seconds: Histogram,
     proposal_queue_len: Gauge,
+    get_request_duration_seconds: Histogram,
+    leader_waiting_duration_seconds: Histogram,
 }
 impl Metrics {
     pub fn new(node_id: &NodeId) -> Result<Self> {
@@ -101,12 +109,52 @@ impl Metrics {
             .label("node", &node)
             .default_registry()
             .finish())?;
+        let snapshot_encoding_duration_seconds = track!(make_histogram(
+            &mut HistogramBuilder::new("snapshot_encoding_duration_seconds")
+                .namespace("frugalos")
+                .subsystem("mds")
+        ))?;
+        let snapshot_decoding_duration_seconds = track!(make_histogram(
+            &mut HistogramBuilder::new("snapshot_decoding_duration_seconds")
+                .namespace("frugalos")
+                .subsystem("mds")
+        ))?;
+        let get_request_duration_seconds = track!(make_histogram(
+            &mut HistogramBuilder::new("get_request_duration_seconds")
+                .namespace("frugalos")
+                .subsystem("mds")
+        ))?;
+        let leader_waiting_duration_seconds = track!(make_histogram(
+            &mut HistogramBuilder::new("leader_waiting_duration_seconds")
+                .namespace("frugalos")
+                .subsystem("mds")
+        ))?;
         Ok(Metrics {
             objects,
             snapshots_total,
             snapshot_bytes_total,
+            snapshot_encoding_duration_seconds,
+            snapshot_decoding_duration_seconds,
             proposal_queue_len,
+            get_request_duration_seconds,
+            leader_waiting_duration_seconds,
         })
+    }
+}
+
+struct LeaderWaiting {
+    monitored: Monitored<NodeId, Error>,
+    started_at: Instant,
+    metrics: Metrics,
+}
+
+impl LeaderWaiting {
+    fn exit(self, result: Result<NodeId>) {
+        let elapsed = prometrics::timestamp::duration_to_seconds(self.started_at.elapsed());
+        self.metrics
+            .leader_waiting_duration_seconds
+            .observe(elapsed);
+        self.monitored.exit(result);
     }
 }
 
@@ -129,7 +177,7 @@ pub struct Node {
     rlog: ReplicatedLog<RaftIo>,
     leader: Option<NodeId>,
     large_leader_waiting_queue_threshold: LargeLeaderWaitingQueueThreshold,
-    leader_waitings: Vec<Monitored<NodeId, Error>>,
+    leader_waitings: Vec<LeaderWaiting>,
     leader_waiting_timeout: LeaderWaitingTimeout,
     request_rx: mpsc::Receiver<Request>,
     proposals: VecDeque<Proposal>,
@@ -141,6 +189,7 @@ pub struct Node {
     events: VecDeque<Event>,
     machine: Machine,
     metrics: Metrics,
+    proposal_metrics: ProposalMetrics,
     ready_snapshot: Option<AsyncCall<Result<(LogIndex, Vec<u8>)>>>,
     decoding_snapshot: Option<AsyncCall<Result<(LogPosition, Machine, Vec<ObjectVersion>)>>>,
     polling_timer: timer::Timeout,
@@ -205,6 +254,7 @@ impl Node {
         );
 
         let metrics = track!(Metrics::new(&node_id))?;
+        let proposal_metrics = track!(ProposalMetrics::new())?;
         Ok(Node {
             logger,
             service,
@@ -223,6 +273,7 @@ impl Node {
             events: VecDeque::new(),
             machine: Machine::new(),
             metrics,
+            proposal_metrics,
             ready_snapshot: None,
             decoding_snapshot: None,
             polling_timer: timer::timeout(config.node_polling_interval),
@@ -241,7 +292,7 @@ impl Node {
         // NOTE: 整合性を保証したいので、要求を処理できるのはリーダのみとする.
         // TODO: リースないしハートビートを使って、leaderであることを保証する (READ時)
         match request {
-            Request::GetLeader(_)
+            Request::GetLeader(_, _)
             | Request::Stop
             | Request::TakeSnapshot
             | Request::StartElection => {}
@@ -258,21 +309,26 @@ impl Node {
                 info!(self.logger, "Re-election is required");
                 self.rlog.start_election();
             }
-            Request::GetLeader(monitored) => {
+            Request::GetLeader(started_at, monitored) => {
                 // TODO: debugレベルにする
                 info!(self.logger, "GetLeader: {:?}", self.leader);
+                let waiting = LeaderWaiting {
+                    monitored,
+                    started_at,
+                    metrics: self.metrics.clone(),
+                };
                 if let Some(leader) = self.leader {
-                    monitored.exit(Ok(leader));
+                    waiting.exit(Ok(leader));
                 } else {
                     if self.leader_waitings.is_empty() {
                         self.leader_waiting_timeout.reset();
                     }
-                    self.leader_waitings.push(monitored);
+                    self.leader_waitings.push(waiting);
                     if self.leader_waitings.len() > self.large_leader_waiting_queue_threshold.0 {
                         // NOTE: リーダが収束しない状態で無限にメモリを消費してしまうことがないようにする
                         // TODO: もう少しちゃんと制御（e.g., timeout)
                         warn!(self.logger, "Too many waitings (cleared)");
-                        self.leader_waitings.clear();
+                        self.clear_leader_waitings();
                     }
                 }
             }
@@ -285,10 +341,12 @@ impl Node {
                 monitored.exit(Ok(latest));
             }
             Request::ObjectCount(monitored) => monitored.exit(Ok(self.machine.len() as u64)),
-            Request::Get(object_id, expect, monitored) => {
+            Request::Get(object_id, expect, started_at, monitored) => {
                 let result = self
                     .check_leader()
                     .and_then(|()| self.machine.get(&object_id, &expect));
+                let elapsed = prometrics::timestamp::duration_to_seconds(started_at.elapsed());
+                self.metrics.get_request_duration_seconds.observe(elapsed);
                 monitored.exit(result);
             }
             Request::Head(object_id, expect, monitored) => {
@@ -297,7 +355,7 @@ impl Node {
                     .and_then(|()| self.machine.head(&object_id, &expect));
                 monitored.exit(result);
             }
-            Request::Put(object_id, data, expect, put_content_timeout, monitored) => {
+            Request::Put(object_id, data, expect, put_content_timeout, started_at, monitored) => {
                 let command = Command::Put {
                     object_id,
                     userdata: data,
@@ -310,12 +368,17 @@ impl Node {
                 match result {
                     Err(e) => monitored.exit(Err(e)),
                     Ok(proposal_id) => {
-                        let proposal = Proposal::Put(proposal_id, monitored);
+                        let proposal = Proposal::Put(
+                            proposal_id,
+                            started_at,
+                            self.proposal_metrics.clone(),
+                            monitored,
+                        );
                         self.push_proposal(proposal);
                     }
                 }
             }
-            Request::Delete(object_id, expect, monitored) => {
+            Request::Delete(object_id, expect, started_at, monitored) => {
                 let command = Command::Delete { object_id, expect };
                 let result = track!(protobuf::command_encoder().encode_into_bytes(command))
                     .map_err(Error::from)
@@ -323,7 +386,12 @@ impl Node {
                 match result {
                     Err(e) => monitored.exit(Err(e)),
                     Ok(proposal_id) => {
-                        let proposal = Proposal::Delete(proposal_id, monitored);
+                        let proposal = Proposal::Delete(
+                            proposal_id,
+                            started_at,
+                            self.proposal_metrics.clone(),
+                            monitored,
+                        );
                         self.push_proposal(proposal);
                     }
                 }
@@ -336,7 +404,12 @@ impl Node {
                 match result {
                     Err(e) => monitored.exit(Err(e)),
                     Ok(proposal_id) => {
-                        let proposal = Proposal::Delete(proposal_id, monitored);
+                        let proposal = Proposal::Delete(
+                            proposal_id,
+                            Instant::now(),
+                            self.proposal_metrics.clone(),
+                            monitored,
+                        );
                         self.push_proposal(proposal);
                     }
                 }
@@ -375,7 +448,13 @@ impl Node {
                 match result {
                     Err(e) => monitored.exit(Err(e)),
                     Ok(proposal_id) => {
-                        let proposal = Proposal::DeleteByPrefix(proposal_id, prefix, monitored);
+                        let proposal = Proposal::DeleteByPrefix(
+                            proposal_id,
+                            Instant::now(),
+                            self.proposal_metrics.clone(),
+                            prefix,
+                            monitored,
+                        );
                         self.push_proposal(proposal);
                     }
                 }
@@ -436,6 +515,7 @@ impl Node {
             info!(self.logger, "Snapshot cloned");
 
             let logger = self.logger.clone();
+            let started_at = Instant::now();
             let metrics = self.metrics.clone();
             let future = fibers_tasque::DefaultCpuTaskQueue.async_call(move || {
                 let snapshot = track!(codec::encode_machine(&machine))?;
@@ -447,6 +527,8 @@ impl Node {
 
                 metrics.snapshots_total.increment();
                 metrics.snapshot_bytes_total.add_u64(snapshot.len() as u64);
+                let elapsed = prometrics::timestamp::duration_to_seconds(started_at.elapsed());
+                metrics.snapshot_encoding_duration_seconds.observe(elapsed);
 
                 Ok((commit, snapshot))
             });
@@ -501,10 +583,14 @@ impl Node {
                     snapshot.len()
                 );
                 let logger = self.logger.clone();
+                let started_at = Instant::now();
+                let metrics = self.metrics.clone();
                 let future = fibers_tasque::DefaultCpuTaskQueue.async_call(move || {
                     let machine = track!(codec::decode_machine(&snapshot))?;
                     let versions = machine.to_versions();
                     info!(logger, "Snapshot decoded: {} bytes", snapshot.len());
+                    let elapsed = prometrics::timestamp::duration_to_seconds(started_at.elapsed());
+                    metrics.snapshot_decoding_duration_seconds.observe(elapsed);
                     Ok((new_head, machine, versions))
                 });
                 self.decoding_snapshot = Some(future);
@@ -673,6 +759,14 @@ impl Node {
             }
         }
     }
+    fn clear_leader_waitings(&mut self) {
+        for x in self.leader_waitings.drain(..) {
+            let e = track!(Error::from(
+                ErrorKind::Other.cause("Leader waiting timeout")
+            ));
+            x.exit(Err(e));
+        }
+    }
 }
 impl Drop for Node {
     fn drop(&mut self) {
@@ -728,7 +822,7 @@ impl Stream for Node {
             self.leader_waiting_timeout.decrement();
             if self.leader_waiting_timeout.is_expired() && !self.leader_waitings.is_empty() {
                 warn!(self.logger, "Leader waiting timeout (cleared)");
-                self.leader_waitings.clear();
+                self.clear_leader_waitings();
             }
         }
 
