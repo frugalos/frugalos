@@ -100,7 +100,7 @@ impl HandleCall<rpc::GetLeaderRpc> for Server {
     fn handle_call(&self, node_id: String) -> Reply<rpc::GetLeaderRpc> {
         let node_id = rpc_try!(node_id.parse().map_err(Error::from));
         let node = rpc_try!(self.get_node(node_id));
-        let mut span = self.start_span("get_leader_rpc");
+        let mut span = self.start_span("mds_get_leader_rpc");
         span.set_tag(|| Tag::new("node_id", node_id.to_string()));
         Reply::future(
             node.get_leader(Instant::now())
