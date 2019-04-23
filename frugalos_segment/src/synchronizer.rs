@@ -46,6 +46,7 @@ impl Synchronizer {
         client: StorageClient,
         repair_enabled: bool,
     ) -> Self {
+        info!(logger, "Repair enabled = {}", repair_enabled);
         let metric_builder = MetricBuilder::new()
             .namespace("frugalos")
             .subsystem("synchronizer")
@@ -83,13 +84,14 @@ impl Synchronizer {
         }
     }
     pub fn handle_event(&mut self, event: &Event) {
-        debug!(
+        info!(
             self.logger,
             "New event: {:?} (metadata={}, todo.len={})",
             event,
             self.client.is_metadata(),
             self.todo.len()
         );
+        info!(self.logger, "repair_candidates = {:?}", self.repair_candidates);
         if !self.client.is_metadata() {
             match *event {
                 Event::Putted { version, .. } => {
@@ -111,14 +113,16 @@ impl Synchronizer {
                     self.enqueued_delete.increment();
                 }
             }
+            info!(self.logger, "todo = {:?}", &event);
             self.todo.push(Reverse(TodoItem::new(&event)));
         }
     }
     fn next_todo_item(&mut self) -> Option<TodoItem> {
         let item = loop {
             if let Some(item) = self.todo.pop() {
+                info!(self.logger, "todo item = {:?}", item);
                 if let TodoItem::RepairContent { version, .. } = item.0 {
-                    if !self.repair_candidates.contains(&version) {
+                    if !self.repair_candidates.contains(&version) && false {
                         // 既に削除済み
                         self.dequeued_repair.increment();
                         continue;
@@ -174,6 +178,7 @@ impl Future for Synchronizer {
                     TodoItem::RepairContent { version, .. } => {
                         self.dequeued_repair.increment();
                         self.task = Task::Repair(RepairContent::new(self, version));
+                        info!(self.logger, "poll self.task = Repair{{..}}");
                     }
                 }
             } else if let Task::Idle = self.task {
@@ -323,7 +328,7 @@ impl RepairContent {
         let device = synchronizer.device.clone();
         let node_id = synchronizer.node_id;
         let lump_id = config::make_lump_id(&node_id, version);
-        debug!(
+        info!(
             logger,
             "Starts checking content: version={:?}, lump_id={:?}", version, lump_id
         );
@@ -347,11 +352,11 @@ impl Future for RepairContent {
         while let Async::Ready(phase) = track!(self.phase.poll().map_err(Error::from))? {
             let next = match phase {
                 Phase3::A(Some(_)) => {
-                    debug!(self.logger, "The object {:?} already exists", self.version);
+                    info!(self.logger, "The object {:?} already exists", self.version);
                     return Ok(Async::Ready(()));
                 }
                 Phase3::A(None) => {
-                    debug!(
+                    info!(
                         self.logger,
                         "The object {:?} does not exist (try repairing)", self.version
                     );
@@ -360,7 +365,7 @@ impl Future for RepairContent {
                     Phase3::B(future)
                 }
                 Phase3::B(MaybeFragment::NotParticipant) => {
-                    debug!(
+                    info!(
                         self.logger,
                         "The object {:?} should not be stored on this node: node_id={:?}",
                         self.version,
@@ -369,10 +374,12 @@ impl Future for RepairContent {
                     return Ok(Async::Ready(()));
                 }
                 Phase3::B(MaybeFragment::Fragment(mut content)) => {
+                    info!(self.logger, "[REPAIR] content before repair: {:?}", content);
                     ::client::storage::append_checksum(&mut content); // TODO
+                    info!(self.logger, "[REPAIR] content after repair: {:?}", content);
 
                     let lump_id = config::make_lump_id(&self.node_id, self.version);
-                    debug!(
+                    info!(
                         self.logger,
                         "Puts repaired content: version={:?}, lump_id={:?}, content_size={}",
                         self.version,
@@ -390,7 +397,7 @@ impl Future for RepairContent {
                     Phase3::C(into_box_future(future))
                 }
                 Phase3::C(_) => {
-                    debug!(
+                    info!(
                         self.logger,
                         "Completed repairing content: {:?}", self.version
                     );
