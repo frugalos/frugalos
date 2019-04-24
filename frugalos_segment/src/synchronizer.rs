@@ -122,7 +122,7 @@ impl Synchronizer {
             if let Some(item) = self.todo.pop() {
                 info!(self.logger, "todo item = {:?}", item);
                 if let TodoItem::RepairContent { version, .. } = item.0 {
-                    if !self.repair_candidates.contains(&version) && false {
+                    if !self.repair_candidates.contains(&version) {
                         // 既に削除済み
                         self.dequeued_repair.increment();
                         continue;
@@ -374,9 +374,7 @@ impl Future for RepairContent {
                     return Ok(Async::Ready(()));
                 }
                 Phase3::B(MaybeFragment::Fragment(mut content)) => {
-                    info!(self.logger, "[REPAIR] content before repair: {:?}", content);
                     ::client::storage::append_checksum(&mut content); // TODO
-                    info!(self.logger, "[REPAIR] content after repair: {:?}", content);
 
                     let lump_id = config::make_lump_id(&self.node_id, self.version);
                     info!(

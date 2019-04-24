@@ -20,6 +20,8 @@ TOLERABLE_FAULTS=${TOLERABLE_FAULTS:-$(( ($SERVER_COUNT / 2 - 1) >= 1 ? ($SERVER
 DATA_FRAGMENTS=${DATA_FRAGMENTS:-$(( ($SERVER_COUNT + 1 - $TOLERABLE_FAULTS) >= 1 ? ($SERVER_COUNT + 1 - $TOLERABLE_FAULTS) : 1 ))}
 FRUGALOS_START_FLAGS=${FRUGALOS_START_FLAGS:- --sampling-rate 1.0}
 
+export FRUGALOS_SNAPSHOT_THRESHOLD=1 #
+
 ##
 ## Initialize working directory
 ##
@@ -38,7 +40,7 @@ tmux new-window -n $WIN -c $WORK_DIR
 ## Starts frugalos cluster
 ##
 tmux send-keys -t $WIN.0 "bin/frugalos create --id srv0 --addr 127.0.0.1:${RPC_PORT} --data-dir srv0" C-m
-tmux send-keys -t $WIN.0 "bin/frugalos start --data-dir srv0 ${FRUGALOS_START_FLAGS} --http-server-bind-addr 127.0.0.1:${PORT}" C-m
+tmux send-keys -t $WIN.0 "FRUGALOS_SNAPSHOT_THRESHOLD=1 FRUGALOS_REPAIR_ENABLED=1 bin/frugalos start --data-dir srv0 ${FRUGALOS_START_FLAGS} --http-server-bind-addr 127.0.0.1:${PORT}" C-m
 sleep 6
 
 for s in $(seq 1 ${SERVER_COUNT})
@@ -50,7 +52,7 @@ do
     tmux new-window -d -n "${server}.0" -c ${WORK_DIR}
     tmux send-keys -t ${server}.0 "bin/frugalos join --id ${server} --addr 127.0.0.1:${rpc} --data-dir ${server} --contact-server 127.0.0.1:${RPC_PORT}" C-m
     sleep 1
-    tmux send-keys -t ${server}.0 "bin/frugalos start --data-dir ${server} ${FRUGALOS_START_FLAGS} --http-server-bind-addr 127.0.0.1:${http}" C-m
+    tmux send-keys -t ${server}.0 "FRUGALOS_SNAPSHOT_THRESHOLD=1 FRUGALOS_REPAIR_ENABLED=1 bin/frugalos start --data-dir ${server} ${FRUGALOS_START_FLAGS} --http-server-bind-addr 127.0.0.1:${http}" C-m
     sleep 3
 done
 
