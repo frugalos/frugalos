@@ -1,4 +1,5 @@
 use cannyls::deadline::Deadline;
+use fibers::time::timer;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_mds::{Error as MdsError, ErrorKind as MdsErrorKind};
 use frugalos_raft::{LocalNodeId, NodeId};
@@ -18,7 +19,7 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use trackable::error::ErrorKindExt;
 
-use config::{ClusterConfig, MdsClientConfig};
+use config::{ClusterConfig, MdsClientConfig, MdsRequestPolicy};
 use {Error, ErrorKind, ObjectValue, Result};
 
 #[derive(Debug, Clone)]
@@ -47,7 +48,7 @@ impl MdsClient {
 
     pub fn latest(&self) -> impl Future<Item = Option<ObjectSummary>, Error = Error> {
         let parent = Span::inactive().handle();
-        Request::new(self.clone(), parent, move |client| {
+        Request::new(self.clone(), parent, RequestKind::Other, move |client| {
             Box::new(client.latest_version().map_err(MdsError::from))
         })
     }
@@ -55,7 +56,7 @@ impl MdsClient {
     pub fn list(&self) -> impl Future<Item = Vec<ObjectSummary>, Error = Error> {
         debug!(self.logger, "Starts LIST");
         let parent = Span::inactive().handle();
-        Request::new(self.clone(), parent, move |client| {
+        Request::new(self.clone(), parent, RequestKind::Other, move |client| {
             Box::new(client.list_objects().map_err(MdsError::from))
         })
     }
@@ -66,7 +67,7 @@ impl MdsClient {
         parent: SpanHandle,
     ) -> impl Future<Item = Option<ObjectValue>, Error = Error> {
         debug!(self.logger, "Starts GET: id={:?}", id);
-        Request::new(self.clone(), parent, move |client| {
+        Request::new(self.clone(), parent, RequestKind::Get, move |client| {
             let future = client
                 .get_object(id.clone(), Expect::Any)
                 .map(|(leader, v)| {
@@ -88,7 +89,7 @@ impl MdsClient {
         parent: SpanHandle,
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
         debug!(self.logger, "Starts HEAD: id={:?}", id);
-        Request::new(self.clone(), parent, move |client| {
+        Request::new(self.clone(), parent, RequestKind::Head, move |client| {
             Box::new(
                 client
                     .head_object(id.clone(), Expect::Any)
@@ -104,7 +105,7 @@ impl MdsClient {
         parent: SpanHandle,
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
         debug!(self.logger, "Starts DELETE: id={:?}", id);
-        Request::new(self.clone(), parent, move |client| {
+        Request::new(self.clone(), parent, RequestKind::Other, move |client| {
             Box::new(
                 client
                     .delete_object(id.clone(), expect.clone())
@@ -119,7 +120,7 @@ impl MdsClient {
         parent: SpanHandle,
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
         debug!(self.logger, "Starts DELETE: version={:?}", version);
-        Request::new(self.clone(), parent, move |client| {
+        Request::new(self.clone(), parent, RequestKind::Other, move |client| {
             Box::new(
                 client
                     .delete_object_by_version(version)
@@ -137,7 +138,7 @@ impl MdsClient {
             self.logger,
             "Starts DELETE: versions if {:?} <= it < {:?}", targets.start, targets.end
         );
-        Request::new(self.clone(), parent, move |client| {
+        Request::new(self.clone(), parent, RequestKind::Other, move |client| {
             Box::new(
                 client
                     .delete_by_range(targets.clone())
@@ -152,7 +153,7 @@ impl MdsClient {
         parent: SpanHandle,
     ) -> impl Future<Item = DeleteObjectsByPrefixSummary, Error = Error> {
         debug!(self.logger, "Starts DELETE: prefix={:?}", prefix);
-        Request::new(self.clone(), parent, move |client| {
+        Request::new(self.clone(), parent, RequestKind::Other, move |client| {
             Box::new(
                 client
                     .delete_by_prefix(prefix.clone())
@@ -175,7 +176,7 @@ impl MdsClient {
         } else {
             self.client_config.put_content_timeout.0
         });
-        Request::new(self.clone(), parent, move |client| {
+        Request::new(self.clone(), parent, RequestKind::Other, move |client| {
             Box::new(
                 client
                     .put_object(
@@ -193,11 +194,35 @@ impl MdsClient {
     /// セグメント内に保持されているオブジェクトの数を返す.
     pub fn object_count(&self) -> impl Future<Item = u64, Error = Error> {
         let parent = Span::inactive().handle();
-        Request::new(self.clone(), parent, |client| {
+        Request::new(self.clone(), parent, RequestKind::Other, |client| {
             Box::new(client.object_count().map_err(MdsError::from))
         })
     }
 
+    fn timeout(&self, kind: &RequestKind, max_retry: usize) -> RequestTimeout {
+        // Don't make the last trial timeout so that request timeout causes too much errors.
+        if max_retry == 0 {
+            RequestTimeout::Never
+        } else {
+            match self.request_policy(&kind) {
+                // for backward compatibility
+                MdsRequestPolicy::Conservative => RequestTimeout::Never,
+                MdsRequestPolicy::Speculative { timeout, .. } => {
+                    let factor = (self.max_retry() - max_retry + 1) as u32;
+                    RequestTimeout::Speculative {
+                        timer: timer::timeout(*timeout * factor),
+                    }
+                }
+            }
+        }
+    }
+    fn request_policy(&self, kind: &RequestKind) -> &MdsRequestPolicy {
+        match kind {
+            RequestKind::Get => &self.client_config.get_request_policy,
+            RequestKind::Head => &self.client_config.head_request_policy,
+            RequestKind::Other => &self.client_config.default_request_policy,
+        }
+    }
     fn max_retry(&self) -> usize {
         self.inner.lock().expect("TODO").config.members.len()
     }
@@ -218,6 +243,26 @@ impl MdsClient {
             .expect("Never fails");
         inner.leader = Some(leader);
     }
+    fn next_peer(&self, policy: &MdsRequestPolicy) -> NodeId {
+        match policy {
+            MdsRequestPolicy::Conservative => self.leader(),
+            MdsRequestPolicy::Speculative { .. } => self.next_peer_by_round_robin(),
+        }
+    }
+    fn next_peer_by_round_robin(&self) -> NodeId {
+        let mut inner = self.inner.lock().expect("TODO");
+        if inner.leader.is_none() {
+            // We don't change the leader here because it becomes difficult to implement request timeout.
+            inner.next_candidate = (inner.next_candidate + 1) % inner.config.members.len();
+            return inner
+                .config
+                .members
+                .get(inner.next_candidate)
+                .map(|m| m.node)
+                .expect("Never fails");
+        }
+        inner.leader.expect("Never fails")
+    }
     fn leader(&self) -> NodeId {
         let mut inner = self.inner.lock().expect("TODO");
         if inner.leader.is_none() {
@@ -233,6 +278,7 @@ impl MdsClient {
 pub struct Inner {
     config: ClusterConfig,
     leader: Option<NodeId>,
+    next_candidate: usize,
 }
 impl Inner {
     pub fn new(config: ClusterConfig) -> Self {
@@ -241,6 +287,34 @@ impl Inner {
         Inner {
             config,
             leader: None,
+            next_candidate: 0,
+        }
+    }
+}
+
+/// Types of a request for MDS.
+#[derive(Clone, Copy)]
+pub enum RequestKind {
+    Head,
+    Get,
+    Other,
+}
+
+/// Timeout method for requests.
+pub enum RequestTimeout {
+    Never,
+    Speculative { timer: timer::Timeout },
+}
+
+impl Future for RequestTimeout {
+    type Item = ();
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        match *self {
+            RequestTimeout::Never => Ok(Async::NotReady),
+            RequestTimeout::Speculative { ref mut timer } => {
+                track!(timer.poll().map_err(Error::from))
+            }
         }
     }
 }
@@ -249,10 +323,12 @@ impl Inner {
 #[allow(clippy::type_complexity)]
 pub struct Request<F, V> {
     client: MdsClient,
+    kind: RequestKind,
     max_retry: usize,
     request: F,
     parent: SpanHandle,
     peer: Option<NodeId>,
+    timeout: RequestTimeout,
     future:
         Option<Box<Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>>,
 }
@@ -263,32 +339,36 @@ where
         RaftMdsClient,
     ) -> Box<Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>,
 {
-    pub fn new(client: MdsClient, parent: SpanHandle, request: F) -> Self {
+    pub fn new(client: MdsClient, parent: SpanHandle, kind: RequestKind, request: F) -> Self {
         let max_retry = client.max_retry();
+        let timeout = client.timeout(&kind, max_retry);
         Request {
             client,
+            kind,
             max_retry,
             request,
             parent,
             peer: None,
             future: None,
+            timeout,
         }
     }
     fn request_once(&mut self) -> Result<()> {
         track_assert_ne!(self.max_retry, 0, ErrorKind::Busy);
         self.max_retry -= 1;
 
-        let leader = self.client.leader();
+        let request_policy = self.client.request_policy(&self.kind);
+        let peer = self.client.next_peer(request_policy);
         let mut span = self.parent.child("mds_request", |span| {
             span.tag(StdTag::component(module_path!()))
                 .tag(StdTag::span_kind("client"))
-                .tag(StdTag::peer_ip(leader.addr.ip()))
-                .tag(StdTag::peer_port(leader.addr.port()))
-                .tag(Tag::new("peer.node", leader.local_id.to_string()))
+                .tag(StdTag::peer_ip(peer.addr.ip()))
+                .tag(StdTag::peer_port(peer.addr.port()))
+                .tag(Tag::new("peer.node", peer.local_id.to_string()))
                 .start()
         });
         let client = RaftMdsClient::new(
-            (leader.addr, leader.local_id.to_string()),
+            (peer.addr, peer.local_id.to_string()),
             self.client.rpc_service.clone(),
         );
         let future = (self.request)(client);
@@ -302,7 +382,8 @@ where
             }
             result
         });
-        self.peer = Some(leader);
+        self.timeout = self.client.timeout(&self.kind, self.max_retry);
+        self.peer = Some(peer);
         self.future = Some(Box::new(future));
         Ok(())
     }
@@ -317,6 +398,24 @@ where
     type Item = V;
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        // It is possible to reduce processing time by making a request time out.
+        // For example, there is a node where leader election has been completed but the leader has not been updated yet.
+        if let Async::Ready(()) = track!(self.timeout.poll())? {
+            warn!(
+                self.client.logger,
+                "Request timeout: node={:?}, max_retry={}", self.peer, self.max_retry
+            );
+            if self.max_retry == 0 {
+                return Err(track!(
+                    ErrorKind::Busy.cause("max retry reached"),
+                    "node={:?}",
+                    self.peer
+                )
+                .into());
+            }
+            // We don't clear the leader because the speculative request has just timed out.
+            track!(self.request_once())?;
+        }
         match self.future.poll() {
             Err(e) => {
                 debug!(
@@ -331,7 +430,6 @@ where
                     self.client.clear_leader();
                 }
                 if self.max_retry == 0 {
-                    use trackable::error::ErrorKindExt;
                     return Err(
                         track!(ErrorKind::Busy.takes_over(e), "node={:?}", self.peer).into(),
                     );
