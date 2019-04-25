@@ -145,5 +145,5 @@ Removing network clusters_frugalos_net
 -----
 
 - Pumba:
- - http://blog.terranillius.com/post/pumba_docker_chaos_testing/
  - https://github.com/gaia-adm/pumba
+ - https://github.com/alexei-led/blog/blob/master/content/post/pumba_docker_chaos_testing.md
