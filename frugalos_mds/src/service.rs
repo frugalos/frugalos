@@ -1,6 +1,7 @@
 use atomic_immut::AtomicImmut;
 use fibers::sync::mpsc;
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
+use frugalos_core::tracer::ThreadLocalTracer;
 use frugalos_raft::{LocalNodeId, NodeId};
 use futures::{Async, Future, Poll, Stream};
 use slog::Logger;
@@ -28,7 +29,11 @@ pub struct Service {
 }
 impl Service {
     /// 新しい`Service`インスタンスを生成する.
-    pub fn new(logger: Logger, rpc: &mut RpcServerBuilder) -> Result<Self> {
+    pub fn new(
+        logger: Logger,
+        rpc: &mut RpcServerBuilder,
+        tracer: ThreadLocalTracer,
+    ) -> Result<Self> {
         let nodes = Arc::new(AtomicImmut::new(HashMap::new()));
         let (command_tx, command_rx) = mpsc::channel();
         let this = Service {
@@ -38,7 +43,7 @@ impl Service {
             command_rx,
             do_stop: false,
         };
-        Server::register(this.handle(), rpc);
+        Server::register(this.handle(), rpc, tracer);
         Ok(this)
     }
 

@@ -27,6 +27,7 @@ extern crate frugalos_raft;
 extern crate raftlog;
 extern crate rand;
 extern crate rustracing;
+extern crate rustracing_jaeger;
 #[macro_use]
 extern crate slog;
 extern crate serde;

@@ -10,6 +10,7 @@ use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
 use fibers_tasque;
 use fibers_tasque::TaskQueueExt;
 use frugalos_config::{DeviceGroup, Event as ConfigEvent, Service as ConfigService};
+use frugalos_core::tracer::ThreadLocalTracer;
 use frugalos_mds;
 use frugalos_raft::{NodeId, Service as RaftService};
 use frugalos_segment;
@@ -74,6 +75,7 @@ where
         rpc_service: RpcServiceHandle,
         mds_config: frugalos_mds::FrugalosMdsConfig,
         segment_config: FrugalosSegmentConfig,
+        tracer: ThreadLocalTracer,
     ) -> Result<Self> {
         let frugalos_segment_service = track!(SegmentService::new(
             logger.clone(),
@@ -82,6 +84,7 @@ where
             rpc,
             raft_service.handle(),
             mds_config,
+            tracer
         ))?;
         Ok(Service {
             logger,

@@ -1,8 +1,11 @@
 use cannyls;
 use fibers_rpc::server::{HandleCall, Reply, ServerBuilder as RpcServerBuilder};
+use frugalos_core::tracer::{SpanExt, ThreadLocalTracer};
 use futures::Future;
 use libfrugalos;
 use libfrugalos::schema::frugalos as rpc;
+use rustracing::tag::{StdTag, Tag};
+use rustracing_jaeger::span::Span;
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
@@ -15,14 +18,20 @@ use daemon::FrugalosDaemonHandle;
 pub struct RpcServer {
     client: FrugalosClient,
     daemon: FrugalosDaemonHandle,
+    tracer: ThreadLocalTracer,
 }
 impl RpcServer {
     pub fn register(
         client: FrugalosClient,
         daemon: FrugalosDaemonHandle,
         builder: &mut RpcServerBuilder,
+        tracer: ThreadLocalTracer,
     ) {
-        let this = RpcServer { client, daemon };
+        let this = RpcServer {
+            client,
+            daemon,
+            tracer,
+        };
         builder.add_call_handler::<rpc::DeleteObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::GetObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::HeadObjectRpc, _>(this.clone());
@@ -36,16 +45,49 @@ impl RpcServer {
         builder.add_call_handler::<rpc::DeleteObjectsByRangeRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectsByPrefixRpc, _>(this.clone());
     }
+
+    fn span_from_object_request(
+        &self,
+        operation: &'static str,
+        request: &rpc::ObjectRequest,
+    ) -> Span {
+        // TODO リクエストからの span を引き継ぐ
+        let mut span = self.tracer.span(|t| t.span(operation).start());
+        let bucket_id = request.bucket_id.clone();
+        let object_id = request.object_id.clone();
+        span.set_tag(|| StdTag::component(module_path!()));
+        span.set_tag(|| Tag::new("bucket.id", object_id));
+        span.set_tag(|| Tag::new("object.id", bucket_id));
+        span
+    }
 }
 impl HandleCall<rpc::DeleteObjectRpc> for RpcServer {
     fn handle_call(&self, request: rpc::ObjectRequest) -> Reply<rpc::DeleteObjectRpc> {
+        let mut span = self.span_from_object_request("delete_object_rpc", &request);
         let future = self
             .client
             .request(request.bucket_id)
             .deadline(into_cannyls_deadline(request.deadline))
             .expect(request.expect)
+            .span(&span)
             .delete(request.object_id);
-        Reply::future(future.map_err(into_rpc_error).then(Ok))
+        Reply::future(
+            future
+                .then(move |result| {
+                    result
+                        .map(|version| {
+                            version.map(|version| {
+                                span.set_tag(|| Tag::new("object.version", version.0.to_string()));
+                                version
+                            })
+                        })
+                        .map_err(|e| {
+                            span.log_error(&e);
+                            into_rpc_error(e)
+                        })
+                })
+                .then(Ok),
+        )
     }
 }
 impl HandleCall<rpc::DeleteObjectByVersionRpc> for RpcServer {
@@ -80,16 +122,31 @@ impl HandleCall<rpc::DeleteObjectsByPrefixRpc> for RpcServer {
 }
 impl HandleCall<rpc::GetObjectRpc> for RpcServer {
     fn handle_call(&self, request: rpc::ObjectRequest) -> Reply<rpc::GetObjectRpc> {
+        let mut span = self.span_from_object_request("get_object_rpc", &request);
         let future = self
             .client
             .request(request.bucket_id)
             .deadline(into_cannyls_deadline(request.deadline))
             .expect(request.expect)
+            .span(&span)
             .get(request.object_id);
         Reply::future(
             future
-                .map(|o| o.map(|o| (o.version, o.content)))
-                .map_err(into_rpc_error)
+                .then(move |result| {
+                    result
+                        .map(|o| {
+                            o.map(|o| {
+                                span.set_tag(|| {
+                                    Tag::new("object.version", o.version.0.to_string())
+                                });
+                                (o.version, o.content)
+                            })
+                        })
+                        .map_err(|e| {
+                            span.log_error(&e);
+                            into_rpc_error(e)
+                        })
+                })
                 .then(Ok),
         )
     }

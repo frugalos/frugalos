@@ -5,6 +5,7 @@ use fibers::sync::mpsc;
 use fibers::Spawn;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
+use frugalos_core::tracer::ThreadLocalTracer;
 use frugalos_mds::{
     FrugalosMdsConfig, Node, Service as RaftMdsService, ServiceHandle as MdsHandle,
 };
@@ -46,8 +47,9 @@ where
         rpc: &mut RpcServerBuilder,
         raft_service: frugalos_raft::ServiceHandle,
         mds_config: FrugalosMdsConfig,
+        tracer: ThreadLocalTracer,
     ) -> Result<Self> {
-        let mds_service = track!(RaftMdsService::new(logger.clone(), rpc))?;
+        let mds_service = track!(RaftMdsService::new(logger.clone(), rpc, tracer))?;
         let device_registry = DeviceRegistry::new(logger.clone());
         CannyLsRpcServer::new(device_registry.handle()).register(rpc);
 

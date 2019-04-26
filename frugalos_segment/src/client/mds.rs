@@ -1,5 +1,6 @@
 use cannyls::deadline::Deadline;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
+use frugalos_core::tracer::SpanExt;
 use frugalos_mds::{Error as MdsError, ErrorKind as MdsErrorKind};
 use frugalos_raft::{LocalNodeId, NodeId};
 use futures::{Async, Future, Poll};
@@ -294,11 +295,8 @@ where
         let future = (self.request)(client);
         let future = future.then(move |result| {
             if let Err(ref e) = result {
-                span.set_tag(StdTag::error); // NOTE: NotLeaderの場合はエラーではない
-                span.log(|log| {
-                    let kind = format!("{:?}", e.kind());
-                    log.error().kind(kind).message(e.to_string());
-                });
+                // NOTE: NotLeaderの場合はエラーではない
+                span.log_error(e);
             }
             result
         });

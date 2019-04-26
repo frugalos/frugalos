@@ -11,6 +11,7 @@ use fibers_rpc;
 use fibers_rpc::client::{ClientService as RpcService, ClientServiceBuilder as RpcServiceBuilder};
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
 use frugalos_config;
+use frugalos_core::tracer::ThreadLocalTracer;
 use frugalos_raft;
 use futures::{Async, Future, Poll, Stream};
 use libfrugalos;
@@ -79,6 +80,16 @@ impl FrugalosDaemon {
             raft_service.handle(),
             executor.handle(),
         ))?;
+
+        let sampler = Sampler::<SpanContextState>::or(
+            PassiveSampler,
+            track!(ProbabilisticSampler::new(config.daemon.sampling_rate)
+                .map_err(|e| ErrorKind::InvalidInput.takes_over(e)))?,
+        );
+        let (tracer, span_rx) = rustracing_jaeger::Tracer::new(sampler);
+        spawn_report_spans_thread(span_rx);
+        let tracer = ThreadLocalTracer::new(tracer);
+
         let service = track!(service::Service::new(
             logger.clone(),
             executor.handle(),
@@ -88,15 +99,8 @@ impl FrugalosDaemon {
             rpc_service.handle(),
             config.mds,
             config.segment,
+            tracer.clone(),
         ))?;
-
-        let sampler = Sampler::<SpanContextState>::or(
-            PassiveSampler,
-            track!(ProbabilisticSampler::new(config.daemon.sampling_rate)
-                .map_err(|e| ErrorKind::InvalidInput.takes_over(e)))?,
-        );
-        let (tracer, span_rx) = rustracing_jaeger::Tracer::new(sampler);
-        spawn_report_spans_thread(span_rx);
 
         let (command_tx, command_rx) = mpsc::channel();
 
@@ -105,9 +109,10 @@ impl FrugalosDaemon {
             client.clone(),
             FrugalosDaemonHandle { command_tx },
             &mut rpc_server_builder,
+            tracer.clone(),
         );
 
-        let server = Server::new(logger.clone(), cloned_config, client, tracer);
+        let server = Server::new(logger.clone(), cloned_config, client, tracer.clone());
         track!(server.register(&mut http_server_builder))?;
 
         track!(http_server_builder.add_handler(WithMetrics::new(MetricsHandler)))?;
