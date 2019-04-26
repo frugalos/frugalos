@@ -3,20 +3,42 @@ use futures::{Async, Future, Poll};
 use raftlog::log::{Log, LogSuffix};
 use raftlog::{Error, ErrorKind};
 use std::mem;
+use std::time::Instant;
 use trackable::error::ErrorKindExt;
 
 use super::log_prefix::{LoadLogPrefix, SaveLogPrefix};
 use super::log_suffix::{LoadLogSuffix, SaveLogSuffix};
 use super::Event;
+use super::StorageMetrics;
 
 /// Raft用のローカルログを保存するための`Future`実装.
 // #[derive(Debug)]
-pub struct SaveLog(pub(crate) SaveLogInner);
+pub struct SaveLog {
+    pub(crate) inner: SaveLogInner,
+    started_at: Instant,
+    metrics: StorageMetrics,
+}
+impl SaveLog {
+    /// Creates a new `SaveLog` instance.
+    pub(crate) fn new(inner: SaveLogInner, metrics: StorageMetrics) -> Self {
+        Self {
+            inner,
+            started_at: Instant::now(),
+            metrics,
+        }
+    }
+}
 impl Future for SaveLog {
     type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        self.0.poll()
+        if let Ok(Async::Ready(())) = self.inner.poll() {
+            let elapsed = prometrics::timestamp::duration_to_seconds(self.started_at.elapsed());
+            self.metrics.save_log_duration_seconds.observe(elapsed);
+            Ok(Async::Ready(()))
+        } else {
+            Ok(Async::NotReady)
+        }
     }
 }
 
@@ -44,12 +66,32 @@ impl Future for SaveLogInner {
 
 /// Raft用のローカルログを読み込むための`Future`実装.
 // #[derive(Debug)]
-pub struct LoadLog(pub(crate) LoadLogInner);
+pub struct LoadLog {
+    pub(crate) inner: LoadLogInner,
+    started_at: Instant,
+    metrics: StorageMetrics,
+}
+impl LoadLog {
+    /// Creates a new `LoadLog` instance.
+    pub(crate) fn new(inner: LoadLogInner, metrics: StorageMetrics) -> Self {
+        Self {
+            inner,
+            started_at: Instant::now(),
+            metrics,
+        }
+    }
+}
 impl Future for LoadLog {
     type Item = Log;
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        self.0.poll()
+        if let Ok(Async::Ready(item)) = self.inner.poll() {
+            let elapsed = prometrics::timestamp::duration_to_seconds(self.started_at.elapsed());
+            self.metrics.load_log_duration_seconds.observe(elapsed);
+            Ok(Async::Ready(item))
+        } else {
+            Ok(Async::NotReady)
+        }
     }
 }
 

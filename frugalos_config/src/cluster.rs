@@ -87,7 +87,12 @@ pub fn make_rlog<P: AsRef<Path>, S: Spawn + Clone + Send + 'static>(
 
     // FIXME: パラメータ化
     let timer = frugalos_raft::Timer::new(Duration::from_secs(10), Duration::from_secs(35));
-    let storage = frugalos_raft::Storage::new(logger, node.local_id, device.handle());
+    let storage = frugalos_raft::Storage::new(
+        logger,
+        node.local_id,
+        device.handle(),
+        frugalos_raft::StorageMetrics::new(),
+    );
     let mailer = frugalos_raft::Mailer::new(spawner, rpc_service, None);
 
     let io = track!(RaftIo::new(raft_service, storage, mailer, timer))?;

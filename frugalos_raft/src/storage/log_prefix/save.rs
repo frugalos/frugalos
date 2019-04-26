@@ -7,12 +7,14 @@ use raftlog::{Error, Result};
 use std::cmp;
 use std::env;
 use std::ops::Range;
+use std::time::Instant;
 
 use super::super::{into_box_future, BoxFuture, Event, Handle, Storage};
 use super::delete::{DeleteOldLogEntries, DeleteOldLogPrefixBytes};
 use super::load::LoadLogPrefixIndex;
 use protobuf;
 use util::Phase5;
+use StorageMetrics;
 
 fn max_lump_data_size() -> usize {
     env::var("RAFT_IO_MAX_LUMP_DATA_SIZE")
@@ -36,6 +38,8 @@ pub struct SaveLogPrefix {
     old_entries: Range<LogIndex>,
     new_head: LogPosition,
     event_tx: mpsc::Sender<Event>,
+    started_at: Instant,
+    metrics: StorageMetrics,
 }
 impl SaveLogPrefix {
     pub(crate) fn new(storage: &mut Storage, prefix: LogPrefix) -> Self {
@@ -58,6 +62,8 @@ impl SaveLogPrefix {
             old_prefix_index: Range { start: 0, end: 0 },
             old_entries,
             event_tx: storage.event_tx.clone(),
+            started_at: Instant::now(),
+            metrics: storage.metrics.clone(),
         }
     }
 }
@@ -100,6 +106,11 @@ impl Future for SaveLogPrefix {
                         new_head: self.new_head,
                     };
                     let _ = self.event_tx.send(event);
+                    let elapsed =
+                        prometrics::timestamp::duration_to_seconds(self.started_at.elapsed());
+                    self.metrics
+                        .save_log_prefix_duration_seconds
+                        .observe(elapsed);
                     return Ok(Async::Ready(()));
                 }
             };

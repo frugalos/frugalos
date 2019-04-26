@@ -31,7 +31,6 @@ pub struct Service<S> {
     device_registry: DeviceRegistry,
     command_tx: mpsc::Sender<Command>,
     command_rx: mpsc::Receiver<Command>,
-    raft_metrics: frugalos_raft::RpcMetrics,
     mds_alive: bool,
     mds_config: FrugalosMdsConfig,
 }
@@ -63,7 +62,6 @@ where
             device_registry,
             command_tx,
             command_rx,
-            raft_metrics: frugalos_raft::RpcMetrics::new(),
             mds_alive: true,
             mds_config,
         })
@@ -110,7 +108,6 @@ where
                 let spawner = self.spawner.clone();
                 let rpc_service = self.rpc_service.clone();
                 let raft_service = self.raft_service.clone();
-                let raft_metrics = self.raft_metrics.clone();
                 let mds_config = self.mds_config.clone();
                 let mds_service = self.mds_service.handle();
                 let future = device
@@ -121,7 +118,6 @@ where
                             spawner,
                             rpc_service,
                             raft_service,
-                            raft_metrics,
                             &mds_config,
                             mds_service,
                             node_id,
@@ -211,7 +207,6 @@ impl SegmentNode {
         spawner: S,
         rpc_service: RpcServiceHandle,
         raft_service: frugalos_raft::ServiceHandle,
-        raft_metrics: frugalos_raft::RpcMetrics,
         mds_config: &FrugalosMdsConfig,
         mds_service: MdsHandle,
 
@@ -239,8 +234,17 @@ impl SegmentNode {
             Duration::from_millis(min_timeout),
             Duration::from_millis(max_timeout),
         );
-        let storage = frugalos_raft::Storage::new(logger.clone(), node_id.local_id, device.clone());
-        let mailer = frugalos_raft::Mailer::new(spawner, rpc_service.clone(), Some(raft_metrics));
+        let storage = frugalos_raft::Storage::new(
+            logger.clone(),
+            node_id.local_id,
+            device.clone(),
+            frugalos_raft::StorageMetrics::new(),
+        );
+        let mailer = frugalos_raft::Mailer::new(
+            spawner,
+            rpc_service.clone(),
+            Some(frugalos_raft::RpcMetrics::new()),
+        );
         let io = track!(frugalos_raft::RaftIo::new(
             raft_service,
             storage,
