@@ -200,18 +200,13 @@ impl MdsClient {
     }
 
     fn timeout(&self, kind: &RequestKind, max_retry: usize) -> RequestTimeout {
-        // Don't make the last trial timeout so that request timeout causes too much errors.
-        if max_retry == 0 {
-            RequestTimeout::Never
-        } else {
-            match self.request_policy(&kind) {
-                // for backward compatibility
-                MdsRequestPolicy::Conservative => RequestTimeout::Never,
-                MdsRequestPolicy::Speculative { timeout, .. } => {
-                    let factor = (self.max_retry() - max_retry + 1) as u32;
-                    RequestTimeout::Speculative {
-                        timer: timer::timeout(*timeout * factor),
-                    }
+        match self.request_policy(&kind) {
+            // for backward compatibility
+            MdsRequestPolicy::Conservative => RequestTimeout::Never,
+            MdsRequestPolicy::Speculative { timeout, .. } => {
+                let factor = 2u32.pow((self.max_retry().saturating_sub(max_retry)) as u32);
+                RequestTimeout::Speculative {
+                    timer: timer::timeout(*timeout * factor),
                 }
             }
         }
