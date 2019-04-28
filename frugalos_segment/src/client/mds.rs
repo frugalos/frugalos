@@ -243,25 +243,11 @@ impl MdsClient {
             .expect("Never fails");
         inner.leader = Some(leader);
     }
-    fn next_peer(&self, policy: &MdsRequestPolicy) -> NodeId {
+    fn next_peer(&self, policy: &MdsRequestPolicy, candidate: usize) -> NodeId {
         match policy {
             MdsRequestPolicy::Conservative => self.leader(),
-            MdsRequestPolicy::Speculative { .. } => self.next_peer_by_round_robin(),
+            MdsRequestPolicy::Speculative { .. } => self.leader_or_candidate(candidate),
         }
-    }
-    fn next_peer_by_round_robin(&self) -> NodeId {
-        let mut inner = self.inner.lock().expect("TODO");
-        if inner.leader.is_none() {
-            // We don't change the leader here because it becomes difficult to implement request timeout.
-            inner.next_candidate = (inner.next_candidate + 1) % inner.config.members.len();
-            return inner
-                .config
-                .members
-                .get(inner.next_candidate)
-                .map(|m| m.node)
-                .expect("Never fails");
-        }
-        inner.leader.expect("Never fails")
     }
     fn leader(&self) -> NodeId {
         let mut inner = self.inner.lock().expect("TODO");
@@ -272,13 +258,24 @@ impl MdsClient {
         }
         inner.leader.expect("Never fails")
     }
+    fn leader_or_candidate(&self, member: usize) -> NodeId {
+        let inner = self.inner.lock().expect("TODO");
+        if inner.leader.is_none() {
+            return inner
+                .config
+                .members
+                .get(member)
+                .map(|m| m.node)
+                .expect("Never fails");
+        }
+        inner.leader.expect("Never fails")
+    }
 }
 
 #[derive(Debug)]
 pub struct Inner {
     config: ClusterConfig,
     leader: Option<NodeId>,
-    next_candidate: usize,
 }
 impl Inner {
     pub fn new(config: ClusterConfig) -> Self {
@@ -287,7 +284,6 @@ impl Inner {
         Inner {
             config,
             leader: None,
-            next_candidate: 0,
         }
     }
 }
@@ -349,8 +345,8 @@ where
             request,
             parent,
             peer: None,
-            future: None,
             timeout,
+            future: None,
         }
     }
     fn request_once(&mut self) -> Result<()> {
@@ -358,7 +354,7 @@ where
         self.max_retry -= 1;
 
         let request_policy = self.client.request_policy(&self.kind);
-        let peer = self.client.next_peer(request_policy);
+        let peer = self.client.next_peer(request_policy, self.max_retry);
         let mut span = self.parent.child("mds_request", |span| {
             span.tag(StdTag::component(module_path!()))
                 .tag(StdTag::span_kind("client"))
@@ -405,6 +401,7 @@ where
                 self.client.logger,
                 "Request timeout: node={:?}, max_retry={}", self.peer, self.max_retry
             );
+            self.client.clear_leader();
             if self.max_retry == 0 {
                 return Err(track!(
                     ErrorKind::Busy.cause("max retry reached"),
@@ -413,7 +410,6 @@ where
                 )
                 .into());
             }
-            // We don't clear the leader because the speculative request has just timed out.
             track!(self.request_once())?;
         }
         match self.future.poll() {
