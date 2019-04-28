@@ -199,7 +199,7 @@ impl MdsClient {
         })
     }
 
-    fn timeout(&self, kind: &RequestKind, max_retry: usize) -> RequestTimeout {
+    fn timeout(&self, kind: RequestKind, max_retry: usize) -> RequestTimeout {
         match self.request_policy(&kind) {
             // for backward compatibility
             MdsRequestPolicy::Conservative => RequestTimeout::Never,
@@ -332,7 +332,7 @@ where
 {
     pub fn new(client: MdsClient, parent: SpanHandle, kind: RequestKind, request: F) -> Self {
         let max_retry = client.max_retry();
-        let timeout = client.timeout(&kind, max_retry);
+        let timeout = client.timeout(kind, max_retry);
         Request {
             client,
             kind,
@@ -373,7 +373,7 @@ where
             }
             result
         });
-        self.timeout = self.client.timeout(&self.kind, self.max_retry);
+        self.timeout = self.client.timeout(self.kind, self.max_retry);
         self.peer = Some(peer);
         self.future = Some(Box::new(future));
         Ok(())
