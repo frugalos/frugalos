@@ -301,11 +301,9 @@ impl Future for RequestTimeout {
     type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match *self {
+        match self {
             RequestTimeout::Never => Ok(Async::NotReady),
-            RequestTimeout::Speculative { ref mut timer } => {
-                track!(timer.poll().map_err(Error::from))
-            }
+            RequestTimeout::Speculative { timer } => track!(timer.poll().map_err(Error::from)),
         }
     }
 }
