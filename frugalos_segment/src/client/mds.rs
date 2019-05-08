@@ -396,12 +396,7 @@ where
             );
             self.client.clear_leader();
             if self.max_retry == 0 {
-                return Err(track!(
-                    ErrorKind::Busy.cause("max retry reached"),
-                    "node={:?}",
-                    self.peer
-                )
-                .into());
+                track_panic!(ErrorKind::Busy, "max retry reached: node={:?}", self.peer);
             }
             track!(self.request_once())?;
         }
