@@ -87,7 +87,7 @@ fn default_cannyls_rpc_max_queue_len() -> u64 {
 
 /// Timeout policy for MDS requests.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[serde(rename_all = "lowercase", tag = "type")]
 pub enum MdsRequestPolicy {
     /// Sends a request to MDS conservatively.
     ///

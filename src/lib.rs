@@ -305,11 +305,11 @@ frugalos:
       cannyls_rpc_max_queue_len: 32
     mds_client:
       get_request_policy:
-        type: 'Conservative'
+        type: 'conservative'
       head_request_policy:
-        type: 'Conservative'
+        type: 'conservative'
       default_request_policy:
-        type: 'Speculative'
+        type: 'speculative'
         timeout_millis: 3000
       put_content_timeout_secs: 32"##;
         let dir = track_any_err!(TempDir::new("frugalos_test"))?;
