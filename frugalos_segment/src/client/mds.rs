@@ -239,6 +239,7 @@ impl MdsClient {
         inner.leader = Some(leader);
     }
     fn next_peer(&self, policy: &MdsRequestPolicy, candidate: usize) -> NodeId {
+        // NOTE: リーダー選択とタイムアウトの方法は直交しているので、組み合わせられるようにするか検討する。
         match policy {
             MdsRequestPolicy::Conservative => self.leader(),
             MdsRequestPolicy::Speculative { .. } => self.leader_or_candidate(candidate),

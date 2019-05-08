@@ -89,9 +89,18 @@ fn default_cannyls_rpc_max_queue_len() -> u64 {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum MdsRequestPolicy {
-    /// Sends a request conservatively.
+    /// Sends a request to MDS conservatively.
+    ///
+    /// Requests for MDS will not time out. Also, an algorithm for selecting a leader candidate
+    /// when the leader is indeterminate becomes random.
     Conservative,
-    /// Sends a request speculatively.
+    /// Sends a request to MDS speculatively.
+    ///
+    /// The request for MDS times out at the specified time.
+    /// The timeout time for each request increases to exponential according to the value specified
+    /// in the configuration and the number of failures.
+    /// Also, an algorithm for selecting a leader candidate when the leader is indeterminate becomes
+    /// round robin.
     Speculative {
         /// Timeout before aborting a request.
         #[serde(
