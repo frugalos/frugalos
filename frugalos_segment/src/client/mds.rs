@@ -389,7 +389,7 @@ where
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         // It is possible to reduce processing time by making a request time out.
         // For example, there is a node where leader election has been completed but the leader has not been updated yet.
-        if let Async::Ready(()) = track!(self.timeout.poll())? {
+        while let Async::Ready(()) = track!(self.timeout.poll())? {
             warn!(
                 self.client.logger,
                 "Request timeout: node={:?}, max_retry={}", self.peer, self.max_retry
