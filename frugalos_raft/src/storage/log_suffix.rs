@@ -24,6 +24,9 @@ pub struct LoadLogSuffix {
 }
 impl LoadLogSuffix {
     pub fn new(storage: &Storage) -> Self {
+        // ログの接尾部分を正しく読み出せる暗黙の前提条件として、ログ読み込みによりローカルバッファの
+        // ログの接尾部分の開始位置が適切に更新されている必要がある。
+        // つまり、ログの接頭辞部分を先に読み込んでおかなければならない。
         let head = storage.log_suffix.head;
         let handle = storage.handle.clone();
         info!(handle.logger, "[START] LoadLogSuffix: {}", dump!(head));

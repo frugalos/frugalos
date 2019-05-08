@@ -17,6 +17,7 @@ use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::thread;
 use std::time::Duration;
+use trackable::result::TestResult;
 use trackable::Trackable;
 
 use node::{LocalNodeId, NodeId};
@@ -193,6 +194,29 @@ where
         }
         thread::sleep(Duration::from_millis(1));
     }
+}
+
+/// メモリを利用する `Device` を起動する。
+pub(crate) fn spawn_memory_device(capacity: usize) -> Result<Device, cannyls::Error> {
+    let nvm = cannyls::nvm::MemoryNvm::new(vec![0; capacity]);
+    let storage = cannyls::storage::StorageBuilder::new();
+    let storage = storage.create(nvm).unwrap_or_else(|e| panic!("{}", e));
+    let device = cannyls::device::DeviceBuilder::new().spawn(|| Ok(storage));
+    let _ = track!(wait_for(
+        device.handle().request().wait_for_running().list()
+    ))?;
+    Ok(device)
+}
+
+/// `Storage` を利用するテストケースを実行する。
+pub(crate) fn run_test_with_storage<F>(node_id: LocalNodeId, f: F) -> TestResult
+where
+    F: FnOnce((Storage, cannyls::device::Device)) -> TestResult,
+{
+    let logger = Logger::root(Discard, o!());
+    let device = track!(spawn_memory_device(1024 * 1024))?;
+    let storage = Storage::new(logger, node_id, device.handle(), StorageMetrics::new());
+    f((storage, device))
 }
 
 /// テスト用に raft クラスタに propose するために使えるデータを生成して返す。
