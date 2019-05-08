@@ -245,25 +245,25 @@ impl MdsClient {
         }
     }
     fn leader(&self) -> NodeId {
-        let mut inner = self.inner.lock().expect("TODO");
+        let mut inner = self.inner.lock().unwrap_or_else(|e| panic!("{}", e));
         if inner.leader.is_none() {
             inner.leader = rand::thread_rng()
                 .choose(&inner.config.members)
                 .map(|m| m.node);
         }
-        inner.leader.expect("Never fails")
+        inner.leader.unwrap_or_else(|| unreachable!())
     }
     fn leader_or_candidate(&self, member: usize) -> NodeId {
-        let inner = self.inner.lock().expect("TODO");
+        let inner = self.inner.lock().unwrap_or_else(|e| panic!("{}", e));
         if inner.leader.is_none() {
             return inner
                 .config
                 .members
                 .get(member)
                 .map(|m| m.node)
-                .expect("Never fails");
+                .unwrap_or_else(|| unreachable!());
         }
-        inner.leader.expect("Never fails")
+        inner.leader.unwrap_or_else(|| unreachable!())
     }
 }
 
