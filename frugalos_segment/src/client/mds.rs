@@ -219,16 +219,21 @@ impl MdsClient {
         }
     }
     fn max_retry(&self) -> usize {
-        self.inner.lock().expect("TODO").config.members.len()
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| panic!("{}", e))
+            .config
+            .members
+            .len()
     }
     fn clear_leader(&self) {
-        self.inner.lock().expect("TODO").leader = None;
+        self.inner.lock().unwrap_or_else(|e| panic!("{}", e)).leader = None;
     }
     fn set_leader(&self, leader: LocalNodeId) {
         // TODO: debugレベルにする
         info!(self.logger, "Set leader: {:?}", leader);
 
-        let mut inner = self.inner.lock().expect("TODO");
+        let mut inner = self.inner.lock().unwrap_or_else(|e| panic!("{}", e));
         let leader = inner
             .config
             .members
@@ -294,7 +299,15 @@ pub enum RequestKind {
 
 /// Timeout method for requests.
 pub enum RequestTimeout {
+    /// Never times out.
     Never,
+
+    /// The request for MDS times out at the specified time.
+    ///
+    /// The timeout time for each request increases to exponential according to the value specified
+    /// in the configuration and the number of failures.
+    /// Also, an algorithm for selecting a leader candidate when the leader is indeterminate becomes
+    /// round robin.
     Speculative { timer: timer::Timeout },
 }
 
@@ -309,7 +322,7 @@ impl Future for RequestTimeout {
     }
 }
 
-// TODO: timeout
+// TODO: supports timeout for other request kinds
 #[allow(clippy::type_complexity)]
 pub struct Request<F, V> {
     client: MdsClient,
