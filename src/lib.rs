@@ -261,6 +261,7 @@ fn default_max_concurrent_logs() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use frugalos_segment::config::MdsRequestPolicy;
     use libfrugalos::time::Seconds;
     use std::fs::File;
     use std::io::Write;
@@ -303,6 +304,13 @@ frugalos:
       cannyls_device_max_queue_len: 2048
       cannyls_rpc_max_queue_len: 32
     mds_client:
+      get_request_policy:
+        type: 'conservative'
+      head_request_policy:
+        type: 'conservative'
+      default_request_policy:
+        type: 'speculative'
+        timeout_millis: 3000
       put_content_timeout_secs: 32"##;
         let dir = track_any_err!(TempDir::new("frugalos_test"))?;
         let filepath = dir.path().join("frugalos1.yml");
@@ -342,6 +350,11 @@ frugalos:
             .cannyls
             .device_max_queue_len = 2048;
         expected.segment.replicated_client.cannyls.rpc_max_queue_len = 32;
+        expected.segment.mds_client.get_request_policy = MdsRequestPolicy::Conservative;
+        expected.segment.mds_client.head_request_policy = MdsRequestPolicy::Conservative;
+        expected.segment.mds_client.default_request_policy = MdsRequestPolicy::Speculative {
+            timeout: Duration::from_secs(3),
+        };
         expected.segment.mds_client.put_content_timeout = Seconds(32);
 
         assert_eq!(expected, actual);

@@ -85,6 +85,39 @@ fn default_cannyls_rpc_max_queue_len() -> u64 {
     512
 }
 
+/// Timeout policy for MDS requests.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase", tag = "type")]
+pub enum MdsRequestPolicy {
+    /// Sends a request to MDS conservatively.
+    ///
+    /// Requests for MDS will not time out. Also, an algorithm for selecting a leader candidate
+    /// when the leader is indeterminate becomes random.
+    Conservative,
+    /// Sends a request to MDS speculatively.
+    ///
+    /// The request for MDS times out at the specified time.
+    /// The timeout time for each request increases to exponential according to the value specified
+    /// in the configuration and the number of failures.
+    /// Also, an algorithm for selecting a leader candidate when the leader is indeterminate becomes
+    /// round robin.
+    Speculative {
+        /// Timeout before aborting a request.
+        #[serde(
+            rename = "timeout_millis",
+            default = "default_mds_client_request_timeout",
+            with = "frugalos_core::serde_ext::duration_millis"
+        )]
+        timeout: Duration,
+    },
+}
+
+impl Default for MdsRequestPolicy {
+    fn default() -> Self {
+        MdsRequestPolicy::Conservative
+    }
+}
+
 /// Configuration for `MdsClient`.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct MdsClientConfig {
@@ -94,6 +127,22 @@ pub struct MdsClientConfig {
         default = "default_mds_client_put_content_timeout"
     )]
     pub put_content_timeout: Seconds,
+
+    /// Default Request policy for mds requests.
+    #[serde(default)]
+    pub default_request_policy: MdsRequestPolicy,
+
+    /// Request policy for mds get requests.
+    #[serde(default)]
+    pub get_request_policy: MdsRequestPolicy,
+
+    /// Request policy for mds head requests.
+    #[serde(default)]
+    pub head_request_policy: MdsRequestPolicy,
+}
+
+fn default_mds_client_request_timeout() -> Duration {
+    Duration::from_secs(1)
 }
 
 impl Default for MdsClientConfig {
@@ -101,6 +150,9 @@ impl Default for MdsClientConfig {
         MdsClientConfig {
             // This default value is a heuristic.
             put_content_timeout: default_mds_client_put_content_timeout(),
+            default_request_policy: Default::default(),
+            get_request_policy: Default::default(),
+            head_request_policy: Default::default(),
         }
     }
 }
