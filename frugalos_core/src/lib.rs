@@ -1,5 +1,4 @@
 //! Frugal shared utilities.
-#![allow(clippy::new_ret_no_self)]
 extern crate rustracing;
 extern crate rustracing_jaeger;
 extern crate serde;

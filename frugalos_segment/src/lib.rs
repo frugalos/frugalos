@@ -2,7 +2,6 @@
 //!
 //! [Frugalos]: https://github.com/frugalos/frugalos
 #![warn(missing_docs)]
-#![allow(clippy::new_ret_no_self)]
 extern crate adler32;
 extern crate byteorder;
 extern crate cannyls;
