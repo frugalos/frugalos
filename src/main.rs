@@ -435,7 +435,7 @@ fn set_http_server_config(
     Ok(())
 }
 
-/// Sets configurations for a RPC client.
+/// Sets configurations for an RPC client.
 fn set_rpc_client_config(
     matches: &ArgMatches,
     config: &mut frugalos::FrugalosRpcClientConfig,
