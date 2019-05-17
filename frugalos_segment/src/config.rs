@@ -50,7 +50,7 @@ pub struct CannyLsClientConfig {
     )]
     pub device_max_queue_len: usize,
 
-    /// The max length of a RPC request queue.
+    /// The max length of an RPC request queue.
     #[serde(
         rename = "cannyls_rpc_max_queue_len",
         default = "default_cannyls_rpc_max_queue_len"
@@ -59,7 +59,7 @@ pub struct CannyLsClientConfig {
 }
 
 impl CannyLsClientConfig {
-    /// Returns a RPC option.
+    /// Returns an RPC option.
     pub fn rpc_options(&self) -> RpcOptions {
         RpcOptions {
             max_queue_len: Some(self.rpc_max_queue_len),
