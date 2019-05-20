@@ -1,7 +1,7 @@
 use cannyls;
 use cannyls::deadline::Deadline;
 use cannyls::device::DeviceHandle;
-use cannyls::lump::LumpHeader;
+use cannyls::lump::{LumpId, LumpHeader};
 use fibers::time::timer::{self, Timeout};
 use frugalos_mds::Event;
 use frugalos_raft::NodeId;
@@ -112,6 +112,9 @@ impl Synchronizer {
                     }
                     self.enqueued_delete.increment();
                 }
+                Event::ListFile => {
+
+                }
             }
             info!(self.logger, "todo = {:?}", &event);
             self.todo.push(Reverse(TodoItem::new(&event)));
@@ -171,6 +174,9 @@ impl Future for Synchronizer {
             self.task = Task::Idle;
             if let Some(item) = self.next_todo_item() {
                 match item {
+                    TodoItem::ListContent => {
+                        self.task = Task::List(ListContent::new(self));
+                    }
                     TodoItem::DeleteContent { versions } => {
                         self.dequeued_delete.increment();
                         self.task = Task::Delete(DeleteContent::new(self, versions));
@@ -191,6 +197,7 @@ impl Future for Synchronizer {
 
 #[derive(Debug, PartialOrd, Ord, PartialEq, Eq)]
 enum TodoItem {
+    ListContent,
     RepairContent {
         start_time: SystemTime,
         version: ObjectVersion,
@@ -215,11 +222,15 @@ impl TodoItem {
                     version,
                 }
             }
+            Event::ListFile => {
+                TodoItem::ListContent
+            }
         }
     }
     pub fn wait_time(&self) -> Option<Duration> {
         match *self {
             TodoItem::DeleteContent { .. } => None,
+            TodoItem::ListContent => None,
             TodoItem::RepairContent { start_time, .. } => {
                 start_time.duration_since(SystemTime::now()).ok()
             }
@@ -231,6 +242,7 @@ impl TodoItem {
 enum Task {
     Idle,
     Wait(Timeout),
+    List(ListContent),
     Delete(DeleteContent),
     Repair(RepairContent),
 }
@@ -241,6 +253,7 @@ impl Future for Task {
         match *self {
             Task::Idle => Ok(Async::Ready(())),
             Task::Wait(ref mut f) => track!(f.poll().map_err(Error::from)),
+            Task::List(ref mut f) => track!(f.poll()),
             Task::Delete(ref mut f) => track!(f.poll()),
             Task::Repair(ref mut f) => track!(f.poll()),
         }
@@ -405,5 +418,43 @@ impl Future for RepairContent {
             self.phase = next;
         }
         Ok(Async::NotReady)
+    }
+}
+
+struct ListContent {
+    logger: Logger,
+    phase: BoxFuture<Vec<LumpId>>,
+}
+
+impl ListContent {
+    pub fn new(synchronizer: &Synchronizer) -> Self {
+        let logger = synchronizer.logger.clone();
+        let device = synchronizer.device.clone();
+        info!(
+            logger,
+            "Starts listing content"
+        );
+        let phase =
+            into_box_future(device.request().deadline(Deadline::Infinity).list());
+        ListContent {
+            logger,
+            phase,
+        }
+    }
+}
+
+impl Future for ListContent {
+    type Item = ();
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        match track!(self.phase.poll().map_err(Error::from))? {
+            Async::NotReady => Ok(Async::NotReady),
+            Async::Ready(result) => {
+                info!(self.logger,
+                "ListObject result = {:?}",
+                result);
+                Ok(Async::Ready(()))
+            }
+        }
     }
 }

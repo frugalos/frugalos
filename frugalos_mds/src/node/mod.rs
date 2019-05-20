@@ -229,6 +229,8 @@ pub enum Event {
 
     /// メタデータオブジェクトが削除された.
     Deleted { version: ObjectVersion },
+
+    ListFile,
 }
 
 #[cfg(test)]

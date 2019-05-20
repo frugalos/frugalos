@@ -830,6 +830,7 @@ impl Stream for Node {
             Async::NotReady => return Ok(Async::NotReady),
             Async::Ready(None) => {}
             Async::Ready(Some(result)) => {
+                info!(self.logger, "SNAPSHOT! result = {:?}", result);
                 let (new_head, machine, versions) = track!(result)?;
                 info!(self.logger, "Snapshot decoded: new_head={:?}", new_head);
                 let delay = env::var("FRUGALOS_SNAPSHOT_REPAIR_DELAY")
@@ -842,6 +843,7 @@ impl Stream for Node {
                         version,
                         put_content_timeout: Seconds(delay),
                     }));
+                self.events.push_back(Event::ListFile);
                 self.next_commit = new_head.index;
                 self.machine = machine;
                 self.metrics.objects.set(self.machine.len() as f64);
