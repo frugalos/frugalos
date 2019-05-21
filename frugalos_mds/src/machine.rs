@@ -135,6 +135,23 @@ impl Machine {
             .map(|(id, &version)| ObjectSummary { id, version })
             .collect()
     }
+    // FIXME: ad-hoc bit vector backed by u64. Bit (64k + j) will be stored in array[k] & 1 << j.
+    pub fn enumerate_object_versions(&self) -> Vec<u64> {
+        let size = if let Some(x) = self.latest_version() {
+            x.version.0 + 1
+        } else {
+            0
+        };
+        let u64size = ((size + 63) / 64) as usize;
+        let mut result= vec![0; u64size];
+        self.id_to_version
+            .iter()
+            .for_each(|(id, version)| {
+                let version = version.0 as usize;
+                result[version / 64] |= 1 << (version % 64);
+            });
+        result
+    }
     pub fn latest_version(&self) -> Option<ObjectSummary> {
         self.id_to_version
             .iter()

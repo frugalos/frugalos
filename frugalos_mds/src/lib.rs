@@ -44,7 +44,7 @@ pub use service::{Service, ServiceHandle};
 mod codec;
 mod config;
 mod error;
-mod machine;
+pub mod machine;
 mod node;
 mod protobuf;
 mod server;

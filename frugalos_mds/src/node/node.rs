@@ -843,7 +843,7 @@ impl Stream for Node {
                         version,
                         put_content_timeout: Seconds(delay),
                     }));
-                self.events.push_back(Event::ListFile);
+                self.events.push_back(Event::FullSync { machine: machine.clone() });
                 self.next_commit = new_head.index;
                 self.machine = machine;
                 self.metrics.objects.set(self.machine.len() as f64);

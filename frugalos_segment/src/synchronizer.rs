@@ -7,6 +7,7 @@ use frugalos_mds::Event;
 use frugalos_raft::NodeId;
 use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
+use frugalos_mds::machine::Machine;
 use prometrics::metrics::{Counter, MetricBuilder};
 use slog::Logger;
 use std::cmp::{self, Reverse};
@@ -37,6 +38,7 @@ pub struct Synchronizer {
     enqueued_delete: Counter,
     dequeued_repair: Counter,
     dequeued_delete: Counter,
+    full_sync: Option<FullSync>,
 }
 impl Synchronizer {
     pub fn new(
@@ -81,6 +83,7 @@ impl Synchronizer {
                 .label("type", "delete")
                 .finish()
                 .unwrap(),
+            full_sync: None,
         }
     }
     pub fn handle_event(&mut self, event: &Event) {
@@ -112,12 +115,20 @@ impl Synchronizer {
                     }
                     self.enqueued_delete.increment();
                 }
-                Event::ListFile => {
-
+                // Because pushing FullSync into the task queue causes difficulty in implementation,
+                // we decided not to push this task to the task priority queue and handle it manually.
+                Event::FullSync { ref machine } => {
+                    // If FullSync is not being processed now, this event lets the synchronizer to handle one.
+                    if self.full_sync.is_none() {
+                        self.full_sync = Some(FullSync::new(self, machine.clone()));
+                    }
                 }
             }
             info!(self.logger, "todo = {:?}", &event);
-            self.todo.push(Reverse(TodoItem::new(&event)));
+            if let Event::FullSync { .. } = &event {
+            } else {
+                self.todo.push(Reverse(TodoItem::new(&event)));
+            }
         }
     }
     fn next_todo_item(&mut self) -> Option<TodoItem> {
@@ -166,6 +177,14 @@ impl Future for Synchronizer {
     type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        while let Async::Ready(Some(())) = self.full_sync.poll().unwrap_or_else(|e| {
+            warn!(self.logger, "Task failure: {}", e);
+            Async::Ready(Some(()))
+        }) {
+            // Full sync is done. Clearing the full_sync field.
+            self.full_sync = None;
+        };
+
         while let Async::Ready(()) = self.task.poll().unwrap_or_else(|e| {
             // 同期処理のエラーは致命的ではないので、ログを出すだけに留める
             warn!(self.logger, "Task failure: {}", e);
@@ -174,9 +193,6 @@ impl Future for Synchronizer {
             self.task = Task::Idle;
             if let Some(item) = self.next_todo_item() {
                 match item {
-                    TodoItem::ListContent => {
-                        self.task = Task::List(ListContent::new(self));
-                    }
                     TodoItem::DeleteContent { versions } => {
                         self.dequeued_delete.increment();
                         self.task = Task::Delete(DeleteContent::new(self, versions));
@@ -197,7 +213,6 @@ impl Future for Synchronizer {
 
 #[derive(Debug, PartialOrd, Ord, PartialEq, Eq)]
 enum TodoItem {
-    ListContent,
     RepairContent {
         start_time: SystemTime,
         version: ObjectVersion,
@@ -222,15 +237,12 @@ impl TodoItem {
                     version,
                 }
             }
-            Event::ListFile => {
-                TodoItem::ListContent
-            }
+            Event::FullSync { .. } => unreachable!(),
         }
     }
     pub fn wait_time(&self) -> Option<Duration> {
         match *self {
             TodoItem::DeleteContent { .. } => None,
-            TodoItem::ListContent => None,
             TodoItem::RepairContent { start_time, .. } => {
                 start_time.duration_since(SystemTime::now()).ok()
             }
@@ -242,7 +254,6 @@ impl TodoItem {
 enum Task {
     Idle,
     Wait(Timeout),
-    List(ListContent),
     Delete(DeleteContent),
     Repair(RepairContent),
 }
@@ -253,7 +264,6 @@ impl Future for Task {
         match *self {
             Task::Idle => Ok(Async::Ready(())),
             Task::Wait(ref mut f) => track!(f.poll().map_err(Error::from)),
-            Task::List(ref mut f) => track!(f.poll()),
             Task::Delete(ref mut f) => track!(f.poll()),
             Task::Repair(ref mut f) => track!(f.poll()),
         }
@@ -421,40 +431,34 @@ impl Future for RepairContent {
     }
 }
 
-struct ListContent {
+struct FullSync {
     logger: Logger,
-    phase: BoxFuture<Vec<LumpId>>,
+    machine: Machine,
 }
 
-impl ListContent {
-    pub fn new(synchronizer: &Synchronizer) -> Self {
+impl FullSync {
+    pub fn new(synchronizer: &Synchronizer, machine: Machine) -> Self {
         let logger = synchronizer.logger.clone();
-        let device = synchronizer.device.clone();
         info!(
             logger,
-            "Starts listing content"
+            "Starts full sync"
         );
-        let phase =
-            into_box_future(device.request().deadline(Deadline::Infinity).list());
-        ListContent {
+        // TODO: Let's throw away all kind of asynchronization. We do it at once.
+        FullSync {
             logger,
-            phase,
+            machine,
         }
     }
 }
 
-impl Future for ListContent {
+impl Future for FullSync {
     type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match track!(self.phase.poll().map_err(Error::from))? {
-            Async::NotReady => Ok(Async::NotReady),
-            Async::Ready(result) => {
-                info!(self.logger,
-                "ListObject result = {:?}",
-                result);
-                Ok(Async::Ready(()))
-            }
-        }
+        let result = self.machine.enumerate_object_versions();
+        info!(self.logger,
+              "FullSync objects = {:?}",
+              result);
+        Ok(Async::Ready(()))
     }
 }
