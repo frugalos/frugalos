@@ -26,7 +26,7 @@ libfrugalos = "0.2"
 patricia_tree = { version = "0.1.8", features = ["binary-format"] }
 prometrics = "0.1"
 protobuf_codec = "0.2"
-raftlog = "0.4"
+raftlog = "0.5"
 rand = "0.5"
 rustracing = "0.1"
 rustracing_jaeger = "0.1"

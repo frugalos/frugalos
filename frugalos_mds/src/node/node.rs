@@ -9,7 +9,7 @@ use frugalos_raft::{NodeId, RaftIo};
 use futures::{Async, Future, Poll, Stream};
 use libfrugalos::entity::object::{Metadata, ObjectVersion};
 use prometrics::metrics::{
-    Counter, CounterBuilder, Gauge, GaugeBuilder, Histogram, HistogramBuilder,
+    Counter, CounterBuilder, Gauge, GaugeBuilder, Histogram, HistogramBuilder, MetricBuilder,
 };
 use raftlog::cluster::{ClusterConfig, ClusterMembers};
 use raftlog::election::Role;
@@ -219,7 +219,13 @@ impl Node {
         let node_handle = NodeHandle::new(request_tx.clone());
         track!(service.add_node(node_id, node_handle))?;
 
-        let rlog = ReplicatedLog::new(node_id.to_raft_node_id(), cluster, io);
+        let metric_builder = MetricBuilder::new();
+        let rlog = track!(ReplicatedLog::new(
+            node_id.to_raft_node_id(),
+            cluster,
+            io,
+            &metric_builder
+        ))?;
 
         // For backward compatibility
         let snapshot_threshold = config.snapshot_threshold();

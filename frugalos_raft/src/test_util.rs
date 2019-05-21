@@ -7,6 +7,7 @@ use fibers_rpc;
 use fibers_rpc::client::{ClientService, ClientServiceHandle};
 use fibers_rpc::server::ServerBuilder;
 use futures::{Async, Future, Stream};
+use prometrics::metrics::MetricBuilder;
 use raftlog;
 use raftlog::cluster::ClusterMembers;
 use raftlog::election::Role;
@@ -79,8 +80,13 @@ impl System {
         }
 
         for (node_id, io) in nodes {
-            self.rlogs
-                .push(ReplicatedLog::new(node_id, self.members.clone(), io));
+            let rlog = track!(ReplicatedLog::new(
+                node_id,
+                self.members.clone(),
+                io,
+                &MetricBuilder::new()
+            ))?;
+            self.rlogs.push(rlog);
         }
 
         Ok(())
