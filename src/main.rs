@@ -28,7 +28,8 @@ use frugalos::{Error, ErrorKind, Result};
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
-#[allow(clippy::cognitive_complexity)]
+// See https://github.com/frugalos/frugalos/pull/161
+#[allow(renamed_and_removed_lints, clippy::cyclomatic_complexity, clippy::cognitive_complexity)]
 fn main() {
     let rpc_server_bind_addr = default_rpc_server_bind_addr();
     let long_version = track_try_unwrap!(make_long_version());
