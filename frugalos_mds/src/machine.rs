@@ -146,7 +146,7 @@ impl Machine {
         let mut result= vec![0; u64size];
         self.id_to_version
             .iter()
-            .for_each(|(id, version)| {
+            .for_each(|(_id, version)| {
                 let version = version.0 as usize;
                 result[version / 64] |= 1 << (version % 64);
             });

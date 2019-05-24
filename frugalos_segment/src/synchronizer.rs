@@ -276,17 +276,19 @@ struct DeleteContent {
 }
 impl DeleteContent {
     pub fn new(synchronizer: &Synchronizer, versions: Vec<ObjectVersion>) -> Self {
+        Self::new_with_arguments(&synchronizer.logger, synchronizer.node_id, &synchronizer.device, versions)
+    }
+    pub fn new_with_arguments(logger: &Logger, node_id: NodeId, device: &DeviceHandle, versions: Vec<ObjectVersion>) -> Self {
         debug!(
-            synchronizer.logger,
+            logger,
             "Starts deleting contents: versions={:?}", versions
         );
 
         let futures = versions
             .into_iter()
             .map(move |v| {
-                let lump_id = config::make_lump_id(&synchronizer.node_id, v);
-                let future = synchronizer
-                    .device
+                let lump_id = config::make_lump_id(&node_id, v);
+                let future = device
                     .request()
                     .deadline(Deadline::Infinity)
                     .delete(lump_id);
@@ -433,7 +435,12 @@ impl Future for RepairContent {
 
 struct FullSync {
     logger: Logger,
-    machine: Machine,
+    node_id: NodeId,
+    device: DeviceHandle,
+    machine: Option<Machine>,
+    phase: Phase3<ListContent, CreateObjectTable, DeleteContent>,
+    lump_ids: Option<Vec<LumpId>>,
+    object_table: Option<Vec<u64>>,
 }
 
 impl FullSync {
@@ -443,10 +450,17 @@ impl FullSync {
             logger,
             "Starts full sync"
         );
-        // TODO: Let's throw away all kind of asynchronization. We do it at once.
+        let node_id = synchronizer.node_id;
+        let device = synchronizer.device.clone();
+        let phase = Phase3::A(ListContent::new(synchronizer));
         FullSync {
             logger,
-            machine,
+            node_id,
+            device,
+            machine: Some(machine),
+            phase,
+            lump_ids: None,
+            object_table: None,
         }
     }
 }
@@ -455,10 +469,119 @@ impl Future for FullSync {
     type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        while let Async::Ready(phase) = track!(self.phase.poll().map_err(Error::from))? {
+            let next = match phase {
+                Phase3::A(lump_ids) => {
+                    self.lump_ids = Some(lump_ids);
+                    let future = CreateObjectTable::new(self.logger.clone(), self.machine.take().expect("always Some"));
+                    Phase3::B(future)
+                }
+                Phase3::B(object_table) => {
+                    self.object_table = Some(object_table);
+                    // Determine which objects need deleting
+                    let mut deleted_versions = Vec::new();
+                    for lump_id in self.lump_ids.take().expect("always Some") {
+                        let object_version = config::get_object_version_from_lump_id(lump_id);
+                        deleted_versions.push(object_version);
+                    }
+
+                    // TODO just list deleted objects.
+                    info!(
+                        self.logger,
+                        "deleted_versions = {:?}",
+                        deleted_versions,
+                    );
+                    let _future = DeleteContent::new_with_arguments(&self.logger, self.node_id, &self.device, deleted_versions);
+                    return Ok(Async::Ready(()));
+                }
+                Phase3::C(()) => {
+                    info!(self.logger,
+                          "FullSync objects done");
+                    return Ok(Async::Ready(()));
+                }
+            };
+            self.phase = next;
+        }
+        Ok(Async::NotReady)
+    }
+}
+
+struct ListContent {
+    logger: Logger,
+    #[allow(unused)]
+    node_id: NodeId,
+    phase: BoxFuture<Vec<LumpId>>,
+}
+
+impl ListContent {
+    pub fn new(synchronizer: &Synchronizer) -> Self {
+        let logger = synchronizer.logger.clone();
+        let device = synchronizer.device.clone();
+        let node_id = synchronizer.node_id;
+        info!(
+            logger,
+            "Starts listing content"
+        );
+        let phase =
+            into_box_future(device.request().deadline(Deadline::Infinity).list());
+        ListContent {
+            logger,
+            node_id,
+            phase,
+        }
+    }
+}
+
+impl Future for ListContent {
+    type Item = Vec<LumpId>;
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        match track!(self.phase.poll().map_err(Error::from))? {
+            Async::NotReady => Ok(Async::NotReady),
+            Async::Ready(result) => {
+                info!(self.logger,
+                      "ListObject result = {:?}",
+                      result);
+                Ok(Async::Ready(result))
+            }
+        }
+    }
+}
+
+struct CreateObjectTable {
+    logger: Logger,
+    machine: Machine,
+}
+
+impl CreateObjectTable {
+    pub fn new(logger: Logger, machine: Machine) -> Self {
+        info!(
+            logger,
+            "Starts full sync"
+        );
+        CreateObjectTable {
+            logger,
+            machine,
+        }
+    }
+}
+
+impl Future for CreateObjectTable {
+    type Item = Vec<u64>;
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let result = self.machine.enumerate_object_versions();
+        let mut objects = vec![];
+        for i in 0..result.len() {
+            for j in 0..64 {
+                if (result[i] & 1 << j) != 0 {
+                    objects.push(64 * i + j);
+                }
+            }
+        }
         info!(self.logger,
               "FullSync objects = {:?}",
-              result);
-        Ok(Async::Ready(()))
+              objects);
+        Ok(Async::Ready(result))
     }
 }

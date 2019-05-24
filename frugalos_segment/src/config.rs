@@ -40,6 +40,13 @@ pub(crate) fn make_lump_id(node: &NodeId, version: ObjectVersion) -> LumpId {
     LumpId::new(BigEndian::read_u128(&id[..]))
 }
 
+#[allow(unused)]
+pub(crate) fn get_object_version_from_lump_id(lump_id: LumpId) -> ObjectVersion {
+    let mut id = [0; 16];
+    BigEndian::write_u128(&mut id, lump_id.as_u128());
+    ObjectVersion(BigEndian::read_u64(&id[8..]))
+}
+
 /// Configuration for CannyLS.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CannyLsClientConfig {
