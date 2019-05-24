@@ -11,6 +11,7 @@ rust:
 
 before_script:
   - rustup component add clippy-preview
+  - cargo clippy --version
 
 script:
   - cargo test --all
