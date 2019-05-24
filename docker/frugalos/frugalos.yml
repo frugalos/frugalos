@@ -1,0 +1,18 @@
+---
+# 設定項目については https://github.com/frugalos/frugalos/wiki/Configuration を参照。
+frugalos:
+  daemon:
+    stop_waiting_time_millis: 3000
+  rpc_client:
+    tcp_connect_timeout_millis: 200
+  # 後方互換性を維持するための設定なので、rpc_server の設定は 0.11.1 以降に frugalos を更新したら消してよい。
+  rpc_server:
+    tcp_connect_timeout_millis: 200
+  segment:
+    mds_client:
+      get_request_policy:
+        type: 'speculative'
+        timeout_millis: 50
+      head_request_policy:
+        type: 'speculative'
+        timeout_millis: 50
