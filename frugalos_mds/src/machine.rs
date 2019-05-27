@@ -143,13 +143,11 @@ impl Machine {
             0
         };
         let u64size = ((size + 63) / 64) as usize;
-        let mut result= vec![0; u64size];
-        self.id_to_version
-            .iter()
-            .for_each(|(_id, version)| {
-                let version = version.0 as usize;
-                result[version / 64] |= 1 << (version % 64);
-            });
+        let mut result = vec![0; u64size];
+        self.id_to_version.iter().for_each(|(_id, version)| {
+            let version = version.0 as usize;
+            result[version / 64] |= 1 << (version % 64);
+        });
         result
     }
     pub fn latest_version(&self) -> Option<ObjectSummary> {

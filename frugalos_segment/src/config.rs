@@ -40,7 +40,6 @@ pub(crate) fn make_lump_id(node: &NodeId, version: ObjectVersion) -> LumpId {
     LumpId::new(BigEndian::read_u128(&id[..]))
 }
 
-#[allow(unused)]
 pub(crate) fn get_object_version_from_lump_id(lump_id: LumpId) -> ObjectVersion {
     let mut id = [0; 16];
     BigEndian::write_u128(&mut id, lump_id.as_u128());
@@ -476,6 +475,33 @@ mod tests {
                     .collect::<Vec<_>>()
             );
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn make_lump_id_works() -> TestResult {
+        use std::str::FromStr;
+
+        let node = NodeId::from_str("1000a00.0@127.0.0.1:14278")?;
+        let object_version = ObjectVersion(0x123456789abcdef0);
+        let lump_id = make_lump_id(&node, object_version);
+
+        assert_eq!(
+            lump_id.as_u128(),
+            1 << 120 | 0x1000a00_00 << 64 | 0x123456789abcdef0
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn get_object_version_from_lump_id_works() -> TestResult {
+        let lump_id = LumpId::new(1 << 120 | 0x1000a00_00 << 64 | 0x123456789abcdef0);
+        assert_eq!(
+            get_object_version_from_lump_id(lump_id),
+            ObjectVersion(0x123456789abcdef0)
+        );
 
         Ok(())
     }

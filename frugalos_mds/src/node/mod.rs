@@ -6,11 +6,11 @@ use libfrugalos::entity::object::{
 };
 use libfrugalos::expect::Expect;
 use libfrugalos::time::Seconds;
+use machine::Machine;
 use prometrics::metrics::{Counter, Histogram, MetricBuilder};
 use raftlog::log::ProposalId;
 use std::time::Instant;
 use trackable::error::ErrorKindExt;
-use machine::Machine;
 
 use {Error, ErrorKind, Result};
 
@@ -229,7 +229,9 @@ pub enum Event {
     },
 
     /// メタデータオブジェクトが削除された.
-    Deleted { version: ObjectVersion },
+    Deleted {
+        version: ObjectVersion,
+    },
 
     FullSync {
         machine: Machine,
