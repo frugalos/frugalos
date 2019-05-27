@@ -452,7 +452,8 @@ impl FullSync {
         );
         let node_id = synchronizer.node_id;
         let device = synchronizer.device.clone();
-        let phase = Phase3::A(ListContent::new(synchronizer));
+        let object_version_limit = machine.latest_version().map(|x| ObjectVersion(x.version.0 + 1)).unwrap_or(ObjectVersion(0));
+        let phase = Phase3::A(ListContent::new(synchronizer, object_version_limit));
         FullSync {
             logger,
             node_id,
@@ -508,13 +509,13 @@ impl Future for FullSync {
 
 struct ListContent {
     logger: Logger,
-    #[allow(unused)]
     node_id: NodeId,
     phase: BoxFuture<Vec<LumpId>>,
 }
 
 impl ListContent {
-    pub fn new(synchronizer: &Synchronizer) -> Self {
+    // [0..object_version_limit) will be checked.
+    pub fn new(synchronizer: &Synchronizer, object_version_limit: ObjectVersion) -> Self {
         let logger = synchronizer.logger.clone();
         let device = synchronizer.device.clone();
         let node_id = synchronizer.node_id;
@@ -522,8 +523,10 @@ impl ListContent {
             logger,
             "Starts listing content"
         );
+        let start_lump_id = config::make_lump_id(&node_id, ObjectVersion(0));
+        let end_lump_id = config::make_lump_id(&node_id, object_version_limit);
         let phase =
-            into_box_future(device.request().deadline(Deadline::Infinity).list());
+            into_box_future(device.request().deadline(Deadline::Infinity).list_range(start_lump_id..end_lump_id));
         ListContent {
             logger,
             node_id,
