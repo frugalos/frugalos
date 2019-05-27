@@ -600,8 +600,6 @@ impl HandleRequest for JemallocStats {
     type Reply = Reply<Self::ResBody>;
 
     fn handle_request(&self, _req: Req<Self::ReqBody>) -> Self::Reply {
-        use jemalloc_ctl;
-
         // many statistics are cached and only updated when the epoch is advanced.
         let _ = jemalloc_ctl::epoch();
 

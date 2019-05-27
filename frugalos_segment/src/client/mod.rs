@@ -246,7 +246,7 @@ mod tests {
 
         // Deletes all fragments the dispersed device.
         for (_node_id, _device_id, device_handle) in members.clone() {
-            let mut result = wait(
+            let result = wait(
                 device_handle
                     .request()
                     .list()
