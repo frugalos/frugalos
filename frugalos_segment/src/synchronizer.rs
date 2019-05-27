@@ -591,13 +591,45 @@ impl Future for CreateObjectTable {
 
 #[cfg(test)]
 mod tests {
+    use cannyls::deadline::Deadline;
+    use cannyls::device::DeviceHandle;
+    use client::storage::StorageClient;
+    use config::make_lump_id;
     use frugalos_mds::machine::Machine;
     use libfrugalos::entity::object::{Metadata, ObjectVersion};
     use libfrugalos::expect::Expect;
     use slog::{Discard, Logger};
-    use synchronizer::CreateObjectTable;
-    use test_util::tests::wait;
+    use synchronizer::{CreateObjectTable, ListContent, Synchronizer};
+    use test_util::tests::{setup_system, wait, System};
     use trackable::result::TestResult;
+
+    #[test]
+    fn list_content_works_correctly() -> TestResult {
+        let logger = Logger::root(Discard, o!());
+        let mut system = System::new(2, 1)?;
+        let (nodes, _client) = setup_system(&mut system, 3)?;
+        let (node0, _device_id0, handle0): (_, _, DeviceHandle) = nodes[0].clone();
+        let synchronizer = Synchronizer::new(
+            logger,
+            node0,
+            handle0.clone(),
+            StorageClient::Metadata,
+            true,
+        );
+        // Puts 10 objects to device0
+        for i in 0..10 {
+            let lump_id = make_lump_id(&node0, ObjectVersion(i));
+            let lump_data = handle0.allocate_lump_data_with_bytes(&[0; 10])?;
+            handle0
+                .request()
+                .deadline(Deadline::Infinity)
+                .put(lump_id, lump_data);
+        }
+
+        let x = wait(ListContent::new(&synchronizer, ObjectVersion(10)))?;
+        assert_eq!(x.len(), 10);
+        Ok(())
+    }
 
     #[test]
     fn create_object_table_lists_objects_correctly() -> TestResult {
