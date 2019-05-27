@@ -579,7 +579,7 @@ impl Future for CreateObjectTable {
         for &entry in &result {
             objects_count += u64::from(entry.count_ones());
         }
-        info!(
+        debug!(
             self.logger,
             "FullSync machine_table_size = {}, machine_objects_count = {}",
             64 * result.len(),
@@ -587,4 +587,36 @@ impl Future for CreateObjectTable {
         );
         Ok(Async::Ready(result))
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use frugalos_mds::machine::Machine;
+    use libfrugalos::entity::object::{Metadata, ObjectVersion};
+    use libfrugalos::expect::Expect;
+    use slog::{Discard, Logger};
+    use synchronizer::CreateObjectTable;
+    use test_util::tests::wait;
+    use trackable::result::TestResult;
+
+    #[test]
+    fn create_object_table_lists_objects_correctly() -> TestResult {
+        let logger = Logger::root(Discard, o!());
+        let mut machine = Machine::new();
+        for i in 0..10 {
+            let metadata = Metadata {
+                version: ObjectVersion(i),
+                data: vec![],
+            };
+
+            machine.put(format!("test-object-{}", i), metadata, &Expect::None)?;
+        }
+
+        let create_object_table = CreateObjectTable::new(logger, machine);
+        let result = wait(create_object_table)?;
+        assert_eq!(result, vec![1023]);
+
+        Ok(())
+    }
+
 }
