@@ -44,6 +44,7 @@ pub use service::{Service, ServiceHandle};
 mod codec;
 mod config;
 mod error;
+#[allow(missing_docs)]
 pub mod machine;
 mod node;
 mod protobuf;

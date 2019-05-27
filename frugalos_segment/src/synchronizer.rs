@@ -492,8 +492,8 @@ impl Future for FullSync {
                         "deleted_versions = {:?}",
                         deleted_versions,
                     );
-                    let _future = DeleteContent::new_with_arguments(&self.logger, self.node_id, &self.device, deleted_versions);
-                    return Ok(Async::Ready(()));
+                    let future = DeleteContent::new_with_arguments(&self.logger, self.node_id, &self.device, deleted_versions);
+                    Phase3::C(future)
                 }
                 Phase3::C(()) => {
                     info!(self.logger,
@@ -509,7 +509,6 @@ impl Future for FullSync {
 
 struct ListContent {
     logger: Logger,
-    node_id: NodeId,
     phase: BoxFuture<Vec<LumpId>>,
 }
 
@@ -529,7 +528,6 @@ impl ListContent {
             into_box_future(device.request().deadline(Deadline::Infinity).list_range(start_lump_id..end_lump_id));
         ListContent {
             logger,
-            node_id,
             phase,
         }
     }
@@ -574,17 +572,14 @@ impl Future for CreateObjectTable {
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let result = self.machine.enumerate_object_versions();
-        let mut objects = vec![];
-        for i in 0..result.len() {
-            for j in 0..64 {
-                if (result[i] & 1 << j) != 0 {
-                    objects.push(64 * i + j);
-                }
-            }
+        let mut objects_count = 0;
+        for &entry in &result {
+            objects_count += entry.count_ones() as u64;
         }
         info!(self.logger,
-              "FullSync objects = {:?}",
-              objects);
+              "FullSync machine_table_size = {}, machine_objects_count = {}",
+              64 * result.len(),
+              objects_count);
         Ok(Async::Ready(result))
     }
 }
