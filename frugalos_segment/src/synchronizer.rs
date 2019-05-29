@@ -37,6 +37,8 @@ pub struct Synchronizer {
     enqueued_delete: Counter,
     dequeued_repair: Counter,
     dequeued_delete: Counter,
+    repairs_success_total: Counter,
+    repairs_failure_total: Counter,
 }
 impl Synchronizer {
     pub fn new(
@@ -78,6 +80,16 @@ impl Synchronizer {
             dequeued_delete: metric_builder
                 .counter("dequeued_items")
                 .label("type", "delete")
+                .finish()
+                .unwrap(),
+            repairs_success_total: metric_builder
+                .counter("repairs_success_total")
+                .label("type", "repair")
+                .finish()
+                .unwrap(),
+            repairs_failure_total: metric_builder
+                .counter("repairs_failure_total")
+                .label("type", "repair")
                 .finish()
                 .unwrap(),
         }
@@ -315,6 +327,8 @@ struct RepairContent {
     version: ObjectVersion,
     client: StorageClient,
     device: DeviceHandle,
+    repairs_success_total: Counter,
+    repairs_failure_total: Counter,
     phase: Phase3<BoxFuture<Option<LumpHeader>>, GetFragment, BoxFuture<bool>>,
 }
 impl RepairContent {
@@ -323,6 +337,8 @@ impl RepairContent {
         let device = synchronizer.device.clone();
         let node_id = synchronizer.node_id;
         let lump_id = config::make_lump_id(&node_id, version);
+        let repairs_success_total = synchronizer.repairs_success_total.clone();
+        let repairs_failure_total = synchronizer.repairs_failure_total.clone();
         debug!(
             logger,
             "Starts checking content: version={:?}, lump_id={:?}", version, lump_id
@@ -336,6 +352,8 @@ impl RepairContent {
             version,
             client: synchronizer.client.clone(),
             device,
+            repairs_success_total,
+            repairs_failure_total,
             phase,
         }
     }
@@ -344,10 +362,14 @@ impl Future for RepairContent {
     type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        while let Async::Ready(phase) = track!(self.phase.poll().map_err(Error::from))? {
+        while let Async::Ready(phase) = track!(self.phase.poll().map_err(|e| {
+            self.repairs_failure_total.increment();
+            e
+        }))? {
             let next = match phase {
                 Phase3::A(Some(_)) => {
                     debug!(self.logger, "The object {:?} already exists", self.version);
+                    self.repairs_failure_total.increment();
                     return Ok(Async::Ready(()));
                 }
                 Phase3::A(None) => {
@@ -366,6 +388,7 @@ impl Future for RepairContent {
                         self.version,
                         self.node_id
                     );
+                    self.repairs_failure_total.increment();
                     return Ok(Async::Ready(()));
                 }
                 Phase3::B(MaybeFragment::Fragment(mut content)) => {
@@ -394,6 +417,7 @@ impl Future for RepairContent {
                         self.logger,
                         "Completed repairing content: {:?}", self.version
                     );
+                    self.repairs_success_total.increment();
                     return Ok(Async::Ready(()));
                 }
             };
