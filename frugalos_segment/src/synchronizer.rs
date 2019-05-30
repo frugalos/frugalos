@@ -465,10 +465,7 @@ impl FullSync {
         }
     }
     /// Returns the `ObjectVersion`s of objects that should be deleted.
-    fn compute_deleted_versions(
-        lump_ids: Vec<LumpId>,
-        object_table: Vec<u64>,
-    ) -> Vec<ObjectVersion> {
+    fn compute_deleted_versions(lump_ids: Vec<LumpId>, object_table: &[u64]) -> Vec<ObjectVersion> {
         let mut deleted_versions = Vec::new();
         // lump_ids are iterated over in the reversed order, i.e., in a newest-first manner.
         for lump_id in lump_ids.into_iter().rev() {
@@ -502,7 +499,7 @@ impl Future for FullSync {
                     // Determine which objects need deleting
                     let deleted_versions = Self::compute_deleted_versions(
                         self.lump_ids.take().expect("always Some"),
-                        object_table,
+                        &object_table,
                     );
 
                     debug!(self.logger, "deleted_versions = {:?}", deleted_versions);
@@ -667,7 +664,7 @@ mod tests {
             LumpId::new(100),
         ];
         let object_table = vec![1 << 1 | 1 << 8 | 1 << 25];
-        let deleted_objects = FullSync::compute_deleted_versions(lump_ids, object_table);
+        let deleted_objects = FullSync::compute_deleted_versions(lump_ids, &object_table);
         // deleted_objects are listed in a newest-first manner.
         assert_eq!(deleted_objects, vec![ObjectVersion(100), ObjectVersion(5)]);
 
