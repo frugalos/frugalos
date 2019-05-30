@@ -66,32 +66,32 @@ impl Synchronizer {
                 .counter("enqueued_items")
                 .label("type", "repair")
                 .finish()
-                .unwrap(),
+                .expect("metric should be well-formed"),
             enqueued_delete: metric_builder
                 .counter("enqueued_items")
                 .label("type", "delete")
                 .finish()
-                .unwrap(),
+                .expect("metric should be well-formed"),
             dequeued_repair: metric_builder
                 .counter("dequeued_items")
                 .label("type", "repair")
                 .finish()
-                .unwrap(),
+                .expect("metric should be well-formed"),
             dequeued_delete: metric_builder
                 .counter("dequeued_items")
                 .label("type", "delete")
                 .finish()
-                .unwrap(),
+                .expect("metric should be well-formed"),
             repairs_success_total: metric_builder
                 .counter("repairs_success_total")
                 .label("type", "repair")
                 .finish()
-                .unwrap(),
+                .expect("metric should be well-formed"),
             repairs_failure_total: metric_builder
                 .counter("repairs_failure_total")
                 .label("type", "repair")
                 .finish()
-                .unwrap(),
+                .expect("metric should be well-formed"),
         }
     }
     pub fn handle_event(&mut self, event: &Event) {
