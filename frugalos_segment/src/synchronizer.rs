@@ -436,12 +436,7 @@ impl Future for RepairContent {
 }
 
 struct FullSync {
-    logger: Logger,
-    node_id: NodeId,
-    device: DeviceHandle,
-    machine: Option<Machine>,
-    phase: Phase3<ListContent, CreateObjectTable, DeleteContent>,
-    lump_ids: Option<Vec<LumpId>>,
+    future: BoxFuture<()>,
 }
 
 impl FullSync {
@@ -454,15 +449,42 @@ impl FullSync {
             .latest_version()
             .map(|x| ObjectVersion(x.version.0 + 1))
             .unwrap_or(ObjectVersion(0));
-        let phase = Phase3::A(ListContent::new(synchronizer, object_version_limit));
-        FullSync {
-            logger,
-            node_id,
-            device,
-            machine: Some(machine),
-            phase,
-            lump_ids: None,
-        }
+        let list_content = ListContent::new(synchronizer, object_version_limit);
+        let create_object_table = CreateObjectTable::new(logger.clone(), machine);
+
+        let joined_future = list_content.join(create_object_table);
+        let logger_clone = logger.clone();
+        let device_clone = device.clone();
+        let whole_future = joined_future
+            .and_then(move |(lump_ids, object_table)| {
+                Self::create_delete_future(
+                    logger_clone,
+                    node_id,
+                    &device_clone,
+                    lump_ids,
+                    object_table,
+                )
+            })
+            .map(Self::emit_finish_log);
+        let future = Box::new(whole_future);
+        FullSync { future }
+    }
+    fn create_delete_future(
+        logger: Logger,
+        node_id: NodeId,
+        device: &DeviceHandle,
+        lump_ids: Vec<LumpId>,
+        object_table: Vec<u64>,
+    ) -> impl Future<Item = Logger, Error = Error> {
+        // Determine which objects need deleting
+        let deleted_versions = Self::compute_deleted_versions(lump_ids, &object_table);
+
+        debug!(logger, "deleted_versions = {:?}", deleted_versions);
+        DeleteContent::new_with_arguments(&logger, node_id, device, deleted_versions)
+            .map(move |()| logger)
+    }
+    fn emit_finish_log(logger: Logger) {
+        debug!(logger, "FullSync objects done");
     }
     /// Returns the `ObjectVersion`s of objects that should be deleted.
     fn compute_deleted_versions(lump_ids: Vec<LumpId>, object_table: &[u64]) -> Vec<ObjectVersion> {
@@ -485,40 +507,7 @@ impl Future for FullSync {
     type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        while let Async::Ready(phase) = track!(self.phase.poll().map_err(Error::from))? {
-            let next = match phase {
-                Phase3::A(lump_ids) => {
-                    self.lump_ids = Some(lump_ids);
-                    let future = CreateObjectTable::new(
-                        self.logger.clone(),
-                        self.machine.take().expect("always Some"),
-                    );
-                    Phase3::B(future)
-                }
-                Phase3::B(object_table) => {
-                    // Determine which objects need deleting
-                    let deleted_versions = Self::compute_deleted_versions(
-                        self.lump_ids.take().expect("always Some"),
-                        &object_table,
-                    );
-
-                    debug!(self.logger, "deleted_versions = {:?}", deleted_versions);
-                    let future = DeleteContent::new_with_arguments(
-                        &self.logger,
-                        self.node_id,
-                        &self.device,
-                        deleted_versions,
-                    );
-                    Phase3::C(future)
-                }
-                Phase3::C(()) => {
-                    debug!(self.logger, "FullSync objects done");
-                    return Ok(Async::Ready(()));
-                }
-            };
-            self.phase = next;
-        }
-        Ok(Async::NotReady)
+        self.future.poll()
     }
 }
 
@@ -567,7 +556,7 @@ struct CreateObjectTable {
 
 impl CreateObjectTable {
     pub fn new(logger: Logger, machine: Machine) -> Self {
-        info!(logger, "Starts full sync");
+        debug!(logger, "Starts full sync");
         CreateObjectTable { logger, machine }
     }
 }
