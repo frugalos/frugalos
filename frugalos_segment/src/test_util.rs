@@ -171,6 +171,7 @@ pub mod tests {
         }
 
         /// Boots this cluster with the given members.
+        #[allow(clippy::needless_pass_by_value)]
         pub fn boot(&mut self, members: Vec<(NodeId, DeviceId, DeviceHandle)>) -> Result<Client> {
             // at least one cluster member is required
             if members.is_empty() {

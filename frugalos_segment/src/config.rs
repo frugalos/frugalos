@@ -441,7 +441,7 @@ mod tests {
         assert_eq!(participants.len(), fragments as usize);
 
         for (i, device, is_participant) in matrix {
-            let member = candidates.get(i as usize).unwrap();
+            let member = &candidates[i as usize];
 
             assert_eq!(member.device, device);
             assert_eq!(
@@ -458,7 +458,7 @@ mod tests {
         ];
 
         for (i, expected_spares) in matrix {
-            let node_id = candidates.get(i).unwrap().node;
+            let node_id = candidates[i].node;
 
             assert_eq!(
                 expected_spares,
