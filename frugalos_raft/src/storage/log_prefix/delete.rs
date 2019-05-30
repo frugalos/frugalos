@@ -159,7 +159,7 @@ mod tests {
         let mut system = new_system();
         let leader = system.select_leader()?;
         let proposals = test_util::make_proposals(proposal_size);
-        let _ = system.bulk_propose(leader, proposals)?;
+        system.bulk_propose(leader, proposals)?;
 
         f((system, leader))
     }

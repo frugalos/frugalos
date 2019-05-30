@@ -425,7 +425,7 @@ mod tests {
         let version = ObjectVersion(1);
         let cluster = make_cluster(cluster_size);
         let candidates = cluster
-            .candidates(version.clone())
+            .candidates(version)
             .cloned()
             .collect::<Vec<_>>();
         let participants = Participants::dispersed(&candidates, fragments);

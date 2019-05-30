@@ -136,7 +136,7 @@ impl System {
     }
 
     pub fn get_handle(&self, node: NodeIndex) -> Option<Handle> {
-        self.handles.get(node).map(|handle| handle.clone())
+        self.handles.get(node).cloned()
     }
 
     pub fn to_log_entry_lump_id(&self, node: NodeIndex, index: LogIndex) -> Option<LumpId> {

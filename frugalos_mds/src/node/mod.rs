@@ -266,10 +266,12 @@ mod tests {
                 ObjectPrefix("abc".to_owned()),
                 monitored,
             );
-            Ok(proposal.notify_committed(&[ObjectVersion(1)]))
+            proposal.notify_committed(&[ObjectVersion(1)]);
+            Ok(())
         }));
 
         let summary = track!(fibers_global::execute(monitor))?;
-        Ok(assert_eq!(summary.total, 1))
+        assert_eq!(summary.total, 1);
+        Ok(())
     }
 }
