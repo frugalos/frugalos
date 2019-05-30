@@ -442,7 +442,6 @@ struct FullSync {
     machine: Option<Machine>,
     phase: Phase3<ListContent, CreateObjectTable, DeleteContent>,
     lump_ids: Option<Vec<LumpId>>,
-    object_table: Option<Vec<u64>>,
 }
 
 impl FullSync {
@@ -463,8 +462,25 @@ impl FullSync {
             machine: Some(machine),
             phase,
             lump_ids: None,
-            object_table: None,
         }
+    }
+    /// Returns the `ObjectVersion`s of objects that should be deleted.
+    fn compute_deleted_versions(
+        lump_ids: Vec<LumpId>,
+        object_table: Vec<u64>,
+    ) -> Vec<ObjectVersion> {
+        let mut deleted_versions = Vec::new();
+        // lump_ids are iterated over in the reversed order, i.e., in a newest-first manner.
+        for lump_id in lump_ids.into_iter().rev() {
+            let object_version = config::get_object_version_from_lump_id(lump_id);
+            let id = object_version.0;
+            let id_high = (id / 64) as usize;
+            let id_low = id % 64;
+            if id_high >= object_table.len() || (object_table[id_high] & 1 << id_low) == 0 {
+                deleted_versions.push(object_version);
+            }
+        }
+        deleted_versions
     }
 }
 
@@ -483,15 +499,12 @@ impl Future for FullSync {
                     Phase3::B(future)
                 }
                 Phase3::B(object_table) => {
-                    self.object_table = Some(object_table);
                     // Determine which objects need deleting
-                    let mut deleted_versions = Vec::new();
-                    for lump_id in self.lump_ids.take().expect("always Some") {
-                        let object_version = config::get_object_version_from_lump_id(lump_id);
-                        deleted_versions.push(object_version);
-                    }
+                    let deleted_versions = Self::compute_deleted_versions(
+                        self.lump_ids.take().expect("always Some"),
+                        object_table,
+                    );
 
-                    // TODO just list deleted objects.
                     debug!(self.logger, "deleted_versions = {:?}", deleted_versions);
                     let future = DeleteContent::new_with_arguments(
                         &self.logger,
@@ -585,13 +598,14 @@ impl Future for CreateObjectTable {
 mod tests {
     use cannyls::deadline::Deadline;
     use cannyls::device::DeviceHandle;
+    use cannyls::lump::LumpId;
     use client::storage::StorageClient;
     use config::make_lump_id;
     use frugalos_mds::machine::Machine;
     use libfrugalos::entity::object::{Metadata, ObjectVersion};
     use libfrugalos::expect::Expect;
     use slog::{Discard, Logger};
-    use synchronizer::{CreateObjectTable, ListContent, Synchronizer};
+    use synchronizer::{CreateObjectTable, FullSync, ListContent, Synchronizer};
     use test_util::tests::{setup_system, wait, System};
     use trackable::result::TestResult;
 
@@ -643,4 +657,20 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn compute_deleted_versions_works_correctly() -> TestResult {
+        let lump_ids = vec![
+            LumpId::new(1),
+            LumpId::new(5),
+            LumpId::new(8),
+            LumpId::new(25),
+            LumpId::new(100),
+        ];
+        let object_table = vec![1 << 1 | 1 << 8 | 1 << 25];
+        let deleted_objects = FullSync::compute_deleted_versions(lump_ids, object_table);
+        // deleted_objects are listed in a newest-first manner.
+        assert_eq!(deleted_objects, vec![ObjectVersion(100), ObjectVersion(5)]);
+
+        Ok(())
+    }
 }
