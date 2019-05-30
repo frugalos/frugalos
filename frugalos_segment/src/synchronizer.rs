@@ -117,7 +117,7 @@ impl Synchronizer {
                 // we decided not to push this task to the task priority queue and handle it manually.
                 Event::FullSync { ref machine } => {
                     // If FullSync is not being processed now, this event lets the synchronizer to handle one.
-                    if self.full_sync.is_none() {
+                    if self.full_sync.is_none() && self.repair_enabled {
                         self.full_sync = Some(FullSync::new(self, machine.clone()));
                     }
                 }
