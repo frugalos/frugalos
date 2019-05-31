@@ -895,7 +895,7 @@ mod tests {
         version: ObjectVersion,
     ) -> usize {
         config
-            .candidates(version.clone())
+            .candidates(version)
             .position(|candidate| *candidate == member)
             .unwrap()
     }
@@ -964,8 +964,8 @@ mod tests {
         let version = ObjectVersion(1);
         let expected = vec![0x03];
 
-        let _ = wait(storage_client.clone().put(
-            version.clone(),
+        wait(storage_client.clone().put(
+            version,
             expected.clone(),
             Deadline::Infinity,
             Span::inactive().handle(),
@@ -1006,12 +1006,12 @@ mod tests {
                     node: node_id,
                     device: device_id.clone()
                 },
-                version.clone()
+                version
             ) < system.fragments() as usize
         );
 
-        let _ = wait(storage_client.clone().put(
-            version.clone(),
+        wait(storage_client.clone().put(
+            version,
             expected.clone(),
             Deadline::Infinity,
             Span::inactive().handle(),
@@ -1020,11 +1020,11 @@ mod tests {
         let result = wait(
             storage_client
                 .clone()
-                .get_fragment(node_id.clone(), version.clone()),
+                .get_fragment(node_id, version),
         )?;
 
         if let MaybeFragment::Fragment(content) = result {
-            assert!(content.len() > 0);
+            assert!(!content.is_empty());
             return Ok(());
         }
 
@@ -1057,12 +1057,12 @@ mod tests {
                     node: node_id,
                     device: device_id.clone()
                 },
-                version.clone()
+                version
             ) >= system.fragments() as usize
         );
 
-        let _ = wait(storage_client.clone().put(
-            version.clone(),
+        wait(storage_client.clone().put(
+            version,
             expected.clone(),
             Deadline::Infinity,
             Span::inactive().handle(),
@@ -1071,7 +1071,7 @@ mod tests {
         let result = wait(
             storage_client
                 .clone()
-                .get_fragment(node_id.clone(), version.clone()),
+                .get_fragment(node_id, version),
         )?;
 
         assert_eq!(result, MaybeFragment::NotParticipant);

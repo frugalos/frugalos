@@ -230,7 +230,8 @@ mod tests {
                 .delete_by_prefix(ObjectPrefix("chunk".to_owned()))
                 .and_then(move |summary| {
                     assert_eq!(summary.total, 3);
-                    Ok(handle.stop())
+                    handle.stop();
+                    Ok(())
                 })
                 .map_err(|e| {
                     let _ = track!(e);

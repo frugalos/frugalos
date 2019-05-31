@@ -15,7 +15,7 @@ before_script:
 
 script:
   - cargo test --all
-  - cargo clippy --all
+  - cargo clippy --all --all-targets
 
 matrix:
   allow_failures:
