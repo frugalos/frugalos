@@ -16,6 +16,7 @@ before_script:
 script:
   - cargo test --all
   - cargo clippy --all --all-targets
+  - cargo fmt -- --check
 
 matrix:
   allow_failures:

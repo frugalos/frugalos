@@ -39,7 +39,10 @@ mod tests {
         assert_eq!(10, duration_millis::to_millis(&Duration::from_millis(10)));
         assert_eq!(999, duration_millis::to_millis(&Duration::from_millis(999)));
         assert_eq!(0, duration_millis::to_millis(&Duration::from_nanos(3000)));
-        assert_eq!(0, duration_millis::to_millis(&Duration::from_nanos(999_999)));
+        assert_eq!(
+            0,
+            duration_millis::to_millis(&Duration::from_nanos(999_999))
+        );
         assert_eq!(
             1,
             duration_millis::to_millis(&Duration::from_nanos(1_000_000))

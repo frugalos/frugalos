@@ -1017,11 +1017,7 @@ mod tests {
             Span::inactive().handle(),
         ))?;
 
-        let result = wait(
-            storage_client
-                .clone()
-                .get_fragment(node_id, version),
-        )?;
+        let result = wait(storage_client.clone().get_fragment(node_id, version))?;
 
         if let MaybeFragment::Fragment(content) = result {
             assert!(!content.is_empty());
@@ -1068,11 +1064,7 @@ mod tests {
             Span::inactive().handle(),
         ))?;
 
-        let result = wait(
-            storage_client
-                .clone()
-                .get_fragment(node_id, version),
-        )?;
+        let result = wait(storage_client.clone().get_fragment(node_id, version))?;
 
         assert_eq!(result, MaybeFragment::NotParticipant);
 
