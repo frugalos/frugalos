@@ -469,6 +469,7 @@ impl FullSync {
         let future = Box::new(whole_future);
         FullSync { future }
     }
+    #[allow(clippy::needless_pass_by_value)]
     fn create_delete_future(
         logger: Logger,
         node_id: NodeId,
@@ -483,6 +484,7 @@ impl FullSync {
         DeleteContent::new_with_arguments(&logger, node_id, device, deleted_versions)
             .map(move |()| logger)
     }
+    #[allow(clippy::needless_pass_by_value)]
     fn emit_finish_log(logger: Logger) {
         debug!(logger, "FullSync objects done");
     }
