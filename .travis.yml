@@ -10,7 +10,7 @@ rust:
   - nightly
 
 before_script:
-  - rustup component add clippy
+  - rustup component add clippy rustfmt
   - cargo clippy --version
 
 script:
