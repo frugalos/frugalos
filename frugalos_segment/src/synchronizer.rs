@@ -3,6 +3,7 @@ use cannyls::deadline::Deadline;
 use cannyls::device::DeviceHandle;
 use cannyls::lump::{LumpHeader, LumpId};
 use fibers::time::timer::{self, Timeout};
+use fibers_tasque::{DefaultCpuTaskQueue, TaskQueueExt};
 use frugalos_mds::machine::Machine;
 use frugalos_mds::Event;
 use frugalos_raft::NodeId;
@@ -552,14 +553,32 @@ impl Future for ListContent {
 }
 
 struct CreateObjectTable {
-    logger: Logger,
-    machine: Machine,
+    future: BoxFuture<Vec<u64>>,
 }
 
 impl CreateObjectTable {
     pub fn new(logger: Logger, machine: Machine) -> Self {
         debug!(logger, "Starts full sync");
-        CreateObjectTable { logger, machine }
+        let future = Box::new(
+            DefaultCpuTaskQueue
+                .async_call(move || Self::get_object_table(&logger, &machine))
+                .map_err(From::from),
+        );
+        CreateObjectTable { future }
+    }
+    fn get_object_table(logger: &Logger, machine: &Machine) -> Vec<u64> {
+        let result = machine.enumerate_object_versions();
+        let mut objects_count = 0;
+        for &entry in &result {
+            objects_count += u64::from(entry.count_ones());
+        }
+        debug!(
+            logger,
+            "FullSync machine_table_size = {}, machine_objects_count = {}",
+            64 * result.len(),
+            objects_count
+        );
+        result
     }
 }
 
@@ -567,18 +586,7 @@ impl Future for CreateObjectTable {
     type Item = Vec<u64>;
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let result = self.machine.enumerate_object_versions();
-        let mut objects_count = 0;
-        for &entry in &result {
-            objects_count += u64::from(entry.count_ones());
-        }
-        debug!(
-            self.logger,
-            "FullSync machine_table_size = {}, machine_objects_count = {}",
-            64 * result.len(),
-            objects_count
-        );
-        Ok(Async::Ready(result))
+        self.future.poll()
     }
 }
 

@@ -12,6 +12,7 @@ extern crate fibers;
 #[cfg(test)]
 extern crate fibers_global;
 extern crate fibers_rpc;
+extern crate fibers_tasque;
 extern crate frugalos_core;
 extern crate frugalos_mds;
 extern crate frugalos_raft;
