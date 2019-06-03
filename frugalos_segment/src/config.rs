@@ -477,16 +477,17 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::inconsistent_digit_grouping)]
     fn make_lump_id_works() -> TestResult {
         use std::str::FromStr;
 
         let node = NodeId::from_str("1000a00.0@127.0.0.1:14278")?;
-        let object_version = ObjectVersion(0x123456789abcdef0);
+        let object_version = ObjectVersion(0x1234_5678_9abc_def0);
         let lump_id = make_lump_id(&node, object_version);
 
         assert_eq!(
             lump_id.as_u128(),
-            1 << 120 | 0x1000a00_00 << 64 | 0x123456789abcdef0
+            1 << 120 | 0x100_0a00_00 << 64 | 0x1234_5678_9abc_def0
         );
 
         Ok(())
@@ -494,10 +495,11 @@ mod tests {
 
     #[test]
     fn get_object_version_from_lump_id_works() -> TestResult {
-        let lump_id = LumpId::new(1 << 120 | 0x1000a00_00 << 64 | 0x123456789abcdef0);
+        #[allow(clippy::inconsistent_digit_grouping)]
+        let lump_id = LumpId::new(1 << 120 | 0x100_0a00_00 << 64 | 0x1234_5678_9abc_def0);
         assert_eq!(
             get_object_version_from_lump_id(lump_id),
-            ObjectVersion(0x123456789abcdef0)
+            ObjectVersion(0x1234_5678_9abc_def0)
         );
 
         Ok(())

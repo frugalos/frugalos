@@ -1,4 +1,3 @@
-use cannyls;
 use cannyls::deadline::Deadline;
 use cannyls::device::DeviceHandle;
 use cannyls::lump::{LumpHeader, LumpId};
@@ -7,16 +6,21 @@ use fibers_tasque::{DefaultCpuTaskQueue, TaskQueueExt};
 use frugalos_mds::machine::Machine;
 use frugalos_mds::Event;
 use frugalos_raft::NodeId;
-use futures::{Async, Future, Poll};
+use futures::{Async, Future, Poll, Sink};
 use libfrugalos::entity::object::ObjectVersion;
 use prometrics::metrics::{Counter, MetricBuilder};
 use slog::Logger;
 use std::cmp::{self, Reverse};
 use std::collections::{BTreeSet, BinaryHeap};
 use std::time::{Duration, SystemTime};
+use {cannyls, ErrorKind};
 
 use client::storage::{GetFragment, MaybeFragment, StorageClient};
 use config;
+use futures::future::loop_fn;
+use futures::future::Loop;
+use futures::stream::Stream;
+use futures::sync::mpsc::channel;
 use util::Phase3;
 use Error;
 
@@ -437,7 +441,7 @@ impl Future for RepairContent {
 }
 
 struct FullSync {
-    future: BoxFuture<()>,
+    future: Box<Future<Item = (), Error = Error> + Send + 'static>,
 }
 
 impl FullSync {
@@ -445,45 +449,41 @@ impl FullSync {
         let logger = synchronizer.logger.clone();
         info!(logger, "Starts full sync");
         let node_id = synchronizer.node_id;
-        let device = synchronizer.device.clone();
         let object_version_limit = machine
             .latest_version()
             .map(|x| ObjectVersion(x.version.0 + 1))
             .unwrap_or(ObjectVersion(0));
-        let list_content = ListContent::new(synchronizer, object_version_limit);
         let create_object_table = CreateObjectTable::new(logger.clone(), machine);
 
-        let joined_future = list_content.join(create_object_table);
-        let logger_clone = logger.clone();
-        let device_clone = device.clone();
-        let whole_future = joined_future
-            .and_then(move |(lump_ids, object_table)| {
-                Self::create_delete_future(
-                    logger_clone,
-                    node_id,
-                    &device_clone,
-                    lump_ids,
-                    object_table,
-                )
-            })
-            .map(Self::emit_finish_log);
-        let future = Box::new(whole_future);
-        FullSync { future }
-    }
-    #[allow(clippy::needless_pass_by_value)]
-    fn create_delete_future(
-        logger: Logger,
-        node_id: NodeId,
-        device: &DeviceHandle,
-        lump_ids: Vec<LumpId>,
-        object_table: Vec<u64>,
-    ) -> impl Future<Item = Logger, Error = Error> {
-        // Determine which objects need deleting
-        let deleted_versions = Self::compute_deleted_versions(lump_ids, &object_table);
+        let chunk_size = 100; // TODO to be determined
+        let step = 100; // TODO to be determined
+        let (deleted_objects_sink, deleted_objects_stream) = channel(chunk_size);
 
-        debug!(logger, "deleted_versions = {:?}", deleted_versions);
-        DeleteContent::new_with_arguments(&logger, node_id, device, deleted_versions)
-            .map(move |()| logger)
+        let logger = synchronizer.logger.clone();
+        let logger2 = synchronizer.logger.clone();
+        let device = synchronizer.device.clone();
+
+        let combined_future = create_object_table
+            .and_then(move |object_table| {
+                let list_deleted_content = ListContent::new(
+                    &logger,
+                    &device,
+                    node_id,
+                    object_version_limit,
+                    step,
+                    deleted_objects_sink,
+                    object_table,
+                );
+                let delete_contents_from_stream =
+                    DeleteContentFromStream::new(&logger, &device, deleted_objects_stream, node_id);
+                list_deleted_content
+                    .join(delete_contents_from_stream)
+                    .map(move |((), ())| ())
+            })
+            .map(move |()| Self::emit_finish_log(logger2));
+
+        let future = Box::new(combined_future);
+        FullSync { future }
     }
     #[allow(clippy::needless_pass_by_value)]
     fn emit_finish_log(logger: Logger) {
@@ -515,45 +515,118 @@ impl Future for FullSync {
 }
 
 struct ListContent {
-    logger: Logger,
-    phase: BoxFuture<Vec<LumpId>>,
+    future: Box<Future<Item = (), Error = Error> + Send>,
 }
 
 impl ListContent {
     // [0..object_version_limit) will be checked.
-    pub fn new(synchronizer: &Synchronizer, object_version_limit: ObjectVersion) -> Self {
-        let logger = synchronizer.logger.clone();
-        let device = synchronizer.device.clone();
-        let node_id = synchronizer.node_id;
+    pub fn new<
+        S: Sink<SinkItem = ObjectVersion, SinkError = futures::sync::mpsc::SendError<ObjectVersion>>
+            + Send
+            + 'static,
+    >(
+        logger: &Logger,
+        device: &DeviceHandle,
+        node_id: NodeId,
+        object_version_limit: ObjectVersion,
+        step: u64,
+        sink: S,
+        object_table: Vec<u64>,
+    ) -> Self {
+        let logger = logger.clone();
+        let device = device.clone();
         debug!(logger, "Starts listing content");
-        let start_lump_id = config::make_lump_id(&node_id, ObjectVersion(0));
-        let end_lump_id = config::make_lump_id(&node_id, object_version_limit);
-        let phase = into_box_future(
-            device
-                .request()
-                .deadline(Deadline::Infinity)
-                .list_range(start_lump_id..end_lump_id),
+        let sink = sink.sink_map_err(|_| Error::from(ErrorKind::Other));
+        let future = loop_fn(
+            (ObjectVersion(0), sink, object_table),
+            move |(current_version, sink, object_table)| {
+                let start_lump_id = config::make_lump_id(&node_id, current_version);
+                let end_object_version = std::cmp::min(
+                    ObjectVersion(current_version.0 + step),
+                    object_version_limit,
+                );
+                let end_lump_id = config::make_lump_id(&node_id, end_object_version);
+                device
+                    .request()
+                    .deadline(Deadline::Infinity)
+                    .list_range(start_lump_id..end_lump_id)
+                    .map_err(From::from)
+                    .and_then(move |lump_ids| {
+                        let deleted_objects =
+                            FullSync::compute_deleted_versions(lump_ids, &object_table);
+                        sink.send_all(
+                            futures::stream::iter_ok(deleted_objects)
+                                .map_err(|()| Error::from(ErrorKind::Other)),
+                        )
+                        .map(|(sink, _)| (sink, object_table))
+                    })
+                    .and_then(move |(sink, object_table)| {
+                        let next = ObjectVersion(current_version.0 + step);
+                        if next >= object_version_limit {
+                            Ok(Loop::Break(()))
+                        } else {
+                            Ok(Loop::Continue((next, sink, object_table)))
+                        }
+                    })
+                    .map_err(From::from)
+            },
         );
-        ListContent { logger, phase }
-    }
-}
-
-impl Future for ListContent {
-    type Item = Vec<LumpId>;
-    type Error = Error;
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        match track!(self.phase.poll().map_err(Error::from))? {
-            Async::NotReady => Ok(Async::NotReady),
-            Async::Ready(result) => {
-                debug!(self.logger, "ListObject result = {:?}", result);
-                Ok(Async::Ready(result))
-            }
+        ListContent {
+            future: Box::new(future),
         }
     }
 }
 
+impl Future for ListContent {
+    type Item = ();
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        track!(self.future.poll())
+    }
+}
+
+struct DeleteContentFromStream {
+    future: Box<Future<Item = (), Error = Error> + Send>,
+}
+
+impl DeleteContentFromStream {
+    fn new<S: Stream<Item = ObjectVersion, Error = ()> + Send + 'static>(
+        logger: &Logger,
+        device: &DeviceHandle,
+        stream: S,
+        node_id: NodeId,
+    ) -> Self {
+        let logger = logger.clone();
+        let device = device.clone();
+        let future =
+            stream
+                .map_err(|()| Error::from(ErrorKind::Other))
+                .for_each(move |object_version| {
+                    let lump_id = config::make_lump_id(&node_id, object_version);
+                    debug!(logger, "Repair: deleting {:?}", lump_id);
+                    device
+                        .request()
+                        .deadline(Deadline::Infinity)
+                        .delete(lump_id)
+                        .map(|_result| ())
+                        .map_err(From::from)
+                });
+        DeleteContentFromStream {
+            future: Box::new(future),
+        }
+    }
+}
+
+impl Future for DeleteContentFromStream {
+    type Item = ();
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        track!(self.future.poll())
+    }
+}
+
 struct CreateObjectTable {
-    future: BoxFuture<Vec<u64>>,
+    future: Box<Future<Item = Vec<u64>, Error = Error> + Send>,
 }
 
 impl CreateObjectTable {
@@ -595,13 +668,13 @@ mod tests {
     use cannyls::deadline::Deadline;
     use cannyls::device::DeviceHandle;
     use cannyls::lump::LumpId;
-    use client::storage::StorageClient;
     use config::make_lump_id;
     use frugalos_mds::machine::Machine;
+    use futures::stream::Stream;
     use libfrugalos::entity::object::{Metadata, ObjectVersion};
     use libfrugalos::expect::Expect;
     use slog::{Discard, Logger};
-    use synchronizer::{CreateObjectTable, FullSync, ListContent, Synchronizer};
+    use synchronizer::{CreateObjectTable, FullSync, ListContent};
     use test_util::tests::{setup_system, wait, System};
     use trackable::result::TestResult;
 
@@ -611,13 +684,7 @@ mod tests {
         let mut system = System::new(2, 1)?;
         let (nodes, _client) = setup_system(&mut system, 3)?;
         let (node0, _device_id0, handle0): (_, _, DeviceHandle) = nodes[0].clone();
-        let synchronizer = Synchronizer::new(
-            logger,
-            node0,
-            handle0.clone(),
-            StorageClient::Metadata,
-            true,
-        );
+
         // Puts 10 objects to device0
         for i in 0..10 {
             let lump_id = make_lump_id(&node0, ObjectVersion(i));
@@ -628,8 +695,21 @@ mod tests {
                 .put(lump_id, lump_data);
         }
 
-        let x = wait(ListContent::new(&synchronizer, ObjectVersion(10)))?;
-        assert_eq!(x.len(), 10);
+        let object_table = vec![0];
+
+        let (sink, source) = futures::sync::mpsc::unbounded();
+
+        wait(ListContent::new(
+            &logger,
+            &handle0,
+            node0,
+            ObjectVersion(10),
+            1,
+            sink,
+            object_table,
+        ))?;
+        let array: Vec<_> = source.wait().collect();
+        assert_eq!(array.len(), 10);
         Ok(())
     }
 
