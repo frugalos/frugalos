@@ -41,6 +41,7 @@ pub mod config;
 
 mod client;
 mod error;
+mod full_sync;
 mod metrics;
 mod service;
 mod synchronizer;
