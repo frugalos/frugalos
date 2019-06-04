@@ -453,7 +453,7 @@ impl FullSync {
             .latest_version()
             .map(|x| ObjectVersion(x.version.0 + 1))
             .unwrap_or(ObjectVersion(0));
-        let create_object_table = CreateObjectTable::new(logger.clone(), machine);
+        let create_object_table = make_create_object_table(logger.clone(), machine);
 
         let chunk_size = 100; // TODO to be determined
         let step = 100; // TODO to be determined
@@ -465,7 +465,7 @@ impl FullSync {
 
         let combined_future = create_object_table
             .and_then(move |object_table| {
-                let list_deleted_content = ListContent::new(
+                let list_deleted_content = make_list_content(
                     &logger,
                     &device,
                     node_id,
@@ -474,20 +474,20 @@ impl FullSync {
                     deleted_objects_sink,
                     object_table,
                 );
-                let delete_contents_from_stream =
-                    DeleteContentFromStream::new(&logger, &device, deleted_objects_stream, node_id);
+                let delete_objects_in_stream = make_delete_objects_in_stream(
+                    &logger,
+                    &device,
+                    deleted_objects_stream,
+                    node_id,
+                );
                 list_deleted_content
-                    .join(delete_contents_from_stream)
+                    .join(delete_objects_in_stream)
                     .map(move |((), ())| ())
             })
-            .map(move |()| Self::emit_finish_log(logger2));
+            .map(move |()| debug!(logger2, "FullSync objects done"));
 
         let future = Box::new(combined_future);
         FullSync { future }
-    }
-    #[allow(clippy::needless_pass_by_value)]
-    fn emit_finish_log(logger: Logger) {
-        debug!(logger, "FullSync objects done");
     }
     /// Returns the `ObjectVersion`s of objects that should be deleted.
     fn compute_deleted_versions(lump_ids: Vec<LumpId>, object_table: &[u64]) -> Vec<ObjectVersion> {
@@ -514,153 +514,105 @@ impl Future for FullSync {
     }
 }
 
-struct ListContent {
-    future: Box<Future<Item = (), Error = Error> + Send>,
+// [0..object_version_limit) will be checked.
+pub fn make_list_content<
+    S: Sink<SinkItem = ObjectVersion, SinkError = futures::sync::mpsc::SendError<ObjectVersion>>
+        + Send
+        + 'static,
+>(
+    logger: &Logger,
+    device: &DeviceHandle,
+    node_id: NodeId,
+    object_version_limit: ObjectVersion,
+    step: u64,
+    sink: S,
+    object_table: Vec<u64>,
+) -> impl Future<Item = (), Error = Error> + Send {
+    let logger = logger.clone();
+    let device = device.clone();
+    debug!(logger, "Starts listing content");
+    let sink = sink.sink_map_err(|_| Error::from(ErrorKind::Other));
+    loop_fn(
+        (ObjectVersion(0), sink, object_table),
+        move |(current_version, sink, object_table)| {
+            let start_lump_id = config::make_lump_id(&node_id, current_version);
+            let end_object_version = std::cmp::min(
+                ObjectVersion(current_version.0 + step),
+                object_version_limit,
+            );
+            let end_lump_id = config::make_lump_id(&node_id, end_object_version);
+            device
+                .request()
+                .deadline(Deadline::Infinity)
+                .list_range(start_lump_id..end_lump_id)
+                .map_err(From::from)
+                .and_then(move |lump_ids| {
+                    let deleted_objects =
+                        FullSync::compute_deleted_versions(lump_ids, &object_table);
+                    sink.send_all(
+                        futures::stream::iter_ok(deleted_objects)
+                            .map_err(|()| Error::from(ErrorKind::Other)),
+                    )
+                    .map(|(sink, _)| (sink, object_table))
+                })
+                .and_then(move |(sink, object_table)| {
+                    let next = ObjectVersion(current_version.0 + step);
+                    if next >= object_version_limit {
+                        Ok(Loop::Break(()))
+                    } else {
+                        Ok(Loop::Continue((next, sink, object_table)))
+                    }
+                })
+                .map_err(From::from)
+        },
+    )
 }
 
-impl ListContent {
-    // [0..object_version_limit) will be checked.
-    pub fn new<
-        S: Sink<SinkItem = ObjectVersion, SinkError = futures::sync::mpsc::SendError<ObjectVersion>>
-            + Send
-            + 'static,
-    >(
-        logger: &Logger,
-        device: &DeviceHandle,
-        node_id: NodeId,
-        object_version_limit: ObjectVersion,
-        step: u64,
-        sink: S,
-        object_table: Vec<u64>,
-    ) -> Self {
-        let logger = logger.clone();
-        let device = device.clone();
-        debug!(logger, "Starts listing content");
-        let sink = sink.sink_map_err(|_| Error::from(ErrorKind::Other));
-        let future = loop_fn(
-            (ObjectVersion(0), sink, object_table),
-            move |(current_version, sink, object_table)| {
-                let start_lump_id = config::make_lump_id(&node_id, current_version);
-                let end_object_version = std::cmp::min(
-                    ObjectVersion(current_version.0 + step),
-                    object_version_limit,
-                );
-                let end_lump_id = config::make_lump_id(&node_id, end_object_version);
-                device
-                    .request()
-                    .deadline(Deadline::Infinity)
-                    .list_range(start_lump_id..end_lump_id)
-                    .map_err(From::from)
-                    .and_then(move |lump_ids| {
-                        let deleted_objects =
-                            FullSync::compute_deleted_versions(lump_ids, &object_table);
-                        sink.send_all(
-                            futures::stream::iter_ok(deleted_objects)
-                                .map_err(|()| Error::from(ErrorKind::Other)),
-                        )
-                        .map(|(sink, _)| (sink, object_table))
-                    })
-                    .and_then(move |(sink, object_table)| {
-                        let next = ObjectVersion(current_version.0 + step);
-                        if next >= object_version_limit {
-                            Ok(Loop::Break(()))
-                        } else {
-                            Ok(Loop::Continue((next, sink, object_table)))
-                        }
-                    })
-                    .map_err(From::from)
-            },
-        );
-        ListContent {
-            future: Box::new(future),
-        }
+/// Creates a future that asynchronously deletes objects enumerated by stream.
+fn make_delete_objects_in_stream<S: Stream<Item = ObjectVersion, Error = ()> + Send + 'static>(
+    logger: &Logger,
+    device: &DeviceHandle,
+    stream: S,
+    node_id: NodeId,
+) -> impl Future<Item = (), Error = Error> + Send {
+    let logger = logger.clone();
+    let device = device.clone();
+    stream
+        .map_err(|()| Error::from(ErrorKind::Other))
+        .for_each(move |object_version| {
+            let lump_id = config::make_lump_id(&node_id, object_version);
+            debug!(logger, "Repair: deleting {:?}", lump_id);
+            device
+                .request()
+                .deadline(Deadline::Infinity)
+                .delete(lump_id)
+                .map(|_result| ())
+                .map_err(From::from)
+        })
+}
+
+pub fn make_create_object_table(
+    logger: Logger,
+    machine: Machine,
+) -> impl Future<Item = Vec<u64>, Error = Error> + Send {
+    debug!(logger, "Starts full sync");
+    DefaultCpuTaskQueue
+        .async_call(move || get_object_table(&logger, &machine))
+        .map_err(From::from)
+}
+fn get_object_table(logger: &Logger, machine: &Machine) -> Vec<u64> {
+    let result = machine.enumerate_object_versions();
+    let mut objects_count = 0;
+    for &entry in &result {
+        objects_count += u64::from(entry.count_ones());
     }
-}
-
-impl Future for ListContent {
-    type Item = ();
-    type Error = Error;
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        track!(self.future.poll())
-    }
-}
-
-struct DeleteContentFromStream {
-    future: Box<Future<Item = (), Error = Error> + Send>,
-}
-
-impl DeleteContentFromStream {
-    fn new<S: Stream<Item = ObjectVersion, Error = ()> + Send + 'static>(
-        logger: &Logger,
-        device: &DeviceHandle,
-        stream: S,
-        node_id: NodeId,
-    ) -> Self {
-        let logger = logger.clone();
-        let device = device.clone();
-        let future =
-            stream
-                .map_err(|()| Error::from(ErrorKind::Other))
-                .for_each(move |object_version| {
-                    let lump_id = config::make_lump_id(&node_id, object_version);
-                    debug!(logger, "Repair: deleting {:?}", lump_id);
-                    device
-                        .request()
-                        .deadline(Deadline::Infinity)
-                        .delete(lump_id)
-                        .map(|_result| ())
-                        .map_err(From::from)
-                });
-        DeleteContentFromStream {
-            future: Box::new(future),
-        }
-    }
-}
-
-impl Future for DeleteContentFromStream {
-    type Item = ();
-    type Error = Error;
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        track!(self.future.poll())
-    }
-}
-
-struct CreateObjectTable {
-    future: Box<Future<Item = Vec<u64>, Error = Error> + Send>,
-}
-
-impl CreateObjectTable {
-    pub fn new(logger: Logger, machine: Machine) -> Self {
-        debug!(logger, "Starts full sync");
-        let future = Box::new(
-            DefaultCpuTaskQueue
-                .async_call(move || Self::get_object_table(&logger, &machine))
-                .map_err(From::from),
-        );
-        CreateObjectTable { future }
-    }
-    fn get_object_table(logger: &Logger, machine: &Machine) -> Vec<u64> {
-        let result = machine.enumerate_object_versions();
-        let mut objects_count = 0;
-        for &entry in &result {
-            objects_count += u64::from(entry.count_ones());
-        }
-        debug!(
-            logger,
-            "FullSync machine_table_size = {}, machine_objects_count = {}",
-            64 * result.len(),
-            objects_count
-        );
-        result
-    }
-}
-
-impl Future for CreateObjectTable {
-    type Item = Vec<u64>;
-    type Error = Error;
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        self.future.poll()
-    }
+    debug!(
+        logger,
+        "FullSync machine_table_size = {}, machine_objects_count = {}",
+        64 * result.len(),
+        objects_count
+    );
+    result
 }
 
 #[cfg(test)]
@@ -674,7 +626,7 @@ mod tests {
     use libfrugalos::entity::object::{Metadata, ObjectVersion};
     use libfrugalos::expect::Expect;
     use slog::{Discard, Logger};
-    use synchronizer::{CreateObjectTable, FullSync, ListContent};
+    use synchronizer::{make_create_object_table, make_list_content, FullSync};
     use test_util::tests::{setup_system, wait, System};
     use trackable::result::TestResult;
 
@@ -699,7 +651,7 @@ mod tests {
 
         let (sink, source) = futures::sync::mpsc::unbounded();
 
-        wait(ListContent::new(
+        wait(make_list_content(
             &logger,
             &handle0,
             node0,
@@ -726,7 +678,7 @@ mod tests {
             machine.put(format!("test-object-{}", i), metadata, &Expect::None)?;
         }
 
-        let create_object_table = CreateObjectTable::new(logger, machine);
+        let create_object_table = make_create_object_table(logger, machine);
         let result = wait(create_object_table)?;
         assert_eq!(result, vec![1023]);
 
