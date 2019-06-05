@@ -10,12 +10,13 @@ rust:
   - nightly
 
 before_script:
-  - rustup component add clippy
+  - rustup component add clippy rustfmt
   - cargo clippy --version
 
 script:
   - cargo test --all
   - cargo clippy --all --all-targets
+  - cargo fmt -- --check
 
 matrix:
   allow_failures:

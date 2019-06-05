@@ -142,10 +142,7 @@ pub mod tests {
         }
 
         /// Registers all the nodes in the `members`.
-        fn register_nodes(
-            &mut self,
-            members: &[(NodeId, DeviceId, DeviceHandle)],
-        ) -> Result<()> {
+        fn register_nodes(&mut self, members: &[(NodeId, DeviceId, DeviceHandle)]) -> Result<()> {
             let cluster: ClusterMembers = self
                 .cluster_config
                 .members

@@ -424,10 +424,7 @@ mod tests {
         let fragments = 3;
         let version = ObjectVersion(1);
         let cluster = make_cluster(cluster_size);
-        let candidates = cluster
-            .candidates(version)
-            .cloned()
-            .collect::<Vec<_>>();
+        let candidates = cluster.candidates(version).cloned().collect::<Vec<_>>();
         let participants = Participants::dispersed(&candidates, fragments);
 
         let matrix = vec![
