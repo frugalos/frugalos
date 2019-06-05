@@ -1,13 +1,14 @@
 use cannyls::deadline::Deadline;
 use cannyls::device::DeviceHandle;
 use cannyls::lump::LumpId;
+#[allow(deprecated)]
+use fibers::sync::mpsc::sync_channel;
 use fibers_tasque::{DefaultCpuTaskQueue, TaskQueueExt};
 use frugalos_mds::machine::Machine;
 use frugalos_raft::NodeId;
-use futures::future::loop_fn;
+use futures::future::{loop_fn, ok};
 use futures::future::{Future, Loop};
 use futures::stream::Stream;
-use futures::sync::mpsc::channel;
 use futures::{Poll, Sink};
 use libfrugalos::entity::object::ObjectVersion;
 use slog::Logger;
@@ -31,7 +32,8 @@ impl FullSync {
 
         let chunk_size = 100; // TODO to be determined
         let step = 100; // TODO to be determined
-        let (deleted_objects_sink, deleted_objects_stream) = channel(chunk_size);
+        #[allow(deprecated)]
+        let (deleted_objects_tx, deleted_objects_rx) = sync_channel(chunk_size);
 
         let logger = logger.clone();
         let logger2 = logger.clone();
@@ -45,15 +47,11 @@ impl FullSync {
                     node_id,
                     object_version_limit,
                     step,
-                    deleted_objects_sink,
+                    deleted_objects_tx,
                     object_table,
                 );
-                let delete_objects_in_stream = make_delete_objects_in_stream(
-                    &logger,
-                    &device,
-                    deleted_objects_stream,
-                    node_id,
-                );
+                let delete_objects_in_stream =
+                    make_delete_objects_in_stream(&logger, &device, deleted_objects_rx, node_id);
                 list_deleted_content
                     .join(delete_objects_in_stream)
                     .map(move |((), ())| ())
@@ -90,7 +88,7 @@ impl Future for FullSync {
 
 // [0..object_version_limit) will be checked.
 pub fn make_list_content<
-    S: Sink<SinkItem = ObjectVersion, SinkError = futures::sync::mpsc::SendError<ObjectVersion>>
+    S: Sink<SinkItem = ObjectVersion, SinkError = std::sync::mpsc::SendError<ObjectVersion>>
         + Send
         + 'static,
 >(
@@ -123,11 +121,19 @@ pub fn make_list_content<
                 .and_then(move |lump_ids| {
                     let deleted_objects =
                         FullSync::compute_deleted_versions(lump_ids, &object_table);
-                    sink.send_all(
-                        futures::stream::iter_ok(deleted_objects)
-                            .map_err(|()| Error::from(ErrorKind::Other)),
-                    )
-                    .map(|(sink, _)| (sink, object_table))
+                    loop_fn((sink, deleted_objects), move |(sink, mut objects)| {
+                        if let Some(object) = objects.pop() {
+                            Box::new(
+                                sink.send(object)
+                                    .map(|sink| Loop::Continue((sink, objects))),
+                            )
+                                as Box<dyn Future<Item = _, Error = _> + Send>
+                        } else {
+                            Box::new(ok(Loop::Break(sink)))
+                                as Box<dyn Future<Item = _, Error = _> + Send>
+                        }
+                    })
+                    .map(|sink| (sink, object_table))
                 })
                 .and_then(move |(sink, object_table)| {
                     let next = ObjectVersion(current_version.0 + step);
@@ -155,7 +161,7 @@ fn make_delete_objects_in_stream<S: Stream<Item = ObjectVersion, Error = ()> + S
         .map_err(|()| Error::from(ErrorKind::Other))
         .for_each(move |object_version| {
             let lump_id = config::make_lump_id(&node_id, object_version);
-            debug!(logger, "Repair: deleting {:?}", lump_id);
+            info!(logger, "Repair: deleting {:?}", lump_id);
             device
                 .request()
                 .deadline(Deadline::Infinity)
@@ -223,7 +229,8 @@ mod tests {
 
         let object_table = vec![0];
 
-        let (sink, source) = futures::sync::mpsc::unbounded();
+        #[allow(deprecated)]
+        let (sink, source) = fibers::sync::mpsc::sync_channel(100);
 
         wait(make_list_content(
             &logger,
