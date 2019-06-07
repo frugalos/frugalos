@@ -288,6 +288,11 @@ impl Node {
         })
     }
 
+    /// Returns next_commit.
+    pub fn get_next_commit(&self) -> LogIndex {
+        self.next_commit
+    }
+
     fn handle_request(&mut self, request: Request) {
         // NOTE: 整合性を保証したいので、要求を処理できるのはリーダのみとする.
         // TODO: リースないしハートビートを使って、leaderであることを保証する (READ時)
@@ -844,6 +849,7 @@ impl Stream for Node {
                     }));
                 self.events.push_back(Event::FullSync {
                     machine: machine.clone(),
+                    next_commit: new_head.index,
                 });
                 self.next_commit = new_head.index;
                 self.machine = machine;

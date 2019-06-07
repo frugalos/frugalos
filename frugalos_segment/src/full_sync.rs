@@ -18,13 +18,15 @@ pub(crate) struct FullSync {
 }
 
 impl FullSync {
-    pub fn new(logger: &Logger, node_id: NodeId, device: &DeviceHandle, machine: Machine) -> Self {
+    pub fn new(
+        logger: &Logger,
+        node_id: NodeId,
+        device: &DeviceHandle,
+        machine: Machine,
+        object_version_limit: ObjectVersion,
+    ) -> Self {
         let logger = logger.clone();
         info!(logger, "Starts full sync");
-        let object_version_limit = machine
-            .latest_version()
-            .map(|x| ObjectVersion(x.version.0 + 1))
-            .unwrap_or(ObjectVersion(0));
         let create_object_table = make_create_object_table(logger.clone(), machine);
 
         let step = 100; // TODO to be determined

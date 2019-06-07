@@ -115,7 +115,10 @@ impl Synchronizer {
                 }
                 // Because pushing FullSync into the task queue causes difficulty in implementation,
                 // we decided not to push this task to the task priority queue and handle it manually.
-                Event::FullSync { ref machine } => {
+                Event::FullSync {
+                    ref machine,
+                    next_commit,
+                } => {
                     // If FullSync is not being processed now, this event lets the synchronizer to handle one.
                     if self.full_sync.is_none() && self.repair_enabled {
                         self.full_sync = Some(FullSync::new(
@@ -123,6 +126,7 @@ impl Synchronizer {
                             self.node_id,
                             &self.device,
                             machine.clone(),
+                            ObjectVersion(next_commit.as_u64()),
                         ));
                     }
                 }
