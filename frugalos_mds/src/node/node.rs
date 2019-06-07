@@ -847,10 +847,6 @@ impl Stream for Node {
                         version,
                         put_content_timeout: Seconds(delay),
                     }));
-                self.events.push_back(Event::FullSync {
-                    machine: machine.clone(),
-                    next_commit: new_head.index,
-                });
                 self.next_commit = new_head.index;
                 self.machine = machine;
                 self.metrics.objects.set(self.machine.len() as f64);
