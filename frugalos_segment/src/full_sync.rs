@@ -13,10 +13,6 @@ use slog::Logger;
 use config;
 use Error;
 
-// A type representing a set of objects.
-// This type can change in the future. https://github.com/frugalos/frugalos/pull/166#discussion_r291900772
-pub(self) struct ObjectTable(Vec<ObjectVersion>);
-
 pub(crate) struct FullSync {
     future: Box<Future<Item = (), Error = Error> + Send + 'static>,
 }
@@ -64,7 +60,7 @@ impl FullSync {
         // lump_ids are iterated over in the reversed order, i.e., in a newest-first manner.
         for lump_id in lump_ids.into_iter().rev() {
             let object_version = config::get_object_version_from_lump_id(lump_id);
-            if !has_object_in_object_table(object_version, &object_table) {
+            if !object_table.has_object(object_version) {
                 deleted_versions.push(object_version);
             }
         }
@@ -164,12 +160,16 @@ fn get_object_table(logger: &Logger, machine: &Machine) -> ObjectTable {
     ObjectTable(versions)
 }
 
-/// table should be a sorted Vec<ObjectVersion>.
-fn has_object_in_object_table(
-    object_version: ObjectVersion,
-    ObjectTable(ref table): &ObjectTable,
-) -> bool {
-    table.binary_search(&object_version).is_ok()
+/// A type representing a set of objects.
+/// Currently this struct holds a sorted Vec<ObjectVersion>.
+/// This type can change in the future. https://github.com/frugalos/frugalos/pull/166#discussion_r291900772
+pub(self) struct ObjectTable(Vec<ObjectVersion>);
+
+impl ObjectTable {
+    fn has_object(&self, object_version: ObjectVersion) -> bool {
+        let ObjectTable(ref table) = &self;
+        table.binary_search(&object_version).is_ok()
+    }
 }
 
 #[cfg(test)]
