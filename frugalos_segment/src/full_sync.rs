@@ -15,7 +15,7 @@ use Error;
 
 // A type representing a set of objects.
 // This type can change in the future. https://github.com/frugalos/frugalos/pull/166#discussion_r291900772
-type ObjectTable = Vec<ObjectVersion>;
+pub(self) struct ObjectTable(Vec<ObjectVersion>);
 
 pub(crate) struct FullSync {
     future: Box<Future<Item = (), Error = Error> + Send + 'static>,
@@ -80,7 +80,7 @@ impl Future for FullSync {
     }
 }
 
-pub fn make_list_and_delete_content(
+pub(self) fn make_list_and_delete_content(
     logger: &Logger,
     device: &DeviceHandle,
     node_id: NodeId,
@@ -146,7 +146,7 @@ pub fn make_list_and_delete_content(
     )
 }
 
-pub fn make_create_object_table(
+pub(self) fn make_create_object_table(
     logger: Logger,
     machine: Machine,
 ) -> impl Future<Item = ObjectTable, Error = Error> + Send {
@@ -161,11 +161,14 @@ fn get_object_table(logger: &Logger, machine: &Machine) -> ObjectTable {
     versions.sort_unstable();
     let objects_count = versions.len();
     debug!(logger, "FullSync machine_objects_count = {}", objects_count);
-    versions
+    ObjectTable(versions)
 }
 
 /// table should be a sorted Vec<ObjectVersion>.
-fn has_object_in_object_table(object_version: ObjectVersion, table: &ObjectTable) -> bool {
+fn has_object_in_object_table(
+    object_version: ObjectVersion,
+    ObjectTable(ref table): &ObjectTable,
+) -> bool {
     table.binary_search(&object_version).is_ok()
 }
 
@@ -174,7 +177,9 @@ mod tests {
     use cannyls::deadline::Deadline;
     use cannyls::device::DeviceHandle;
     use cannyls::lump::LumpId;
-    use full_sync::{make_create_object_table, make_list_and_delete_content, FullSync};
+    use full_sync::{
+        make_create_object_table, make_list_and_delete_content, FullSync, ObjectTable,
+    };
     use futures::future::Future;
     use libfrugalos::entity::object::{Metadata, ObjectVersion};
     use libfrugalos::expect::Expect;
@@ -212,7 +217,7 @@ mod tests {
             )?;
         }
 
-        let object_table = vec![];
+        let object_table = ObjectTable(vec![]);
 
         wait(make_list_and_delete_content(
             &logger,
@@ -251,10 +256,10 @@ mod tests {
         }
 
         let create_object_table = make_create_object_table(logger, machine);
-        let result = wait(create_object_table)?;
+        let ObjectTable(result) = wait(create_object_table)?;
         assert_eq!(result.len(), 10);
-        for i in 0..10 {
-            assert_eq!(result[i], ObjectVersion(i as u64));
+        for (i, object_version) in result.into_iter().enumerate() {
+            assert_eq!(object_version, ObjectVersion(i as u64));
         }
 
         Ok(())
@@ -269,7 +274,7 @@ mod tests {
             LumpId::new(25),
             LumpId::new(100),
         ];
-        let object_table = vec![ObjectVersion(1), ObjectVersion(8), ObjectVersion(25)];
+        let object_table = ObjectTable(vec![ObjectVersion(1), ObjectVersion(8), ObjectVersion(25)]);
         let deleted_objects = FullSync::compute_deleted_versions(lump_ids, &object_table);
         // deleted_objects are listed in a newest-first manner.
         assert_eq!(deleted_objects, vec![ObjectVersion(100), ObjectVersion(5)]);
