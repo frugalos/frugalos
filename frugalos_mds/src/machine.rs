@@ -139,6 +139,7 @@ impl Machine {
             .collect()
     }
     // FIXME: ad-hoc bit vector backed by u64. Bit (64k + j) will be stored in array[k] & 1 << j.
+    // This function is added for future use. See arguments here https://github.com/frugalos/frugalos/pull/166#discussion_r291900772
     pub fn enumerate_object_versions(&self) -> Vec<u64> {
         let size = if let Some(x) = self.latest_version() {
             x.version.0 + 1

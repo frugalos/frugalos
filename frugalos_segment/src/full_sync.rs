@@ -13,6 +13,10 @@ use slog::Logger;
 use config;
 use Error;
 
+// A type representing a set of objects.
+// This type can change in the future. https://github.com/frugalos/frugalos/pull/166#discussion_r291900772
+type ObjectTable = Vec<ObjectVersion>;
+
 pub(crate) struct FullSync {
     future: Box<Future<Item = (), Error = Error> + Send + 'static>,
 }
@@ -52,15 +56,15 @@ impl FullSync {
         FullSync { future }
     }
     /// Returns the `ObjectVersion`s of objects that should be deleted.
-    fn compute_deleted_versions(lump_ids: Vec<LumpId>, object_table: &[u64]) -> Vec<ObjectVersion> {
+    fn compute_deleted_versions(
+        lump_ids: Vec<LumpId>,
+        object_table: &ObjectTable,
+    ) -> Vec<ObjectVersion> {
         let mut deleted_versions = Vec::new();
         // lump_ids are iterated over in the reversed order, i.e., in a newest-first manner.
         for lump_id in lump_ids.into_iter().rev() {
             let object_version = config::get_object_version_from_lump_id(lump_id);
-            let id = object_version.0;
-            let id_high = (id / 64) as usize;
-            let id_low = id % 64;
-            if id_high >= object_table.len() || (object_table[id_high] & 1 << id_low) == 0 {
+            if !has_object_in_object_table(object_version, &object_table) {
                 deleted_versions.push(object_version);
             }
         }
@@ -82,7 +86,7 @@ pub fn make_list_and_delete_content(
     node_id: NodeId,
     object_version_limit: ObjectVersion,
     step: u64,
-    object_table: Vec<u64>,
+    object_table: ObjectTable,
 ) -> impl Future<Item = (), Error = Error> + Send {
     assert!(step > 0);
     let logger = logger.clone();
@@ -145,26 +149,24 @@ pub fn make_list_and_delete_content(
 pub fn make_create_object_table(
     logger: Logger,
     machine: Machine,
-) -> impl Future<Item = Vec<u64>, Error = Error> + Send {
+) -> impl Future<Item = ObjectTable, Error = Error> + Send {
     debug!(logger, "Starts full sync");
     DefaultCpuTaskQueue
         .async_call(move || get_object_table(&logger, &machine))
         .map_err(From::from)
 }
 
-fn get_object_table(logger: &Logger, machine: &Machine) -> Vec<u64> {
-    let result = machine.enumerate_object_versions();
-    let mut objects_count = 0;
-    for &entry in &result {
-        objects_count += u64::from(entry.count_ones());
-    }
-    debug!(
-        logger,
-        "FullSync machine_table_size = {}, machine_objects_count = {}",
-        64 * result.len(),
-        objects_count
-    );
-    result
+fn get_object_table(logger: &Logger, machine: &Machine) -> ObjectTable {
+    let mut versions = machine.to_versions();
+    versions.sort_unstable();
+    let objects_count = versions.len();
+    debug!(logger, "FullSync machine_objects_count = {}", objects_count);
+    versions
+}
+
+/// table should be a sorted Vec<ObjectVersion>.
+fn has_object_in_object_table(object_version: ObjectVersion, table: &ObjectTable) -> bool {
+    table.binary_search(&object_version).is_ok()
 }
 
 #[cfg(test)]
@@ -210,7 +212,7 @@ mod tests {
             )?;
         }
 
-        let object_table = vec![0];
+        let object_table = vec![];
 
         wait(make_list_and_delete_content(
             &logger,
@@ -250,7 +252,10 @@ mod tests {
 
         let create_object_table = make_create_object_table(logger, machine);
         let result = wait(create_object_table)?;
-        assert_eq!(result, vec![1023]);
+        assert_eq!(result.len(), 10);
+        for i in 0..10 {
+            assert_eq!(result[i], ObjectVersion(i as u64));
+        }
 
         Ok(())
     }
@@ -264,7 +269,7 @@ mod tests {
             LumpId::new(25),
             LumpId::new(100),
         ];
-        let object_table = vec![1 << 1 | 1 << 8 | 1 << 25];
+        let object_table = vec![ObjectVersion(1), ObjectVersion(8), ObjectVersion(25)];
         let deleted_objects = FullSync::compute_deleted_versions(lump_ids, &object_table);
         // deleted_objects are listed in a newest-first manner.
         assert_eq!(deleted_objects, vec![ObjectVersion(100), ObjectVersion(5)]);
