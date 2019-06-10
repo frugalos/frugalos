@@ -95,8 +95,6 @@ impl Synchronizer {
                 .expect("metric should be well-formed"),
             repairs_durations_seconds: metric_builder
                 .histogram("repairs_durations_seconds")
-                .bucket(0.0001)
-                .bucket(0.0005)
                 .bucket(0.001)
                 .bucket(0.005)
                 .bucket(0.01)
