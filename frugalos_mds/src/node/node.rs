@@ -462,10 +462,6 @@ impl Node {
             Request::Stop => {
                 if self.phase == Phase::Running {
                     info!(self.logger, "Starts stopping the node");
-                    unsafe {
-                        self.rlog.io_mut().stop();
-                    }
-                    self.start_reelection();
                     match track!(self.take_snapshot()) {
                         Err(e) => {
                             error!(self.logger, "Cannot take snapshot: {}", e);
