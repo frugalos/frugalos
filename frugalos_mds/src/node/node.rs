@@ -28,6 +28,7 @@ use super::{Event, NodeHandle, Proposal, ProposalMetrics, Request, Seconds};
 use codec;
 use config::FrugalosMdsConfig;
 use machine::{Command, Machine};
+use node::Event::FullSync;
 use protobuf;
 use {Error, ErrorKind, Result, ServiceHandle};
 
@@ -488,6 +489,10 @@ impl Node {
                     error!(self.logger, "Cannot take snapshot: {}", e);
                 }
             }
+            Request::FullSync => self.events.push_back(FullSync {
+                machine: self.machine.clone(),
+                next_commit: self.next_commit,
+            }),
         }
     }
     fn take_snapshot(&mut self) -> Result<bool> {

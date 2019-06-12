@@ -12,7 +12,7 @@ use fibers_tasque::TaskQueueExt;
 use frugalos_config::{DeviceGroup, Event as ConfigEvent, Service as ConfigService};
 use frugalos_core::tracer::ThreadLocalTracer;
 use frugalos_mds;
-use frugalos_raft::{NodeId, Service as RaftService};
+use frugalos_raft::{LocalNodeId, NodeId, Service as RaftService};
 use frugalos_segment;
 use frugalos_segment::FrugalosSegmentConfig;
 use frugalos_segment::Service as SegmentService;
@@ -110,6 +110,13 @@ where
     }
     pub fn take_snapshot(&mut self) {
         self.frugalos_segment_service.take_snapshot();
+    }
+    pub fn full_sync_single(&mut self, local_node_id: LocalNodeId) {
+        self.frugalos_segment_service
+            .full_sync_single(local_node_id);
+    }
+    pub fn full_sync_all(&mut self) {
+        self.frugalos_segment_service.full_sync_all();
     }
     fn handle_config_event(&mut self, event: ConfigEvent) -> Result<()> {
         info!(self.logger, "Configuration Event: {:?}", event);

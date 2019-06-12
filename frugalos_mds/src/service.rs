@@ -75,6 +75,28 @@ impl Service {
         }
     }
 
+    /// Performs full_sync on a single node.
+    pub fn full_sync_single(&mut self, node_id: LocalNodeId) {
+        for (&id, node) in self.nodes.load().iter() {
+            if id == node_id {
+                info!(
+                    self.logger,
+                    "Sending full_sync request to a single node: {:?}", id
+                );
+                node.full_sync();
+            }
+        }
+    }
+
+    /// Performs full_sync on all nodes.
+    pub fn full_sync_all(&mut self) {
+        info!(self.logger, "Sending full_sync request to all nodes");
+        for (id, node) in self.nodes.load().iter() {
+            info!(self.logger, "Sending full_sync request: {:?}", id);
+            node.full_sync();
+        }
+    }
+
     fn handle_command(&mut self, command: Command) {
         match command {
             Command::AddNode(id, node) => {

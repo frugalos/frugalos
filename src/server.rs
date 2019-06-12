@@ -27,6 +27,9 @@ use url::Url;
 
 use client::FrugalosClient;
 use codec::{AsyncEncoder, ObjectResultEncoder};
+use daemon::FrugalosDaemonHandle;
+use frugalos_raft::LocalNodeId;
+use futures::future::ok;
 use http::{
     make_json_response, make_object_response, not_found, BucketStatistics, HttpResult, TraceHeader,
 };
@@ -55,6 +58,7 @@ pub struct Server {
     config: FrugalosConfig,
     client: FrugalosClient,
     tracer: ThreadLocalTracer,
+    daemon_handle: FrugalosDaemonHandle,
 
     // TODO: remove
     large_object_count: Arc<AtomicUsize>,
@@ -65,12 +69,14 @@ impl Server {
         config: FrugalosConfig,
         client: FrugalosClient,
         tracer: ThreadLocalTracer,
+        daemon_handle: FrugalosDaemonHandle,
     ) -> Self {
         Server {
             logger,
             config,
             client,
             tracer,
+            daemon_handle,
             large_object_count: Arc::default(),
         }
     }
@@ -83,6 +89,7 @@ impl Server {
         track!(builder.add_handler(WithMetrics::new(DeleteObjectByPrefix(self.clone()))))?;
         track!(builder.add_handler(WithMetrics::new(PutObject(self.clone()))))?;
         track!(builder.add_handler(WithMetrics::new(GetBucketStatistics(self.clone()))))?;
+        track!(builder.add_handler(WithMetrics::new(FullSync(self.clone()))))?;
         track!(builder.add_handler(JemallocStats))?;
         track!(builder.add_handler(CurrentConfigurations(self.config)))?;
         Ok(())
@@ -628,6 +635,26 @@ impl HandleRequest for CurrentConfigurations {
     }
 }
 
+/// Full Sync リクエストに応じるための構造体。
+pub struct FullSync(Server);
+impl HandleRequest for FullSync {
+    const METHOD: &'static str = "POST";
+    const PATH: &'static str = "/v1/local_node_ids/*/full_sync";
+
+    type ReqBody = ();
+    type ResBody = HttpResult<Vec<u8>>;
+    type Decoder = BodyDecoder<NullDecoder>;
+    type Encoder = BodyEncoder<JsonEncoder<Self::ResBody>>;
+    type Reply = Reply<Self::ResBody>;
+
+    fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
+        let local_node_id = try_badarg!(get_local_node_id(req.url()));
+        self.0.daemon_handle.full_sync_single(local_node_id);
+        let future = ok(make_object_response(Status::Ok, None, Ok(Vec::new())));
+        Box::new(future)
+    }
+}
+
 pub fn spawn_report_spans_thread(rx: SpanReceiver) {
     let reporter = track_try_unwrap!(JaegerCompactReporter::new("frugalos"));
     thread::spawn(move || {
@@ -675,6 +702,16 @@ fn get_segment_num(url: &Url) -> Result<u16> {
         .parse()
         .map_err(Error::from))?;
     Ok(n)
+}
+
+fn get_local_node_id(url: &Url) -> Result<LocalNodeId> {
+    use std::str::FromStr;
+    let local_node_id_str = url
+        .path_segments()
+        .expect("Never fails")
+        .nth(2)
+        .expect("Never fails");
+    LocalNodeId::from_str(&local_node_id_str).map_err(From::from)
 }
 
 fn get_expect(header: &Header) -> Result<Expect> {

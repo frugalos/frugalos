@@ -9,7 +9,7 @@ use frugalos_core::tracer::ThreadLocalTracer;
 use frugalos_mds::{
     FrugalosMdsConfig, Node, Service as RaftMdsService, ServiceHandle as MdsHandle,
 };
-use frugalos_raft::{self, NodeId};
+use frugalos_raft::{self, LocalNodeId, NodeId};
 use futures::{Async, Future, Poll, Stream};
 use raftlog::cluster::ClusterMembers;
 use slog::Logger;
@@ -87,6 +87,16 @@ where
     /// Raftのスナップショット取得要求を発行する。
     pub fn take_snapshot(&mut self) {
         self.mds_service.take_snapshot();
+    }
+
+    /// Performs full_sync on a designated node.
+    pub fn full_sync_single(&mut self, local_node_id: LocalNodeId) {
+        self.mds_service.full_sync_single(local_node_id);
+    }
+
+    /// Performs full_sync on all nodes.
+    pub fn full_sync_all(&mut self) {
+        self.mds_service.full_sync_all();
     }
 
     /// デバイスレジストリへの破壊的な参照を返す。

@@ -27,6 +27,7 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use config_server::ConfigServer;
+use frugalos_raft::LocalNodeId;
 use rpc_server::RpcServer;
 use server::{spawn_report_spans_thread, Server};
 use service;
@@ -107,12 +108,20 @@ impl FrugalosDaemon {
         let client = service.client();
         RpcServer::register(
             client.clone(),
-            FrugalosDaemonHandle { command_tx },
+            FrugalosDaemonHandle {
+                command_tx: command_tx.clone(),
+            },
             &mut rpc_server_builder,
             tracer.clone(),
         );
 
-        let server = Server::new(logger.clone(), cloned_config, client, tracer.clone());
+        let server = Server::new(
+            logger.clone(),
+            cloned_config,
+            client,
+            tracer.clone(),
+            FrugalosDaemonHandle { command_tx },
+        );
         track!(server.register(&mut http_server_builder))?;
 
         track!(http_server_builder.add_handler(WithMetrics::new(MetricsHandler)))?;
@@ -210,6 +219,12 @@ impl DaemonRunner {
             DaemonCommand::TakeSnapshot => {
                 self.service.take_snapshot();
             }
+            DaemonCommand::FullSyncSingle { local_node_id } => {
+                self.service.full_sync_single(local_node_id);
+            }
+            DaemonCommand::FullSyncAll => {
+                self.service.full_sync_all();
+            }
         }
     }
 }
@@ -257,6 +272,18 @@ impl FrugalosDaemonHandle {
         let command = DaemonCommand::TakeSnapshot;
         let _ = self.command_tx.send(command);
     }
+
+    /// 単一 SegmentNode に対する full_sync を依頼する。
+    pub fn full_sync_single(&self, local_node_id: LocalNodeId) {
+        let command = DaemonCommand::FullSyncSingle { local_node_id };
+        let _ = self.command_tx.send(command);
+    }
+
+    /// このサーバが管理する全ての SegmentNode に対する full_sync を依頼する。
+    pub fn full_sync_all(&self) {
+        let command = DaemonCommand::FullSyncAll;
+        let _ = self.command_tx.send(command);
+    }
 }
 
 #[derive(Debug)]
@@ -265,6 +292,10 @@ enum DaemonCommand {
         reply: oneshot::Monitored<(), Error>,
     },
     TakeSnapshot,
+    FullSyncSingle {
+        local_node_id: LocalNodeId,
+    },
+    FullSyncAll,
 }
 
 #[derive(Debug)]

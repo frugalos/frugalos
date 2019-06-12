@@ -39,6 +39,10 @@ impl NodeHandle {
     pub fn start_reelection(&self) {
         let _ = self.request_tx.send(Request::StartElection);
     }
+    pub fn full_sync(&self) {
+        let request = Request::FullSync;
+        let _ = self.request_tx.send(request);
+    }
     pub fn get_leader(
         &self,
         started_at: Instant,
