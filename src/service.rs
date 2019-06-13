@@ -118,6 +118,13 @@ where
     pub fn full_sync_all(&mut self) {
         self.frugalos_segment_service.full_sync_all();
     }
+    pub fn cancel_full_sync_single(&mut self, local_node_id: LocalNodeId) {
+        self.frugalos_segment_service
+            .cancel_full_sync_single(local_node_id);
+    }
+    pub fn cancel_full_sync_all(&mut self) {
+        self.frugalos_segment_service.cancel_full_sync_all();
+    }
     fn handle_config_event(&mut self, event: ConfigEvent) -> Result<()> {
         info!(self.logger, "Configuration Event: {:?}", event);
         match event {

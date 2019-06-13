@@ -90,6 +90,8 @@ impl Server {
         track!(builder.add_handler(WithMetrics::new(PutObject(self.clone()))))?;
         track!(builder.add_handler(WithMetrics::new(GetBucketStatistics(self.clone()))))?;
         track!(builder.add_handler(WithMetrics::new(FullSync(self.clone()))))?;
+        track!(builder.add_handler(WithMetrics::new(CancelFullSync(self.clone()))))?;
+        track!(builder.add_handler(WithMetrics::new(CancelFullSyncAll(self.clone()))))?;
         track!(builder.add_handler(JemallocStats))?;
         track!(builder.add_handler(CurrentConfigurations(self.config)))?;
         Ok(())
@@ -650,6 +652,45 @@ impl HandleRequest for FullSync {
     fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
         let local_node_id = try_badarg!(get_local_node_id(req.url()));
         self.0.daemon_handle.full_sync_single(local_node_id);
+        let future = ok(make_object_response(Status::Ok, None, Ok(Vec::new())));
+        Box::new(future)
+    }
+}
+
+/// Full Sync のキャンセルリクエストに応じるための構造体。
+pub struct CancelFullSync(Server);
+impl HandleRequest for CancelFullSync {
+    const METHOD: &'static str = "POST";
+    const PATH: &'static str = "/v1/local_node_ids/*/full_sync/cancel";
+
+    type ReqBody = ();
+    type ResBody = HttpResult<Vec<u8>>;
+    type Decoder = BodyDecoder<NullDecoder>;
+    type Encoder = BodyEncoder<JsonEncoder<Self::ResBody>>;
+    type Reply = Reply<Self::ResBody>;
+
+    fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
+        let local_node_id = try_badarg!(get_local_node_id(req.url()));
+        self.0.daemon_handle.cancel_full_sync_single(local_node_id);
+        let future = ok(make_object_response(Status::Ok, None, Ok(Vec::new())));
+        Box::new(future)
+    }
+}
+
+/// Full Sync のキャンセルリクエストに応じるための構造体。
+pub struct CancelFullSyncAll(Server);
+impl HandleRequest for CancelFullSyncAll {
+    const METHOD: &'static str = "POST";
+    const PATH: &'static str = "/v1/full_sync/cancel";
+
+    type ReqBody = ();
+    type ResBody = HttpResult<Vec<u8>>;
+    type Decoder = BodyDecoder<NullDecoder>;
+    type Encoder = BodyEncoder<JsonEncoder<Self::ResBody>>;
+    type Reply = Reply<Self::ResBody>;
+
+    fn handle_request(&self, _req: Req<Self::ReqBody>) -> Self::Reply {
+        self.0.daemon_handle.cancel_full_sync_all();
         let future = ok(make_object_response(Status::Ok, None, Ok(Vec::new())));
         Box::new(future)
     }

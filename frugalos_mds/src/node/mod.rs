@@ -200,6 +200,7 @@ enum Request {
     Stop,
     TakeSnapshot,
     FullSync,
+    CancelFullSync,
 }
 impl Request {
     pub fn failed(self, e: Error) {
@@ -215,7 +216,11 @@ impl Request {
             Request::DeleteByVersion(_, tx) => tx.exit(Err(track!(e))),
             Request::DeleteByRange(_, _, tx) => tx.exit(Err(track!(e))),
             Request::DeleteByPrefix(_, tx) => tx.exit(Err(track!(e))),
-            Request::Stop | Request::TakeSnapshot | Request::StartElection | Request::FullSync => {}
+            Request::Stop
+            | Request::TakeSnapshot
+            | Request::StartElection
+            | Request::FullSync
+            | Request::CancelFullSync => {}
         }
     }
 }
@@ -231,12 +236,15 @@ pub enum Event {
     },
 
     /// メタデータオブジェクトが削除された.
-    Deleted { version: ObjectVersion },
+    Deleted {
+        version: ObjectVersion,
+    },
 
     FullSync {
         machine: Machine,
         next_commit: LogIndex,
     },
+    CancelFullSync,
 }
 
 #[cfg(test)]

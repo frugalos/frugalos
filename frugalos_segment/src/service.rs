@@ -99,6 +99,16 @@ where
         self.mds_service.full_sync_all();
     }
 
+    /// Cancels full_sync on a designated node.
+    pub fn cancel_full_sync_single(&mut self, local_node_id: LocalNodeId) {
+        self.mds_service.cancel_full_sync_single(local_node_id);
+    }
+
+    /// Cancels full_sync on all nodes.
+    pub fn cancel_full_sync_all(&mut self) {
+        self.mds_service.cancel_full_sync_all();
+    }
+
     /// デバイスレジストリへの破壊的な参照を返す。
     pub fn device_registry_mut(&mut self) -> &mut DeviceRegistry {
         &mut self.device_registry

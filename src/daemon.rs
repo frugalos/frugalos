@@ -225,6 +225,12 @@ impl DaemonRunner {
             DaemonCommand::FullSyncAll => {
                 self.service.full_sync_all();
             }
+            DaemonCommand::CancelFullSyncSingle { local_node_id } => {
+                self.service.cancel_full_sync_single(local_node_id);
+            }
+            DaemonCommand::CancelFullSyncAll => {
+                self.service.cancel_full_sync_all();
+            }
         }
     }
 }
@@ -284,6 +290,18 @@ impl FrugalosDaemonHandle {
         let command = DaemonCommand::FullSyncAll;
         let _ = self.command_tx.send(command);
     }
+
+    /// 単一 SegmentNode に対する full_sync のキャンセルを依頼する。
+    pub fn cancel_full_sync_single(&self, local_node_id: LocalNodeId) {
+        let command = DaemonCommand::CancelFullSyncSingle { local_node_id };
+        let _ = self.command_tx.send(command);
+    }
+
+    /// このサーバが管理する全ての SegmentNode に対する full_sync のキャンセルを依頼する。
+    pub fn cancel_full_sync_all(&self) {
+        let command = DaemonCommand::CancelFullSyncAll;
+        let _ = self.command_tx.send(command);
+    }
 }
 
 #[derive(Debug)]
@@ -296,6 +314,10 @@ enum DaemonCommand {
         local_node_id: LocalNodeId,
     },
     FullSyncAll,
+    CancelFullSyncSingle {
+        local_node_id: LocalNodeId,
+    },
+    CancelFullSyncAll,
 }
 
 #[derive(Debug)]

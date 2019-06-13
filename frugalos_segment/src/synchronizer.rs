@@ -180,6 +180,13 @@ impl Synchronizer {
                         ));
                     }
                 }
+                Event::CancelFullSync => {
+                    // Just dropping self.full_sync will release all resources that are associated with it.
+                    if self.full_sync.is_some() {
+                        info!(self.logger, "FullSync was running, but canceled")
+                    }
+                    self.full_sync = None;
+                }
             }
             if let Event::FullSync { .. } = &event {
             } else {
@@ -293,6 +300,7 @@ impl TodoItem {
                 }
             }
             Event::FullSync { .. } => unreachable!(),
+            Event::CancelFullSync => unreachable!(),
         }
     }
     pub fn wait_time(&self) -> Option<Duration> {
