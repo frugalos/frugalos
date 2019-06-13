@@ -41,6 +41,8 @@ pub struct Synchronizer {
     repairs_success_total: Counter,
     repairs_failure_total: Counter,
     repairs_durations_seconds: Histogram,
+    full_sync_count: Counter,
+    full_sync_deleted_objects: Counter,
     full_sync: Option<FullSync>,
 }
 impl Synchronizer {
@@ -109,6 +111,16 @@ impl Synchronizer {
                 .label("type", "repair")
                 .finish()
                 .expect("metric should be well-formed"),
+            full_sync_count: metric_builder
+                .counter("full_sync_count")
+                .label("type", "repair")
+                .finish()
+                .expect("metric should be well-formed"),
+            full_sync_deleted_objects: metric_builder
+                .counter("full_sync_deleted_objects")
+                .label("type", "repair")
+                .finish()
+                .expect("metric should be well-formed"),
             full_sync: None,
         }
     }
@@ -154,6 +166,8 @@ impl Synchronizer {
                             &self.device,
                             machine.clone(),
                             ObjectVersion(next_commit.as_u64()),
+                            self.full_sync_count.clone(),
+                            self.full_sync_deleted_objects.clone(),
                         ));
                     }
                 }

@@ -11,6 +11,7 @@ use libfrugalos::entity::object::ObjectVersion;
 use slog::Logger;
 
 use config;
+use prometrics::metrics::Counter;
 use Error;
 
 pub(crate) struct FullSync {
@@ -24,9 +25,12 @@ impl FullSync {
         device: &DeviceHandle,
         machine: Machine,
         object_version_limit: ObjectVersion,
+        full_sync_count: Counter,
+        full_sync_deleted_objects: Counter,
     ) -> Self {
         let logger = logger.clone();
         info!(logger, "Starts full sync");
+        full_sync_count.increment();
         let create_object_table = make_create_object_table(logger.clone(), machine);
 
         let step = 100; // TODO to be determined
@@ -44,6 +48,7 @@ impl FullSync {
                     object_version_limit,
                     step,
                     object_table,
+                    full_sync_deleted_objects,
                 )
             })
             .map(move |()| debug!(logger2, "FullSync objects done"));
@@ -83,6 +88,7 @@ pub(self) fn make_list_and_delete_content(
     object_version_limit: ObjectVersion,
     step: u64,
     object_table: ObjectTable,
+    full_sync_deleted_objects: Counter,
 ) -> impl Future<Item = (), Error = Error> + Send {
     assert!(step > 0);
     let logger = logger.clone();
@@ -96,6 +102,7 @@ pub(self) fn make_list_and_delete_content(
     loop_fn(
         (ObjectVersion(0), object_table),
         move |(current_version, object_table)| {
+            let full_sync_deleted_objects = full_sync_deleted_objects.clone();
             let start_lump_id = config::make_lump_id(&node_id, current_version);
             let end_object_version = std::cmp::min(
                 ObjectVersion(current_version.0 + step),
@@ -111,6 +118,7 @@ pub(self) fn make_list_and_delete_content(
                     let deleted_objects =
                         FullSync::compute_deleted_versions(lump_ids, &object_table);
                     loop_fn(deleted_objects, move |mut objects| {
+                        let full_sync_deleted_objects = full_sync_deleted_objects.clone();
                         if let Some(object) = objects.pop() {
                             let lump_id = config::make_lump_id(&node_id, object);
                             Box::new(
@@ -118,7 +126,10 @@ pub(self) fn make_list_and_delete_content(
                                     .request()
                                     .deadline(Deadline::Infinity)
                                     .delete(lump_id)
-                                    .map(move |_result| Loop::Continue(objects))
+                                    .map(move |_result| {
+                                        full_sync_deleted_objects.increment();
+                                        Loop::Continue(objects)
+                                    })
                                     .map_err(From::from),
                             )
                                 as Box<dyn Future<Item = Loop<_, _>, Error = _> + Send>
@@ -191,6 +202,7 @@ mod tests {
     use config::make_lump_id;
     use fibers::executor::Executor;
     use frugalos_mds::machine::Machine;
+    use prometrics::metrics::Counter;
 
     #[test]
     fn list_and_delete_content_works_correctly() -> TestResult {
@@ -218,6 +230,8 @@ mod tests {
         }
 
         let object_table = ObjectTable(vec![]);
+        let full_sync_deleted_objects =
+            Counter::new("full_sync_deleted_objects").expect("Never fails");
 
         wait(make_list_and_delete_content(
             &logger,
@@ -226,6 +240,7 @@ mod tests {
             ObjectVersion(10),
             1,
             object_table,
+            full_sync_deleted_objects.clone(),
         ))?;
 
         // Assert objects are deleted and therefore not found
@@ -239,6 +254,9 @@ mod tests {
                     .map_err(From::from)
             )?);
         }
+
+        // Assert 10 objects are deleted
+        assert_eq!(full_sync_deleted_objects.value() as u64, 10);
         Ok(())
     }
 
