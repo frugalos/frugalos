@@ -19,6 +19,7 @@ pub(crate) struct FullSync {
 }
 
 impl FullSync {
+    #[allow(clippy::needless_pass_by_value)]
     pub fn new(
         logger: &Logger,
         node_id: NodeId,
