@@ -16,10 +16,7 @@ pub struct RaftIo {
     node_id: LocalNodeId,
     service: ServiceHandle,
     storage: Storage,
-    /// A `Mailer`. This variable becomes `None` once a stop request arrives.
-    mailer: Option<Mailer>,
-    /// Remaining messages which are already received before stopping.
-    remaining_messages: Vec<Message>,
+    mailer: Mailer,
     timer: Timer,
 }
 impl RaftIo {
@@ -37,20 +34,9 @@ impl RaftIo {
             node_id,
             service,
             storage,
-            mailer: Some(mailer),
-            remaining_messages: Vec::new(),
+            mailer,
             timer,
         })
-    }
-    /// Stops this `RaftIo`.
-    pub fn stop(&mut self) {
-        if let Some(ref mut mailer) = self.mailer {
-            while let Ok(Some(message)) = mailer.try_recv_message() {
-                self.remaining_messages.push(message);
-            }
-        }
-        // Drops a contained mailer to encourage a leader election using the timeout mechanism of Raft.
-        self.mailer = None;
     }
 }
 impl Io for RaftIo {
@@ -60,17 +46,9 @@ impl Io for RaftIo {
     type LoadLog = storage::LoadLog;
     type Timeout = Timeout;
     fn try_recv_message(&mut self) -> Result<Option<Message>> {
-        if let Some(message) = self.remaining_messages.pop() {
-            return Ok(Some(message));
-        }
-
-        if let Some(ref mut mailer) = self.mailer {
-            return mailer
-                .try_recv_message()
-                .map_err(|e| ErrorKind::Other.takes_over(e).into());
-        }
-
-        Ok(None)
+        self.mailer
+            .try_recv_message()
+            .map_err(|e| ErrorKind::Other.takes_over(e).into())
     }
     fn send_message(&mut self, message: Message) {
         let node = match message.header().destination.as_str().parse() {
@@ -80,9 +58,7 @@ impl Io for RaftIo {
             }
             Ok(id) => id,
         };
-        if let Some(ref mut mailer) = self.mailer {
-            mailer.send_message(&node, message);
-        }
+        self.mailer.send_message(&node, message);
     }
     fn save_ballot(&mut self, ballot: Ballot) -> Self::SaveBallot {
         self.storage.save_ballot(ballot)
