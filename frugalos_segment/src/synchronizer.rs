@@ -7,7 +7,7 @@ use frugalos_mds::Event;
 use frugalos_raft::NodeId;
 use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
-use prometrics::metrics::{Counter, Histogram, MetricBuilder};
+use prometrics::metrics::{Counter, Gauge, Histogram, MetricBuilder};
 use slog::Logger;
 use std::cmp::{self, Reverse};
 use std::collections::{BTreeSet, BinaryHeap};
@@ -43,6 +43,8 @@ pub struct Synchronizer {
     repairs_durations_seconds: Histogram,
     full_sync_count: Counter,
     full_sync_deleted_objects: Counter,
+    // How many objects have to be swept before full_sync is completed (including non-existent ones)
+    full_sync_remaining: Gauge,
     full_sync: Option<FullSync>,
     full_sync_step: u64,
 }
@@ -115,12 +117,14 @@ impl Synchronizer {
                 .expect("metric should be well-formed"),
             full_sync_count: metric_builder
                 .counter("full_sync_count")
-                .label("type", "repair")
                 .finish()
                 .expect("metric should be well-formed"),
             full_sync_deleted_objects: metric_builder
                 .counter("full_sync_deleted_objects")
-                .label("type", "repair")
+                .finish()
+                .expect("metric should be well-formed"),
+            full_sync_remaining: metric_builder
+                .gauge("full_sync_gauge")
                 .finish()
                 .expect("metric should be well-formed"),
             full_sync: None,
@@ -171,6 +175,7 @@ impl Synchronizer {
                             ObjectVersion(next_commit.as_u64()),
                             self.full_sync_count.clone(),
                             self.full_sync_deleted_objects.clone(),
+                            self.full_sync_remaining.clone(),
                             self.full_sync_step,
                         ));
                     }
@@ -233,6 +238,7 @@ impl Future for Synchronizer {
         }) {
             // Full sync is done. Clearing the full_sync field.
             self.full_sync = None;
+            self.full_sync_remaining.set(0.0);
         }
 
         while let Async::Ready(()) = self.task.poll().unwrap_or_else(|e| {

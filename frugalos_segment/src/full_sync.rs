@@ -11,7 +11,7 @@ use libfrugalos::entity::object::ObjectVersion;
 use slog::Logger;
 
 use config;
-use prometrics::metrics::Counter;
+use prometrics::metrics::{Counter, Gauge};
 use Error;
 
 pub(crate) struct FullSync {
@@ -28,6 +28,7 @@ impl FullSync {
         object_version_limit: ObjectVersion,
         full_sync_count: Counter,
         full_sync_deleted_objects: Counter,
+        full_sync_remaining: Gauge,
         full_sync_step: u64,
     ) -> Self {
         let logger = logger.clone();
@@ -49,9 +50,10 @@ impl FullSync {
                     full_sync_step,
                     object_table,
                     full_sync_deleted_objects,
+                    full_sync_remaining,
                 )
             })
-            .map(move |()| debug!(logger2, "FullSync objects done"));
+            .map(move |()| info!(logger2, "FullSync objects done"));
 
         let future = Box::new(combined_future);
         FullSync { future }
@@ -89,6 +91,7 @@ pub(self) fn make_list_and_delete_content(
     step: u64,
     object_table: ObjectTable,
     full_sync_deleted_objects: Counter,
+    full_sync_remaining: Gauge,
 ) -> impl Future<Item = (), Error = Error> + Send {
     assert!(step > 0);
     let logger = logger.clone();
@@ -102,6 +105,7 @@ pub(self) fn make_list_and_delete_content(
     loop_fn(
         (ObjectVersion(0), object_table),
         move |(current_version, object_table)| {
+            full_sync_remaining.set((object_version_limit.0 - current_version.0) as f64);
             let full_sync_deleted_objects = full_sync_deleted_objects.clone();
             let start_lump_id = config::make_lump_id(&node_id, current_version);
             let end_object_version = std::cmp::min(
@@ -202,7 +206,7 @@ mod tests {
     use config::make_lump_id;
     use fibers::executor::Executor;
     use frugalos_mds::machine::Machine;
-    use prometrics::metrics::Counter;
+    use prometrics::metrics::{Counter, Gauge};
 
     #[test]
     fn list_and_delete_content_works_correctly() -> TestResult {
@@ -232,6 +236,7 @@ mod tests {
         let object_table = ObjectTable(vec![]);
         let full_sync_deleted_objects =
             Counter::new("full_sync_deleted_objects").expect("Never fails");
+        let full_sync_remaining = Gauge::new("full_sync_remaining").expect("Never fails");
 
         wait(make_list_and_delete_content(
             &logger,
@@ -241,6 +246,7 @@ mod tests {
             1,
             object_table,
             full_sync_deleted_objects.clone(),
+            full_sync_remaining.clone(),
         ))?;
 
         // Assert objects are deleted and therefore not found
