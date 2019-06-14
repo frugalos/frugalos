@@ -19,7 +19,7 @@ pub(crate) struct FullSync {
 }
 
 impl FullSync {
-    #[allow(clippy::needless_pass_by_value)]
+    #[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
     pub fn new(
         logger: &Logger,
         node_id: NodeId,
@@ -28,13 +28,12 @@ impl FullSync {
         object_version_limit: ObjectVersion,
         full_sync_count: Counter,
         full_sync_deleted_objects: Counter,
+        full_sync_step: u64,
     ) -> Self {
         let logger = logger.clone();
         info!(logger, "Starts full sync");
         full_sync_count.increment();
         let create_object_table = make_create_object_table(logger.clone(), machine);
-
-        let step = 100; // TODO to be determined
 
         let logger = logger.clone();
         let logger2 = logger.clone();
@@ -47,7 +46,7 @@ impl FullSync {
                     &device,
                     node_id,
                     object_version_limit,
-                    step,
+                    full_sync_step,
                     object_table,
                     full_sync_deleted_objects,
                 )

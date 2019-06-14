@@ -44,6 +44,7 @@ pub struct Synchronizer {
     full_sync_count: Counter,
     full_sync_deleted_objects: Counter,
     full_sync: Option<FullSync>,
+    full_sync_step: u64,
 }
 impl Synchronizer {
     pub fn new(
@@ -52,6 +53,7 @@ impl Synchronizer {
         device: DeviceHandle,
         client: StorageClient,
         repair_enabled: bool,
+        full_sync_step: u64,
     ) -> Self {
         let metric_builder = MetricBuilder::new()
             .namespace("frugalos")
@@ -122,6 +124,7 @@ impl Synchronizer {
                 .finish()
                 .expect("metric should be well-formed"),
             full_sync: None,
+            full_sync_step,
         }
     }
     pub fn handle_event(&mut self, event: &Event) {
@@ -168,6 +171,7 @@ impl Synchronizer {
                             ObjectVersion(next_commit.as_u64()),
                             self.full_sync_count.clone(),
                             self.full_sync_deleted_objects.clone(),
+                            self.full_sync_step,
                         ));
                     }
                 }

@@ -267,8 +267,20 @@ impl SegmentNode {
             .map_or(false, |v| v == "1");
         info!(logger, "Repair enabled: {}", repair_enabled);
 
-        let synchronizer =
-            Synchronizer::new(logger.clone(), node_id, device, client, repair_enabled);
+        let full_sync_step = env::var("FRUGALOS_FULL_SYNC_STEP")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(100);
+        info!(logger, "FullSync step: {}", full_sync_step);
+
+        let synchronizer = Synchronizer::new(
+            logger.clone(),
+            node_id,
+            device,
+            client,
+            repair_enabled,
+            full_sync_step,
+        );
 
         Ok(SegmentNode {
             logger,
