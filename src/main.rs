@@ -25,8 +25,8 @@ use trackable::error::{ErrorKindExt, Failure};
 use frugalos::FrugalosConfig;
 use frugalos::{Error, ErrorKind, Result};
 
-#[global_allocator]
-static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+// #[global_allocator]
+// static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 // See https://github.com/frugalos/frugalos/pull/161
 #[allow(
