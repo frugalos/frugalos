@@ -56,8 +56,8 @@ impl RpcServer {
         let bucket_id = request.bucket_id.clone();
         let object_id = request.object_id.clone();
         span.set_tag(|| StdTag::component(module_path!()));
-        span.set_tag(|| Tag::new("bucket.id", object_id));
-        span.set_tag(|| Tag::new("object.id", bucket_id));
+        span.set_tag(|| Tag::new("bucket.id", bucket_id));
+        span.set_tag(|| Tag::new("object.id", object_id));
         span
     }
 }
