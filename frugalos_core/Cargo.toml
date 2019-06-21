@@ -1,6 +1,6 @@
 [package]
 name = "frugalos_core"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["The FrugalOS Developers"]
 description = "Shared utilities for FrugalOS"
 homepage = "https://github.com/frugalos/frugalos"
