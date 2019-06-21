@@ -301,7 +301,9 @@ impl Node {
             Request::GetLeader(_, _)
             | Request::Stop
             | Request::TakeSnapshot
-            | Request::StartElection => {}
+            | Request::StartElection
+            | Request::FullSync
+            | Request::CancelFullSync => {}
             _ => {
                 if let Err(e) = self.check_leader() {
                     request.failed(e);
