@@ -83,6 +83,7 @@ impl Future for FullSync {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(self) fn make_list_and_delete_content(
     logger: &Logger,
     device: &DeviceHandle,
