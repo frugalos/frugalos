@@ -77,14 +77,17 @@ impl Service {
 
     /// Performs full_sync on a single node.
     pub fn full_sync_single(&mut self, node_id: LocalNodeId) {
-        for (&id, node) in self.nodes.load().iter() {
-            if id == node_id {
-                info!(
-                    self.logger,
-                    "Sending full_sync request to a single node: {:?}", id
-                );
-                node.full_sync();
-            }
+        if let Some(node) = self.nodes.load().get(&node_id) {
+            info!(
+                self.logger,
+                "Sending full_sync request to a single node: {:?}", node_id
+            );
+            node.full_sync();
+        } else {
+            info!(
+                self.logger,
+                "Tried to send full_sync request to a single node {:?}, but not found", node_id
+            );
         }
     }
 
@@ -99,14 +102,17 @@ impl Service {
 
     /// Cancels full_sync on a single node.
     pub fn cancel_full_sync_single(&mut self, node_id: LocalNodeId) {
-        for (&id, node) in self.nodes.load().iter() {
-            if id == node_id {
-                info!(
-                    self.logger,
-                    "Canceling full_sync request of a single node: {:?}", id
-                );
-                node.cancel_full_sync();
-            }
+        if let Some(node) = self.nodes.load().get(&node_id) {
+            info!(
+                self.logger,
+                "Canceling full_sync request of a single node: {:?}", node_id
+            );
+            node.cancel_full_sync();
+        } else {
+            info!(
+                self.logger,
+                "Tried to cancel full_sync request of a single node {:?}, but not found", node_id
+            );
         }
     }
 
