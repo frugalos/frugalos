@@ -124,7 +124,7 @@ impl Synchronizer {
                 .finish()
                 .expect("metric should be well-formed"),
             full_sync_remaining: metric_builder
-                .gauge("full_sync_gauge")
+                .gauge("full_sync_remaining")
                 .finish()
                 .expect("metric should be well-formed"),
             full_sync: None,
