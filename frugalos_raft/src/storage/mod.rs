@@ -463,9 +463,6 @@ fn make_histogram(builder: &mut HistogramBuilder) -> Histogram {
 }
 
 /// ログの接頭辞部分と接尾部分を削除する。
-///
-/// 接頭辞部分と接尾部分が削除されていれば、ログ削除直後にログを持っていないノードが
-/// リーダーに選ばれることはないため `Ballot` は削除しない。
 pub enum ClearLog {
     /// ログを削除する。
     DeleteLog(DeleteLog),
