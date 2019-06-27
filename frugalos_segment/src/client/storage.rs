@@ -27,6 +27,7 @@ use config::{
     CannyLsClientConfig, ClientConfig, ClusterConfig, ClusterMember, DispersedClientConfig,
     DispersedConfig, Participants, ReplicatedClientConfig, ReplicatedConfig,
 };
+use futures::future::ok;
 use metrics::{DispersedClientMetrics, PutAllMetrics, ReplicatedClientMetrics};
 use util::Phase;
 use {Error, ErrorKind, ObjectValue, Result};
@@ -673,7 +674,7 @@ impl CollectFragments {
         while force || self.futures.len() + self.fragments.len() < self.data_fragments {
             force = false;
 
-            let m = track!(self
+            let spare_member = track!(self
                            .spares
                            .pop()
                            .ok_or_else(|| {
@@ -686,8 +687,8 @@ impl CollectFragments {
                                Error::from(ErrorKind::Corrupted.cause(cause))
                            }))?;
 
-            let client = CannyLsClient::new(m.node.addr, self.rpc_service.clone());
-            let lump_id = m.make_lump_id(self.version);
+            let client = CannyLsClient::new(spare_member.node.addr, self.rpc_service.clone());
+            let lump_id = spare_member.make_lump_id(self.version);
             debug!(
                 self.logger,
                 "[CollectFragments({},{},{}/{})] candidate={:?}, lump_id={:?}",
@@ -695,15 +696,15 @@ impl CollectFragments {
                 self.futures.len(),
                 self.fragments.len(),
                 self.data_fragments,
-                m.node,
+                spare_member.node,
                 lump_id
             );
             let mut span = self.parent.child("collect_fragment", |span| {
                 span.tag(StdTag::component(module_path!()))
                     .tag(StdTag::span_kind("client"))
-                    .tag(StdTag::peer_ip(m.node.addr.ip()))
-                    .tag(StdTag::peer_port(m.node.addr.port()))
-                    .tag(Tag::new("device", m.device.clone()))
+                    .tag(StdTag::peer_ip(spare_member.node.addr.ip()))
+                    .tag(StdTag::peer_port(spare_member.node.addr.port()))
+                    .tag(Tag::new("device", spare_member.device.clone()))
                     .tag(Tag::new("lump", format!("{:?}", lump_id)))
                     .start()
             });
@@ -713,7 +714,7 @@ impl CollectFragments {
 
             let future = request
                 .deadline(self.deadline)
-                .get_lump(DeviceId::new(m.device), lump_id)
+                .get_lump(DeviceId::new(spare_member.device), lump_id)
                 .then(move |result| {
                     if let Err(ref e) = result {
                         span.log_error(e);
@@ -881,6 +882,31 @@ fn verify_and_remove_checksum(bytes: &mut Vec<u8>) -> Result<()> {
 
     bytes.truncate(split_pos);
     Ok(())
+}
+
+/// Counts how many members have objects backing the given version.
+/// The returned future will never fail.
+/// TODO: use never type for Error (on stabilization of https://github.com/rust-lang/rust/issues/35121)
+pub fn head_count_fragments(
+    cluster: ClusterConfig,
+    cannyls_config: CannyLsClientConfig,
+    rpc_service: RpcServiceHandle,
+    version: ObjectVersion,
+    deadline: Deadline,
+) -> impl Future<Item = usize, Error = ()> {
+    let members: Vec<_> = cluster.candidates(version).cloned().collect();
+
+    futures::future::join_all(members.into_iter().map(move |member| {
+        let lump_id = member.make_lump_id(version);
+        let client = CannyLsClient::new(member.node.addr, rpc_service.clone());
+        let mut request = client.request();
+        request.rpc_options(cannyls_config.rpc_options());
+        request
+            .deadline(deadline)
+            .head_lump(DeviceId::new(member.device), lump_id)
+            .then(|result| ok(if let Ok(Some(_)) = result { 1 } else { 0 }))
+    }))
+    .map(|results| results.into_iter().sum())
 }
 
 #[cfg(test)]
