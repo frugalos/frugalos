@@ -662,7 +662,7 @@ impl HandleRequest for FullSync {
 pub struct FullSyncAll(Server);
 impl HandleRequest for FullSyncAll {
     const METHOD: &'static str = "POST";
-    const PATH: &'static str = "/v1/local_node_ids/full_sync/all";
+    const PATH: &'static str = "/v1/full_sync/all";
 
     type ReqBody = ();
     type ResBody = HttpResult<Vec<u8>>;
