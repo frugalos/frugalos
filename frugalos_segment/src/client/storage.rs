@@ -27,7 +27,9 @@ use config::{
     CannyLsClientConfig, ClientConfig, ClusterConfig, ClusterMember, DispersedClientConfig,
     DispersedConfig, Participants, ReplicatedClientConfig, ReplicatedConfig,
 };
-use metrics::{DispersedClientMetrics, PutAllMetrics, ReplicatedClientMetrics};
+use metrics::{
+    CollectFragmentsMetrics, DispersedClientMetrics, PutAllMetrics, ReplicatedClientMetrics,
+};
 use util::Phase;
 use {Error, ErrorKind, ObjectValue, Result};
 
@@ -405,6 +407,7 @@ impl DispersedClient {
         let dummy: BoxFuture<_> = Box::new(futures::finished(None));
         let future = CollectFragments {
             logger: self.logger.clone(),
+            metrics: self.metrics.collect_fragments,
             futures: vec![dummy],
             fragments: Vec::new(),
             data_fragments: self.data_fragments,
@@ -446,6 +449,7 @@ impl DispersedClient {
         });
         let future = CollectFragments {
             logger: self.logger.clone(),
+            metrics: self.metrics.collect_fragments.clone(),
             futures: vec![dummy],
             fragments: Vec::new(),
             data_fragments: self.data_fragments,
@@ -642,6 +646,7 @@ impl Future for DispersedGet {
 
 pub struct CollectFragments {
     logger: Logger,
+    metrics: CollectFragmentsMetrics,
     futures: Vec<BoxFuture<Option<Vec<u8>>>>,
     fragments: Vec<Vec<u8>>,
     data_fragments: usize,
@@ -736,6 +741,7 @@ impl Future for CollectFragments {
                 match track!(self.futures[i].poll()) {
                     Err(e) => {
                         self.futures.swap_remove(i);
+                        self.metrics.failures_total.increment();
                         debug!(self.logger, "[CollectFragments] Error: {}", e);
                         track!(self.fill_shortage_from_spare(false), "Last error: {}", e)?;
                     }
@@ -748,12 +754,14 @@ impl Future for CollectFragments {
                             if let Err(e) = track!(verify_and_remove_checksum(&mut fragment)) {
                                 // TODO: Add protection for log overflow
                                 warn!(self.logger, "[CollectFragments] Corrupted fragment: {}", e);
+                                self.metrics.corrupted_total.increment();
                                 track!(self.fill_shortage_from_spare(false))?;
                             } else {
                                 self.fragments.push(fragment);
                             }
                         } else {
                             debug!(self.logger, "[CollectFragments] NotFound");
+                            self.metrics.corrupted_total.increment();
                             track!(self.fill_shortage_from_spare(false))?;
                         }
                     }
@@ -770,6 +778,7 @@ impl Future for CollectFragments {
                     self.next_timeout_duration
                 );
                 self.timeout = None;
+                self.metrics.timeout_total.increment();
                 if !self.spares.is_empty() {
                     if let Err(e) = track!(self.fill_shortage_from_spare(true)) {
                         warn!(self.logger, "{}", e);
