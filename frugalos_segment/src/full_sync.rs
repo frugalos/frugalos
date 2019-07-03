@@ -4,7 +4,7 @@ use cannyls::lump::LumpId;
 use fibers_tasque::{DefaultCpuTaskQueue, TaskQueueExt};
 use frugalos_mds::machine::Machine;
 use frugalos_raft::NodeId;
-use futures::future::{loop_fn, ok};
+use futures::future::{join_all, loop_fn, ok, Either};
 use futures::future::{Future, Loop};
 use futures::Poll;
 use libfrugalos::entity::object::ObjectVersion;
@@ -83,6 +83,7 @@ impl Future for FullSync {
     }
 }
 
+/// Iteratively lists and deletes unnecessary objects that are stored in storage but not in machine.
 #[allow(clippy::too_many_arguments)]
 pub(self) fn make_list_and_delete_content(
     logger: &Logger,
@@ -106,6 +107,11 @@ pub(self) fn make_list_and_delete_content(
     loop_fn(
         (ObjectVersion(0), object_table),
         move |(current_version, object_table)| {
+            if current_version >= object_version_limit {
+                // We're done. Stop processing.
+                full_sync_remaining.set(0.0);
+                return Either::A(ok(Loop::Break(())));
+            }
             full_sync_remaining.set((object_version_limit.0 - current_version.0) as f64);
             let full_sync_deleted_objects = full_sync_deleted_objects.clone();
             let start_lump_id = config::make_lump_id(&node_id, current_version);
@@ -115,45 +121,27 @@ pub(self) fn make_list_and_delete_content(
             );
             let end_lump_id = config::make_lump_id(&node_id, end_object_version);
             let device_cloned = device.clone();
-            device
+            let future = device
                 .request()
                 .deadline(Deadline::Infinity)
                 .list_range(start_lump_id..end_lump_id)
                 .and_then(move |lump_ids| {
                     let deleted_objects =
                         FullSync::compute_deleted_versions(lump_ids, &object_table);
-                    loop_fn(deleted_objects, move |mut objects| {
-                        let full_sync_deleted_objects = full_sync_deleted_objects.clone();
-                        if let Some(object) = objects.pop() {
-                            let lump_id = config::make_lump_id(&node_id, object);
-                            Box::new(
-                                device_cloned
-                                    .request()
-                                    .deadline(Deadline::Infinity)
-                                    .delete(lump_id)
-                                    .map(move |_result| {
-                                        full_sync_deleted_objects.increment();
-                                        Loop::Continue(objects)
-                                    })
-                                    .map_err(From::from),
-                            )
-                                as Box<dyn Future<Item = Loop<_, _>, Error = _> + Send>
-                        } else {
-                            Box::new(ok(Loop::Break(())))
-                                as Box<dyn Future<Item = Loop<_, _>, Error = _> + Send>
-                        }
-                    })
-                    .map(move |()| object_table)
+                    let delete_future = make_delete_objects(
+                        deleted_objects,
+                        device_cloned,
+                        node_id,
+                        full_sync_deleted_objects,
+                    );
+                    delete_future.map(move |()| object_table)
                 })
-                .and_then(move |object_table| {
+                .map(move |object_table| {
                     let next = ObjectVersion(current_version.0 + step);
-                    if next >= object_version_limit {
-                        Ok(Loop::Break(()))
-                    } else {
-                        Ok(Loop::Continue((next, object_table)))
-                    }
+                    Loop::Continue((next, object_table))
                 })
-                .map_err(From::from)
+                .map_err(From::from);
+            Either::B(future)
         },
     )
 }
@@ -174,6 +162,35 @@ fn get_object_table(logger: &Logger, machine: &Machine) -> ObjectTable {
     let objects_count = versions.len();
     debug!(logger, "FullSync machine_objects_count = {}", objects_count);
     ObjectTable(versions)
+}
+
+/// Creates a future that deletes all given objects.
+fn make_delete_objects(
+    deleted_objects: Vec<ObjectVersion>,
+    device: DeviceHandle,
+    node_id: NodeId,
+    full_sync_deleted_objects: Counter,
+) -> impl Future<Item = (), Error = cannyls::Error> {
+    let full_sync_deleted_objects = full_sync_deleted_objects.clone();
+    let futures: Vec<_> = deleted_objects
+        .into_iter()
+        .map(|object| {
+            let full_sync_deleted_objects = full_sync_deleted_objects.clone();
+            let lump_id = config::make_lump_id(&node_id, object);
+            device
+                .request()
+                .deadline(Deadline::Infinity)
+                .delete(lump_id)
+                .then(move |result| {
+                    if let Ok(true) = result {
+                        full_sync_deleted_objects.increment();
+                    }
+                    // Ignores all errors that occur in deletion
+                    ok(())
+                })
+        })
+        .collect();
+    join_all(futures).map(|_| ())
 }
 
 /// A type representing a set of objects.
