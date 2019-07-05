@@ -331,26 +331,17 @@ struct DeleteContent {
 }
 impl DeleteContent {
     pub fn new(synchronizer: &Synchronizer, versions: Vec<ObjectVersion>) -> Self {
-        Self::new_with_arguments(
-            &synchronizer.logger,
-            synchronizer.node_id,
-            &synchronizer.device,
-            versions,
-        )
-    }
-    pub fn new_with_arguments(
-        logger: &Logger,
-        node_id: NodeId,
-        device: &DeviceHandle,
-        versions: Vec<ObjectVersion>,
-    ) -> Self {
-        debug!(logger, "Starts deleting contents: versions={:?}", versions);
+        debug!(
+            synchronizer.logger,
+            "Starts deleting contents: versions={:?}", versions
+        );
 
         let futures = versions
             .into_iter()
             .map(move |v| {
-                let lump_id = config::make_lump_id(&node_id, v);
-                let future = device
+                let lump_id = config::make_lump_id(&synchronizer.node_id, v);
+                let future = synchronizer
+                    .device
                     .request()
                     .deadline(Deadline::Infinity)
                     .delete(lump_id);
