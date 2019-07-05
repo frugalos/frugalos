@@ -130,9 +130,9 @@ pub(self) fn make_list_and_delete_content(
                         FullSync::compute_deleted_versions(lump_ids, &object_table);
                     let delete_future = make_delete_objects(
                         deleted_objects,
-                        device_cloned,
+                        &device_cloned,
                         node_id,
-                        full_sync_deleted_objects,
+                        &full_sync_deleted_objects,
                     );
                     delete_future.map(move |()| object_table)
                 })
@@ -167,9 +167,9 @@ fn get_object_table(logger: &Logger, machine: &Machine) -> ObjectTable {
 /// Creates a future that deletes all given objects.
 fn make_delete_objects(
     deleted_objects: Vec<ObjectVersion>,
-    device: DeviceHandle,
+    device: &DeviceHandle,
     node_id: NodeId,
-    full_sync_deleted_objects: Counter,
+    full_sync_deleted_objects: &Counter,
 ) -> impl Future<Item = (), Error = cannyls::Error> {
     let full_sync_deleted_objects = full_sync_deleted_objects.clone();
     let futures: Vec<_> = deleted_objects
@@ -200,8 +200,7 @@ pub(self) struct ObjectTable(Vec<ObjectVersion>);
 
 impl ObjectTable {
     fn has_object(&self, object_version: ObjectVersion) -> bool {
-        let ObjectTable(ref table) = &self;
-        table.binary_search(&object_version).is_ok()
+        self.0.binary_search(&object_version).is_ok()
     }
 }
 
