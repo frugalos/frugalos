@@ -87,6 +87,8 @@ impl<'a> SegmentsBuilder<'a> {
         Ok(segments)
     }
 
+    /// Recursively descends the tree of devices and assigns suitable devices.
+    /// Note that assigned devices form a chain from the root device to a leaf device.
     fn allocate_segment_slot(&mut self, key: SlotKey, device: &Device) -> Result<DeviceNo> {
         self.segment_owners
             .entry(key.segment_no)
@@ -123,6 +125,7 @@ impl<'a> SegmentsBuilder<'a> {
             Ok(device.seqno())
         }
     }
+    /// Returns whether at least one slot of segment_no is already owned by device_no.
     fn is_same_device_group(&self, segment_no: SegmentNo, device_no: DeviceNo) -> bool {
         self.segment_owners
             .get(&segment_no)
@@ -253,7 +256,7 @@ impl<'a> SegmentsBuilder<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct SlotKey {
     bucket_no: BucketNo,
-    segment_no: u16,
+    segment_no: SegmentNo,
     member_no: u8,
 }
 
@@ -267,7 +270,7 @@ struct DeviceState<'a> {
     // 割当済みのスロット数
     allocated: usize,
 
-    // 割当スロット数の期待値
+    // 割当スロット数の期待値。あくまでも参考値なので、allocated <= capacity は必ずしも成立するとは限らない。
     // FIXME: `capacity`という用語は不適切なので変更する
     capacity: usize,
 
