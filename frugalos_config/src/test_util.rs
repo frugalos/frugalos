@@ -31,24 +31,25 @@ fn build_device_tree_dfs<'a>(
             seqno: current_seqno,
             weight: Weight::Auto,
             server: "dummy".to_string(),
-            capacity: 1 << 30,
+            capacity: 1 << 30, // 1 GiB
         };
         Device::Memory(memory_device)
     } else {
         // step: creates a virtual device that manages children
         let current_arity = numbers_of_children[0];
-        let mut virtual_device = VirtualDevice {
-            id: device_id.clone(),
-            seqno: current_seqno,
-            weight: Weight::Auto,
-            children: BTreeSet::new(),
-            policy: policy.clone(),
-        };
+        let mut children = BTreeSet::new();
         for _ in 0..current_arity {
             let child_id =
                 build_device_tree_dfs(&numbers_of_children[1..], policy.clone(), map, seqno);
-            virtual_device.children.insert(child_id);
+            children.insert(child_id);
         }
+        let virtual_device = VirtualDevice {
+            id: device_id.clone(),
+            seqno: current_seqno,
+            weight: Weight::Auto,
+            children,
+            policy,
+        };
         Device::Virtual(virtual_device)
     };
     map.insert(device_id.clone(), device);
