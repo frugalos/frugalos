@@ -6,15 +6,18 @@ use std::collections::{BTreeMap, BTreeSet};
 /// Creates a tree of devices, with a given sequence of arities.
 pub(crate) fn build_device_tree(
     numbers_of_children: &[u32],
+    policy: SegmentAllocationPolicy,
 ) -> (BTreeMap<DeviceId, Device>, DeviceId) {
     let mut result = BTreeMap::new();
     let mut seqno = 0;
-    let root_device_id = build_device_tree_dfs(numbers_of_children, &mut result, &mut seqno);
+    let root_device_id =
+        build_device_tree_dfs(numbers_of_children, policy, &mut result, &mut seqno);
     (result, root_device_id)
 }
 
 fn build_device_tree_dfs<'a>(
     numbers_of_children: &[u32],
+    policy: SegmentAllocationPolicy,
     map: &'a mut BTreeMap<DeviceId, Device>,
     seqno: &mut u32,
 ) -> DeviceId {
@@ -39,10 +42,11 @@ fn build_device_tree_dfs<'a>(
             seqno: current_seqno,
             weight: Weight::Auto,
             children: BTreeSet::new(),
-            policy: SegmentAllocationPolicy::default(),
+            policy: policy.clone(),
         };
         for _ in 0..current_arity {
-            let child_id = build_device_tree_dfs(&numbers_of_children[1..], map, seqno);
+            let child_id =
+                build_device_tree_dfs(&numbers_of_children[1..], policy.clone(), map, seqno);
             virtual_device.children.insert(child_id);
         }
         Device::Virtual(virtual_device)
@@ -52,14 +56,17 @@ fn build_device_tree_dfs<'a>(
 }
 
 mod tests {
-    use libfrugalos::entity::device::Device;
+    use libfrugalos::entity::device::{Device, SegmentAllocationPolicy};
     use test_util::build_device_tree;
 
     #[test]
     fn build_device_tree_creates_correct_number_of_devices() {
         // Create a virtual device which has 3 children, each of which has 8 memory devices.
         let numbers_of_children = [3, 8];
-        let (devices, root_id) = build_device_tree(&numbers_of_children);
+        let (devices, root_id) = build_device_tree(
+            &numbers_of_children,
+            SegmentAllocationPolicy::ScatterIfPossible,
+        );
         // (1 + 3) virtual devices and 3 * 8 memory devices
         assert_eq!(devices.len(), 1 + 3 + 3 * 8);
 

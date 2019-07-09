@@ -118,6 +118,7 @@ impl<'a> SegmentsBuilder<'a> {
                     }
                 }
                 SegmentAllocationPolicy::Gather => self.select_gather_slot(key, d),
+                SegmentAllocationPolicy::AsEvenAsPossible => unimplemented!(),
             };
             let child = self.get_device(child_no);
             track!(self.allocate_segment_slot(key, child))
@@ -277,4 +278,84 @@ struct DeviceState<'a> {
     ring: HashRing,
 
     device: &'a Device,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Result;
+    use builder::SegmentTableBuilder;
+    use libfrugalos::entity::bucket::{Bucket, DispersedBucket};
+    use libfrugalos::entity::device::{Device, DeviceId, SegmentAllocationPolicy};
+    use std::collections::HashMap;
+    use test_util::build_device_tree;
+
+    fn get_bucket_8_4(segment_count: u32, root_device_id: DeviceId) -> Bucket {
+        Bucket::Dispersed(DispersedBucket {
+            id: "bucket_id".to_string(),
+            seqno: 42,
+            device: root_device_id.clone(),
+            segment_count,
+            tolerable_faults: 4,
+            data_fragment_count: 8,
+        })
+    }
+
+    #[test]
+    fn segment_table_builder_works() -> Result<()> {
+        let (devices, root_device_id) =
+            build_device_tree(&[3, 8], SegmentAllocationPolicy::ScatterIfPossible);
+        let builder = SegmentTableBuilder::new(&devices);
+        let bucket = get_bucket_8_4(2, root_device_id);
+        let segment_table = builder.build(&bucket)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn segment_table_builder_evenly_distributes_segments() -> Result<()> {
+        let (devices, root_device_id) =
+            build_device_tree(&[3, 8], SegmentAllocationPolicy::AsEvenAsPossible);
+        let builder = SegmentTableBuilder::new(&devices);
+        let bucket = get_bucket_8_4(50, root_device_id.clone());
+        let segment_table = builder.build(&bucket)?;
+
+        let mut seqno_to_intermediate_device = HashMap::new();
+        let root_device = &devices[&root_device_id];
+        assert!(root_device.is_virtual());
+        let virtual_device = match root_device {
+            Device::Virtual(x) => x,
+            _ => unreachable!(),
+        };
+        let intermediate_devices = &virtual_device.children;
+        for intermediate_device in intermediate_devices {
+            let device = &devices[intermediate_device];
+            assert!(device.is_virtual());
+            let virtual_device = match device {
+                Device::Virtual(x) => x,
+                _ => unreachable!(),
+            };
+            for child in &virtual_device.children {
+                let seqno = devices[child].seqno();
+                seqno_to_intermediate_device.insert(seqno, device.seqno());
+            }
+        }
+
+        // Assert that for each segment there are exactly 4 (= 12 / 3) slots in each intermediate device.
+        for segment in &segment_table.segments {
+            assert_eq!(segment.groups.len(), 1);
+            let members = segment.groups[0].members.clone();
+            let mut frequency = HashMap::new();
+            for seqno in members {
+                let intermediate_seqno = seqno_to_intermediate_device[&seqno];
+                *frequency.entry(intermediate_seqno).or_insert(0) += 1;
+            }
+            eprintln!("{:?}", frequency);
+            for (_, value) in frequency {
+                //assert_eq!(value, 4);
+            }
+        }
+
+        panic!();
+        Ok(())
+    }
 }
