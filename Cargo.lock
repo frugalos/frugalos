@@ -188,12 +188,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "ecpool"
 version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+source = "git+https://github.com/frugalos/ecpool?branch=tmp/liberasurecode-from-1.5.0-to-1.6.1#c121c118c0b5c60bbfc5f26123a6d80e9eb0e7f9"
 dependencies = [
  "fibers 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_tasque 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "liberasurecode 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "liberasurecode 1.0.2 (git+https://github.com/frugalos/liberasurecode?branch=feature/upgrade-liberasurecode-to-1.6.1)",
  "trackable 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -404,7 +404,7 @@ dependencies = [
  "byteorder 1.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "cannyls 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cannyls_rpc 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "ecpool 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ecpool 1.0.2 (git+https://github.com/frugalos/ecpool?branch=tmp/liberasurecode-from-1.5.0-to-1.6.1)",
  "fibers 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_global 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_rpc 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -570,7 +570,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "liberasurecode"
 version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+source = "git+https://github.com/frugalos/liberasurecode?branch=feature/upgrade-liberasurecode-to-1.6.1#116f713b4c5e825e5af4c215726b91c896c96865"
 dependencies = [
  "libc 0.2.43 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -1321,7 +1321,7 @@ dependencies = [
 "checksum crc 1.8.1 (registry+https://github.com/rust-lang/crates.io-index)" = "d663548de7f5cca343f1e0a48d14dcfb0e9eb4e079ec58883b7251539fa10aeb"
 "checksum crossbeam 0.2.12 (registry+https://github.com/rust-lang/crates.io-index)" = "bd66663db5a988098a89599d4857919b3acf7f61402e61365acfd3919857b9be"
 "checksum dtoa 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "6d301140eb411af13d3115f9a562c85cc6b541ade9dfa314132244aaee7489dd"
-"checksum ecpool 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "c8b26a3d6098ac6bf3952357c8dbe386705408069942b35f6c9da5dac5233849"
+"checksum ecpool 1.0.2 (git+https://github.com/frugalos/ecpool?branch=tmp/liberasurecode-from-1.5.0-to-1.6.1)" = "<none>"
 "checksum factory 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "12035ccde1cff7c507200fd9e7ad0dbceda81d3cf6f68a265974a213d24acfde"
 "checksum fibers 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)" = "743ec3662c26777382f2ed1184fb917055dbf89dd1f5a8b13727618f0e516228"
 "checksum fibers_global 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "342af6a6f5bcb2fbd6a08178d7e1816af40ec94d38071eb8abd1ab60b0d44d2b"
@@ -1347,7 +1347,7 @@ dependencies = [
 "checksum lazy_static 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ca488b89a5657b0a2ecd45b95609b3e848cf1755da332a0da46e2b2b1cb371a7"
 "checksum lazycell 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ddba4c30a78328befecec92fc94970e53b3ae385827d28620f0f5bb2493081e0"
 "checksum libc 0.2.43 (registry+https://github.com/rust-lang/crates.io-index)" = "76e3a3ef172f1a0b9a9ff0dd1491ae5e6c948b94479a3021819ba7d860c8645d"
-"checksum liberasurecode 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "0f9a33156ba336ec0b10cd982e7d0d7f07069e17ff3d00690475538d01054b64"
+"checksum liberasurecode 1.0.2 (git+https://github.com/frugalos/liberasurecode?branch=feature/upgrade-liberasurecode-to-1.6.1)" = "<none>"
 "checksum libflate 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)" = "21138fc6669f438ed7ae3559d5789a5f0ba32f28c1f0608d1e452b0bb06ee936"
 "checksum libfrugalos 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "aad54f3f4acd5e584b1425f0d6e442d088d44a73505c565bb6c556dbb8567cf2"
 "checksum linked-hash-map 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "70fb39025bc7cdd76305867c4eccf2f2dcf6e9a57f5b21a93e1c2d86cd03ec9e"
