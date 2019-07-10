@@ -31,7 +31,7 @@ use metrics::{DispersedClientMetrics, PutAllMetrics, ReplicatedClientMetrics};
 use util::Phase;
 use {Error, ErrorKind, ObjectValue, Result};
 
-type BoxFuture<T> = Box<Future<Item = T, Error = Error> + Send + 'static>;
+type BoxFuture<T> = Box<dyn Future<Item = T, Error = Error> + Send + 'static>;
 
 #[derive(Clone)]
 pub enum StorageClient {
