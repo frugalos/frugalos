@@ -333,15 +333,17 @@ pub struct Request<F, V> {
     parent: SpanHandle,
     peer: Option<NodeId>,
     timeout: RequestTimeout,
-    future:
-        Option<Box<Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>>,
+    future: Option<
+        Box<dyn Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>,
+    >,
 }
 impl<F, V> Request<F, V>
 where
     V: Send + 'static,
     F: Fn(
         RaftMdsClient,
-    ) -> Box<Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>,
+    )
+        -> Box<dyn Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>,
 {
     pub fn new(client: MdsClient, parent: SpanHandle, kind: RequestKind, request: F) -> Self {
         let max_retry = client.max_retry();
@@ -393,7 +395,8 @@ impl<F, V> Future for Request<F, V>
 where
     F: Fn(
         RaftMdsClient,
-    ) -> Box<Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>,
+    )
+        -> Box<dyn Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>,
     V: Send + 'static,
 {
     type Item = V;

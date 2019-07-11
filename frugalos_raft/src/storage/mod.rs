@@ -318,7 +318,7 @@ pub(crate) enum Event {
     LogSuffixLoaded(LogSuffix),
 }
 
-type BoxFuture<T> = Box<Future<Item = T, Error = Error> + Send + 'static>;
+type BoxFuture<T> = Box<dyn Future<Item = T, Error = Error> + Send + 'static>;
 
 fn into_box_future<F>(future: F) -> BoxFuture<F::Item>
 where
