@@ -12,6 +12,7 @@ use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_core::tracer::SpanExt;
 use frugalos_raft::NodeId;
 use futures::future;
+use futures::future::join_all;
 use futures::{self, Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
 use rustracing::tag::{StdTag, Tag};
@@ -27,8 +28,9 @@ use config::{
     CannyLsClientConfig, ClientConfig, ClusterConfig, ClusterMember, DispersedClientConfig,
     DispersedConfig, Participants, ReplicatedClientConfig, ReplicatedConfig,
 };
+use futures::future::ok;
 use metrics::{DispersedClientMetrics, PutAllMetrics, ReplicatedClientMetrics};
-use util::Phase;
+use util::{Phase, Phase3};
 use {Error, ErrorKind, ObjectValue, Result};
 
 type BoxFuture<T> = Box<Future<Item = T, Error = Error> + Send + 'static>;
@@ -401,26 +403,25 @@ impl DispersedClient {
             spares
         );
 
-        // rand::thread_rng().shuffle(&mut spares);
-        let dummy: BoxFuture<_> = Box::new(futures::finished(None));
-        let future = CollectFragments {
-            logger: self.logger.clone(),
-            futures: vec![dummy],
-            fragments: Vec::new(),
-            data_fragments: self.data_fragments,
-            spares,
+        let future = CountFragments::new(
+            &self.logger,
             version,
-            deadline: Deadline::Infinity,
-            cannyls_config: self.client_config.cannyls.clone(),
-            rpc_service: self.rpc_service,
-            parent: Span::inactive().handle(), // TODO
-            timeout: None,
-            next_timeout_duration: self.client_config.get_timeout,
-        };
+            &spares,
+            Span::inactive().handle(),
+            self.client_config.clone(),
+            self.rpc_service.clone(),
+            self.data_fragments,
+        );
         GetDispersedFragment {
-            phase: Phase::A(future),
+            phase: Phase3::A(future),
             ec: self.ec.clone(),
             missing_index,
+            logger: self.logger,
+            client_config: self.client_config,
+            rpc_service: self.rpc_service,
+            version,
+            data_fragments: self.data_fragments,
+            deadline: Deadline::Infinity,
         }
     }
     pub fn get(
@@ -640,6 +641,74 @@ impl Future for DispersedGet {
     }
 }
 
+pub struct CountFragments {
+    future: BoxFuture<Vec<ClusterMember>>,
+}
+
+impl CountFragments {
+    fn new(
+        _logger: &Logger,
+        version: ObjectVersion,
+        members: &[ClusterMember],
+        parent: SpanHandle,
+        client_config: DispersedClientConfig,
+        rpc_service: RpcServiceHandle,
+        _data_fragments: usize,
+    ) -> Self {
+        let span = parent.child("count_fragments", |span| {
+            span.tag(StdTag::component(module_path!()))
+                .tag(Tag::new("object.version", version.0 as i64))
+                .start()
+        });
+
+        let cannyls_config = client_config.cannyls.clone();
+        let cloned_rpc_service = rpc_service.clone();
+        let futures: Vec<_> = members
+            .iter()
+            .map(|member| {
+                let client = CannyLsClient::new(member.node.addr, cloned_rpc_service.clone());
+                let mut request = client.request();
+                request.rpc_options(cannyls_config.rpc_options());
+                let mut span = span.handle().child("count_fragments", |span| {
+                    span.tag(StdTag::component(module_path!()))
+                        .tag(Tag::new("object.version", version.0 as i64))
+                        .start()
+                });
+
+                let lump_id = member.make_lump_id(version);
+                let member = member.clone();
+                request
+                    .deadline(Deadline::Infinity)
+                    .head_lump(DeviceId::new(member.device.clone()), lump_id)
+                    .then(move |result| {
+                        let returned = match result {
+                            Ok(result) => result.map(move |_header| member),
+                            Err(ref e) => {
+                                span.log_error(e);
+                                None
+                            }
+                        };
+                        // This future never fails: just records the error and returns normally.
+                        ok(returned)
+                    })
+            })
+            .collect();
+        let future = join_all(futures)
+            .map(|maybe_members| maybe_members.into_iter().filter_map(|x| x).collect());
+        CountFragments {
+            future: Box::new(future),
+        }
+    }
+}
+
+impl Future for CountFragments {
+    type Item = Vec<ClusterMember>;
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        self.future.poll()
+    }
+}
+
 pub struct CollectFragments {
     logger: Logger,
     futures: Vec<BoxFuture<Option<Vec<u8>>>>,
@@ -830,7 +899,7 @@ impl Future for GetReplicatedFragment {
 /// a focusing node loses its data fragment.
 pub struct GetDispersedFragment {
     /// The processing order of futures
-    phase: Phase<CollectFragments, BoxFuture<Vec<u8>>>,
+    phase: Phase3<CountFragments, CollectFragments, BoxFuture<Vec<u8>>>,
 
     /// A thread pool of encoders(by erasure code)
     ec: ErasureCoderPool<LibErasureCoderBuilder>,
@@ -838,6 +907,14 @@ pub struct GetDispersedFragment {
     /// The index of a focusing node.
     /// None represents that there is no missing index.
     missing_index: Option<usize>,
+
+    logger: Logger,
+    client_config: DispersedClientConfig,
+    rpc_service: RpcServiceHandle,
+
+    version: ObjectVersion,
+    data_fragments: usize,
+    deadline: Deadline,
 }
 impl Future for GetDispersedFragment {
     type Item = MaybeFragment;
@@ -851,12 +928,38 @@ impl Future for GetDispersedFragment {
 
         while let Async::Ready(phase) = track!(self.phase.poll().map_err(Error::from))? {
             let next = match phase {
-                Phase::A(fragments) => {
+                Phase3::A(result) => {
+                    if result.len() < self.data_fragments {
+                        let cause = format!(
+                            "There are no enough fragments (Detail: result.len({}) < data_fragments({}))",
+                            result.len(),
+                            self.data_fragments
+                        );
+                        return Err(Error::from(ErrorKind::Corrupted.cause(cause)));
+                    }
+                    let dummy: BoxFuture<_> = Box::new(futures::finished(None));
+                    let future = CollectFragments {
+                        logger: self.logger.clone(),
+                        futures: vec![dummy],
+                        fragments: Vec::new(),
+                        data_fragments: self.data_fragments,
+                        spares: result,
+                        version: self.version,
+                        deadline: self.deadline,
+                        cannyls_config: self.client_config.cannyls.clone(),
+                        rpc_service: self.rpc_service.clone(),
+                        parent: Span::inactive().handle(), // TODO
+                        timeout: None,
+                        next_timeout_duration: self.client_config.get_timeout,
+                    };
+                    Phase3::B(future)
+                }
+                Phase3::B(fragments) => {
                     let future = self.ec.reconstruct(missing_index, fragments);
                     let future: BoxFuture<_> = Box::new(future.map_err(|e| track!(Error::from(e))));
-                    Phase::B(future)
+                    Phase3::C(future)
                 }
-                Phase::B(fragment) => return Ok(Async::Ready(MaybeFragment::Fragment(fragment))),
+                Phase3::C(fragment) => return Ok(Async::Ready(MaybeFragment::Fragment(fragment))),
             };
             self.phase = next;
         }
