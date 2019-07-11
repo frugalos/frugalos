@@ -194,7 +194,8 @@ impl<'a> SegmentsBuilder<'a> {
         let mut minimum_ratio = usize::max_value();
         let mut ratio_map = HashMap::new();
         let ring = self.get_ring(parent.seqno);
-        for item in ring.calc_candidates(&key) {
+        let candidates: Vec<_> = ring.calc_candidates(&key).collect();
+        for item in candidates.iter() {
             let device_no = *item.node;
             let device_state = &self.device_states[&device_no];
             let ratio = if device_state.capacity > 0 {
@@ -205,7 +206,8 @@ impl<'a> SegmentsBuilder<'a> {
             minimum_ratio = std::cmp::min(minimum_ratio, ratio);
             ratio_map.insert(device_no, ratio);
         }
-        ring.calc_candidates(&key)
+        candidates
+            .iter()
             .find(|item| {
                 let id = *item.node;
                 *ratio_map.get(&id).expect("never fails") == minimum_ratio
