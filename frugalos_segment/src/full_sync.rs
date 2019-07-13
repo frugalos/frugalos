@@ -15,7 +15,7 @@ use prometrics::metrics::{Counter, Gauge};
 use Error;
 
 pub(crate) struct FullSync {
-    future: Box<Future<Item = (), Error = Error> + Send + 'static>,
+    future: Box<dyn Future<Item = (), Error = Error> + Send + 'static>,
 }
 
 impl FullSync {
