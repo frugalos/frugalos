@@ -20,7 +20,7 @@ use trackable::error::ErrorKindExt;
 use bucket::Bucket;
 use {Error, ErrorKind};
 
-type BoxFuture<T> = Box<Future<Item = T, Error = Error> + Send + 'static>;
+type BoxFuture<T> = Box<dyn Future<Item = T, Error = Error> + Send + 'static>;
 
 #[derive(Clone)]
 pub struct FrugalosClient {

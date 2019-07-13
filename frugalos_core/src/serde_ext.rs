@@ -67,7 +67,7 @@ mod tests {
     }
 
     #[test]
-    fn serialize_and_deserialize_work() -> Result<(), Box<std::error::Error>> {
+    fn serialize_and_deserialize_work() -> Result<(), Box<dyn std::error::Error>> {
         let test: TestStruct = TestStruct {
             duration: Duration::from_millis(42),
             default_duration: default_duration(),
@@ -81,7 +81,7 @@ mod tests {
     }
 
     #[test]
-    fn default_and_deserialize_work() -> Result<(), Box<std::error::Error>> {
+    fn default_and_deserialize_work() -> Result<(), Box<dyn std::error::Error>> {
         let yaml = r#"---
 duration: 24
 "#;

@@ -188,7 +188,7 @@ impl ServiceHandle {
     }
 }
 
-pub type CreateDeviceHandle = Box<Future<Item = DeviceHandle, Error = Error> + Send + 'static>;
+pub type CreateDeviceHandle = Box<dyn Future<Item = DeviceHandle, Error = Error> + Send + 'static>;
 
 pub enum Command {
     AddNode(NodeId, CreateDeviceHandle, StorageClient, ClusterMembers),

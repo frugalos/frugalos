@@ -22,7 +22,7 @@ use Error;
 const MAX_TIMEOUT_SECONDS: u64 = 60;
 const DELETE_CONCURRENCY: usize = 16;
 
-type BoxFuture<T> = Box<Future<Item = T, Error = Error> + Send + 'static>;
+type BoxFuture<T> = Box<dyn Future<Item = T, Error = Error> + Send + 'static>;
 
 // TODO: 起動直後の確認は`device.list()`の結果を使った方が効率的
 pub struct Synchronizer {
