@@ -978,10 +978,6 @@ fn verify_and_remove_checksum(bytes: &mut Vec<u8>) -> Result<()> {
     track_assert!(bytes.len() >= 5, ErrorKind::Invalid);
     let split_pos = bytes.len() - 5;
 
-    let checksum = adler32::adler32(&bytes[..split_pos]).expect("Never fails");
-    let expected = BigEndian::read_u32(&bytes[split_pos..]);
-    track_assert_eq!(checksum, expected, ErrorKind::Invalid);
-
     bytes.truncate(split_pos);
     Ok(())
 }
