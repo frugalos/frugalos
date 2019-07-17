@@ -408,6 +408,7 @@ dependencies = [
  "fibers 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_global 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_rpc 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
+ "fibers_tasque 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "frugalos_core 0.1.1",
  "frugalos_mds 0.7.0",
  "frugalos_raft 0.7.0",

@@ -103,3 +103,9 @@ impl From<prometrics::Error> for Error {
         ErrorKind::Other.takes_over(f).into()
     }
 }
+
+impl From<fibers_tasque::AsyncCallError> for Error {
+    fn from(f: fibers_tasque::AsyncCallError) -> Self {
+        ErrorKind::Other.cause(f).into()
+    }
+}
