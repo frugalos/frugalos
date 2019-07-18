@@ -9,12 +9,11 @@ use std::env;
 use std::ops::Range;
 use std::time::Instant;
 
-use super::super::{into_box_future, BoxFuture, Event, Handle, Storage};
+use super::super::{into_box_future, BoxFuture, Event, Handle, Storage, StorageMetrics};
 use super::delete::{DeleteOldLogEntries, DeleteOldLogPrefixBytes};
 use super::load::LoadLogPrefixIndex;
 use protobuf;
 use util::Phase5;
-use StorageMetrics;
 
 fn max_lump_data_size() -> usize {
     env::var("RAFT_IO_MAX_LUMP_DATA_SIZE")

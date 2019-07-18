@@ -27,6 +27,7 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use config_server::ConfigServer;
+use recovery::prepare_recovery;
 use rpc_server::RpcServer;
 use server::{spawn_report_spans_thread, Server};
 use service;
@@ -52,6 +53,8 @@ impl FrugalosDaemon {
             slog::Duplicate::new(logger.clone(), track!(LogMetrics::new())?).fuse(),
             o!(),
         );
+
+        let recovery_request = track!(prepare_recovery(&logger, &data_dir))?;
 
         let server = track!(frugalos_config::cluster::load_local_server_info(&data_dir))?;
 
@@ -99,6 +102,7 @@ impl FrugalosDaemon {
             rpc_service.handle(),
             config.mds,
             config.segment,
+            recovery_request,
             tracer.clone(),
         ))?;
 

@@ -38,7 +38,7 @@ impl Future for LoadLogPrefix {
     type Item = Option<LogPrefix>;
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        while let Async::Ready(phase) = self.phase.poll()? {
+        while let Async::Ready(phase) = track!(self.phase.poll())? {
             let next = match phase {
                 Phase::A(None) => {
                     info!(

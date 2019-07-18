@@ -60,6 +60,7 @@ mod codec;
 mod config_server;
 mod error;
 mod http;
+mod recovery;
 mod rpc_server;
 mod server;
 mod service;

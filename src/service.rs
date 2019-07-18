@@ -25,12 +25,13 @@ use libfrugalos::entity::device::{
 use libfrugalos::entity::server::{Server, ServerId};
 use prometrics::metrics::MetricBuilder;
 use slog::Logger;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use trackable::error::ErrorKindExt;
 
 use bucket::Bucket;
 use client::FrugalosClient;
+use recovery::RecoveryRequest;
 use {Error, ErrorKind, Result};
 
 pub struct PhysicalDevice {
@@ -59,6 +60,11 @@ pub struct Service<S> {
     servers: HashMap<ServerId, Server>,
 
     segment_config: FrugalosSegmentConfig,
+
+    // 起動済みのノード一覧
+    spawned_nodes: HashSet<NodeId>,
+
+    recovery_request: Option<RecoveryRequest>,
 }
 impl<S> Service<S>
 where
@@ -75,6 +81,7 @@ where
         rpc_service: RpcServiceHandle,
         mds_config: frugalos_mds::FrugalosMdsConfig,
         segment_config: FrugalosSegmentConfig,
+        recovery_request: Option<RecoveryRequest>,
         tracer: ThreadLocalTracer,
     ) -> Result<Self> {
         let frugalos_segment_service = track!(SegmentService::new(
@@ -99,6 +106,8 @@ where
             buckets: Arc::new(AtomicImmut::new(HashMap::new())),
             bucket_no_to_id: HashMap::new(),
             servers: HashMap::new(),
+            spawned_nodes: HashSet::new(),
+            recovery_request,
             segment_config,
         })
     }
@@ -222,7 +231,17 @@ where
                         continue;
                     };
 
-                // TODO: 既に起動済みではないものだけを起動する
+                if self.spawned_nodes.contains(node) {
+                    info!(
+                        self.logger,
+                        "The node has been spawned already: {}",
+                        dump!(bucket_no, segment_no, device_no, device_id, node)
+                    );
+                    continue;
+                }
+
+                self.spawned_nodes.insert(node.clone());
+
                 info!(
                     self.logger,
                     "Add a node: {}",
@@ -238,6 +257,7 @@ where
                     ),
                     segment.clone(),
                     members.iter().map(NodeId::to_raft_node_id).collect(),
+                    self.recovery_request.is_some(),
                 ))?;
             }
         } else {

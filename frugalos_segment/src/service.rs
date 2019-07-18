@@ -101,10 +101,12 @@ where
 
     fn handle_command(&mut self, command: Command) {
         match command {
-            Command::AddNode(node_id, device, client, cluster) => {
+            Command::AddNode(node_id, device, client, cluster, config) => {
                 // TODO: error handling
                 let logger = self.logger.clone();
                 let logger0 = logger.clone();
+                let logger1 = logger.clone();
+                let local_id = node_id.local_id;
                 let spawner = self.spawner.clone();
                 let rpc_service = self.rpc_service.clone();
                 let raft_service = self.raft_service.clone();
@@ -112,6 +114,24 @@ where
                 let mds_service = self.mds_service.handle();
                 let future = device
                     .map_err(|e| track!(e))
+                    .and_then(move |device| {
+                        // raft のログが不正な状態になった場合に強制削除するための対応
+                        // https://github.com/frugalos/frugalos/issues/157
+                        // https://github.com/frugalos/raftlog/issues/18
+                        let logger = logger1.new(o!("node" => local_id.to_string()));
+                        let future = if config.discard_former_log {
+                            let storage = frugalos_raft::Storage::new(
+                                logger,
+                                local_id,
+                                device.clone(),
+                                frugalos_raft::StorageMetrics::new(),
+                            );
+                            frugalos_raft::ClearLog::new(storage)
+                        } else {
+                            frugalos_raft::ClearLog::skip()
+                        };
+                        future.map(|_| device).map_err(|e| track!(Error::from(e)))
+                    })
                     .and_then(move |device| {
                         track!(SegmentNode::new(
                             &logger0,
@@ -178,8 +198,13 @@ impl ServiceHandle {
         device: CreateDeviceHandle,
         client: Client,
         cluster: ClusterMembers,
+        // NOTE: "前回の状態"は raft だけに限らないので raft を意識しない
+        discard_former_state: bool,
     ) -> Result<()> {
-        let command = Command::AddNode(node_id, device, client.storage, cluster);
+        let raft_config = RaftConfig {
+            discard_former_log: discard_former_state,
+        };
+        let command = Command::AddNode(node_id, device, client.storage, cluster, raft_config);
         track!(self
             .command_tx
             .send(command,)
@@ -190,8 +215,20 @@ impl ServiceHandle {
 
 pub type CreateDeviceHandle = Box<dyn Future<Item = DeviceHandle, Error = Error> + Send + 'static>;
 
-pub enum Command {
-    AddNode(NodeId, CreateDeviceHandle, StorageClient, ClusterMembers),
+/// Raft に関連する設定。
+struct RaftConfig {
+    /// true ならノード追加前に保存されていた Raft のログを破棄する。
+    discard_former_log: bool,
+}
+
+enum Command {
+    AddNode(
+        NodeId,
+        CreateDeviceHandle,
+        StorageClient,
+        ClusterMembers,
+        RaftConfig,
+    ),
 }
 
 struct SegmentNode {
