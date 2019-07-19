@@ -1,4 +1,4 @@
-FROM debian
+FROM ringo/scientific:7.2
 
 ENV FRUGALOS_DATA_DIR /var/lib/frugalos/
 ENV RUST_BACKTRACE 1
