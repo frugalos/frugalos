@@ -47,6 +47,9 @@ pub struct Synchronizer {
     full_sync_remaining: Gauge,
     full_sync: Option<FullSync>,
     full_sync_step: u64,
+    // The idleness threshold for repair functionality.
+    // Set it to a negative integer if you don't want repairing at all.
+    repair_idleness_threshold: i64,
 }
 impl Synchronizer {
     pub fn new(
@@ -129,6 +132,7 @@ impl Synchronizer {
                 .expect("metric should be well-formed"),
             full_sync: None,
             full_sync_step,
+            repair_idleness_threshold: -1, // No repairing happens
         }
     }
     pub fn handle_event(&mut self, event: &Event) {
@@ -226,6 +230,15 @@ impl Synchronizer {
             }
             Some(item)
         }
+    }
+    pub(crate) fn set_repair_idleness_threshold(&mut self, repair_idleness_threshold: i64) {
+        if self.repair_idleness_threshold != repair_idleness_threshold {
+            info!(
+                self.logger,
+                "repair_idleness_threshold set to {}", repair_idleness_threshold,
+            );
+        }
+        self.repair_idleness_threshold = repair_idleness_threshold;
     }
 }
 impl Future for Synchronizer {

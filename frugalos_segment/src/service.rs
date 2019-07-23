@@ -326,6 +326,8 @@ impl SegmentNode {
         })
     }
     fn run_once(&mut self) -> Result<bool> {
+        self.synchronizer
+            .set_repair_idleness_threshold(self.node.repair_idleness_threshold);
         while let Async::Ready(event) = track!(self.node.poll())? {
             if let Some(event) = event {
                 self.synchronizer.handle_event(&event);
