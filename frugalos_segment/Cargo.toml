@@ -24,7 +24,7 @@ frugalos_core = { version = "0.1", path = "../frugalos_core/" }
 frugalos_mds = { version = "0.8", path = "../frugalos_mds/" }
 frugalos_raft = { version = "0.8", path = "../frugalos_raft/" }
 futures = "0.1"
-libfrugalos = "0.3"
+libfrugalos = { git = "https://github.com/frugalos/libfrugalos", branch = "feature/koba/set-repair-idleness-threshold-rpc" }
 prometrics = "0.1"
 rand = "0.5"
 raftlog = "0.5"

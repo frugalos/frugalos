@@ -408,3 +408,33 @@ pub fn take_snapshot(logger: &Logger, rpc_addr: SocketAddr) -> Result<()> {
     info!(logger, "The frugalos server has taken snapshot");
     Ok(())
 }
+
+/// 指定されたアドレスを使用しているfrugalosプロセスでrepair_idleness_thresholdを変更する。
+pub fn set_repair_idleness_threshold(
+    logger: &Logger,
+    rpc_addr: SocketAddr,
+    repair_idleness_threshold: i64,
+) -> Result<()> {
+    info!(logger, "Starts setting repair_idleness_threshold");
+
+    let mut executor = track!(ThreadPoolExecutor::with_thread_count(1).map_err(Error::from))?;
+    let rpc_service = RpcServiceBuilder::new()
+        .logger(logger.clone())
+        .finish(executor.handle());
+    let rpc_service_handle = rpc_service.handle();
+    executor.spawn(rpc_service.map_err(|e| panic!("{}", e)));
+
+    let client = libfrugalos::client::frugalos::Client::new(rpc_addr, rpc_service_handle);
+    let fiber =
+        executor.spawn_monitor(client.set_repair_idleness_threshold(repair_idleness_threshold));
+    track!(executor
+        .run_fiber(fiber)
+        .unwrap()
+        .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected"))))?;
+
+    info!(
+        logger,
+        "The frugalos server has set repair_idleness_threshold"
+    );
+    Ok(())
+}

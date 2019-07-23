@@ -18,6 +18,7 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use client::storage::StorageClient;
+use rpc_server::RpcServer;
 use synchronizer::Synchronizer;
 use {Client, Error, ErrorKind, Result};
 
@@ -50,10 +51,10 @@ where
     ) -> Result<Self> {
         let mds_service = track!(RaftMdsService::new(logger.clone(), rpc, tracer))?;
         let device_registry = DeviceRegistry::new(logger.clone());
+        let (command_tx, command_rx) = mpsc::channel();
         CannyLsRpcServer::new(device_registry.handle()).register(rpc);
 
-        let (command_tx, command_rx) = mpsc::channel();
-        Ok(Service {
+        let service = Service {
             logger,
             rpc_service,
             spawner,
@@ -64,7 +65,11 @@ where
             command_rx,
             mds_alive: true,
             mds_config,
-        })
+        };
+
+        RpcServer::register(service.handle(), rpc);
+
+        Ok(service)
     }
 
     /// サービスを操作するためのハンドルを返す。
@@ -87,6 +92,12 @@ where
     /// Raftのスナップショット取得要求を発行する。
     pub fn take_snapshot(&mut self) {
         self.mds_service.take_snapshot();
+    }
+
+    /// repair_idleness_threshold の変更要求を発行する。
+    pub fn set_repair_idleness_threshold(&mut self, repair_idleness_threshold: i64) {
+        self.mds_service
+            .set_repair_idleness_threshold(repair_idleness_threshold);
     }
 
     /// デバイスレジストリへの破壊的な参照を返す。
@@ -150,6 +161,9 @@ where
                     .and_then(|node| node);
                 self.spawner.spawn(future);
             }
+            Command::SetRepairIdlenessThreshold(repair_idleness_threshold) => {
+                self.set_repair_idleness_threshold(repair_idleness_threshold);
+            }
         }
     }
 }
@@ -211,6 +225,11 @@ impl ServiceHandle {
             .map_err(|_| ErrorKind::Other.error(),))?;
         Ok(())
     }
+    /// repair_idleness_threshold の変更要求を発行する。
+    pub fn set_repair_idleness_threshold(&self, repair_idleness_threshold: i64) {
+        let command = Command::SetRepairIdlenessThreshold(repair_idleness_threshold);
+        let _ = self.command_tx.send(command);
+    }
 }
 
 pub type CreateDeviceHandle = Box<dyn Future<Item = DeviceHandle, Error = Error> + Send + 'static>;
@@ -221,6 +240,7 @@ struct RaftConfig {
     discard_former_log: bool,
 }
 
+#[allow(clippy::large_enum_variant)]
 enum Command {
     AddNode(
         NodeId,
@@ -229,6 +249,7 @@ enum Command {
         ClusterMembers,
         RaftConfig,
     ),
+    SetRepairIdlenessThreshold(i64),
 }
 
 struct SegmentNode {

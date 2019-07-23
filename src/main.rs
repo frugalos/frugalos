@@ -116,6 +116,21 @@ fn main() {
                     .default_value(&rpc_server_bind_addr),
             ),
         )
+        .subcommand(
+            SubCommand::with_name("set-repair-idleness-threshold")
+                .arg(
+                    Arg::with_name("RPC_ADDR")
+                        .long("rpc-addr")
+                        .takes_value(true)
+                        .default_value(&rpc_server_bind_addr),
+                )
+                .arg(
+                    Arg::with_name("REPAIR_IDLENESS_THRESHOLD")
+                        .long("repair-idleness-threshold")
+                        .takes_value(true)
+                        .default_value("-1"),
+                ),
+        )
         .arg(
             Arg::with_name("LOGLEVEL")
                 .short("l")
@@ -312,6 +327,33 @@ fn main() {
         let rpc_addr = rpc_addrs.nth(0).expect("No available TCP address");
         let logger = logger.new(o!("rpc_addr" => rpc_addr.to_string()));
         track_try_unwrap!(frugalos::daemon::take_snapshot(&logger, rpc_addr));
+
+        // NOTE: ログ出力(非同期)用に少し待機
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        debug!(logger, "config: {:?}", config);
+    } else if let Some(matches) = matches.subcommand_matches("set-repair-idleness-threshold") {
+        // Set repair_idleness_threshold
+        let mut logger = track_try_unwrap!(logger_builder.build());
+        warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
+        let mut rpc_addrs = track_try_unwrap!(track_any_err!(matches
+            .value_of("RPC_ADDR")
+            .unwrap()
+            .to_socket_addrs()));
+        let repair_idleness_threshold = track_try_unwrap!(matches
+            .value_of("REPAIR_IDLENESS_THRESHOLD")
+            .expect("REPAIR_IDLENESS_THRESHOLD must be provided")
+            .parse()
+            .map_err(|_| Error::from(
+                ErrorKind::InvalidInput.cause("repair-idleness-threshold must be an integer"),
+            )));
+        let rpc_addr = rpc_addrs.nth(0).expect("No available TCP address");
+        let logger = logger.new(o!("rpc_addr" => rpc_addr.to_string(),
+        "repair_idleness_threshold" => repair_idleness_threshold));
+        track_try_unwrap!(frugalos::daemon::set_repair_idleness_threshold(
+            &logger,
+            rpc_addr,
+            repair_idleness_threshold
+        ));
 
         // NOTE: ログ出力(非同期)用に少し待機
         std::thread::sleep(std::time::Duration::from_millis(100));

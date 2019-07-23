@@ -33,7 +33,7 @@ jemallocator = "0.1.8"
 jemalloc-ctl = "0.2"
 hostname = "0.1"
 httpcodec = "0.2"
-libfrugalos = "0.3"
+libfrugalos = { git = "https://github.com/frugalos/libfrugalos", branch = "feature/koba/set-repair-idleness-threshold-rpc" }
 num_cpus = "1"
 prometrics = "0.1"
 raftlog = "0.5"
