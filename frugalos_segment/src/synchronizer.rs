@@ -32,14 +32,15 @@ pub struct Synchronizer {
     client: StorageClient,
     task: Task,
     todo: BinaryHeap<Reverse<TodoItem>>,
+    todo_repair: BinaryHeap<Reverse<TodoItem>>, // To-do queue for repair
     repair_candidates: BTreeSet<ObjectVersion>,
-    repair_enabled: bool,
     enqueued_repair: Counter,
     enqueued_delete: Counter,
     dequeued_repair: Counter,
     dequeued_delete: Counter,
     repairs_success_total: Counter,
     repairs_failure_total: Counter,
+    repairs_unnecessary_total: Counter,
     repairs_durations_seconds: Histogram,
     full_sync_count: Counter,
     full_sync_deleted_objects: Counter,
@@ -50,6 +51,7 @@ pub struct Synchronizer {
     // The idleness threshold for repair functionality.
     // Set it to a negative integer if you don't want repairing at all.
     repair_idleness_threshold: i64,
+    last_not_idle: Instant,
 }
 impl Synchronizer {
     pub fn new(
@@ -57,7 +59,6 @@ impl Synchronizer {
         node_id: NodeId,
         device: DeviceHandle,
         client: StorageClient,
-        repair_enabled: bool,
         full_sync_step: u64,
     ) -> Self {
         let metric_builder = MetricBuilder::new()
@@ -72,8 +73,8 @@ impl Synchronizer {
             client,
             task: Task::Idle,
             todo: BinaryHeap::new(),
+            todo_repair: BinaryHeap::new(),
             repair_candidates: BTreeSet::new(),
-            repair_enabled,
             enqueued_repair: metric_builder
                 .counter("enqueued_items")
                 .label("type", "repair")
@@ -101,6 +102,11 @@ impl Synchronizer {
                 .expect("metric should be well-formed"),
             repairs_failure_total: metric_builder
                 .counter("repairs_failure_total")
+                .label("type", "repair")
+                .finish()
+                .expect("metric should be well-formed"),
+            repairs_unnecessary_total: metric_builder
+                .counter("repairs_unnecessary_total")
                 .label("type", "repair")
                 .finish()
                 .expect("metric should be well-formed"),
@@ -133,6 +139,7 @@ impl Synchronizer {
             full_sync: None,
             full_sync_step,
             repair_idleness_threshold: -1, // No repairing happens
+            last_not_idle: Instant::now(),
         }
     }
     pub fn handle_event(&mut self, event: &Event) {
@@ -147,9 +154,7 @@ impl Synchronizer {
             match *event {
                 Event::Putted { version, .. } => {
                     self.enqueued_repair.increment();
-                    if self.repair_enabled {
-                        self.repair_candidates.insert(version);
-                    }
+                    self.repair_candidates.insert(version);
                 }
                 Event::Deleted { version } => {
                     self.repair_candidates.remove(&version);
@@ -170,7 +175,7 @@ impl Synchronizer {
                     next_commit,
                 } => {
                     // If FullSync is not being processed now, this event lets the synchronizer to handle one.
-                    if self.full_sync.is_none() && self.repair_enabled {
+                    if self.full_sync.is_none() && self.is_repair_enabled() {
                         self.full_sync = Some(FullSync::new(
                             &self.logger,
                             self.node_id,
@@ -186,6 +191,8 @@ impl Synchronizer {
                 }
             }
             if let Event::FullSync { .. } = &event {
+            } else if let Event::Putted { .. } = &event {
+                self.todo_repair.push(Reverse(TodoItem::new(&event)));
             } else {
                 self.todo.push(Reverse(TodoItem::new(&event)));
             }
@@ -193,7 +200,17 @@ impl Synchronizer {
     }
     fn next_todo_item(&mut self) -> Option<TodoItem> {
         let item = loop {
-            if let Some(item) = self.todo.pop() {
+            // Repair has priority higher than deletion. If repair is enabled, todo_repair should be examined first.
+            let maybe_item = if self.is_repair_enabled() {
+                if let Some(item) = self.todo_repair.pop() {
+                    Some(item)
+                } else {
+                    self.todo.pop()
+                }
+            } else {
+                self.todo.pop()
+            };
+            if let Some(item) = maybe_item {
                 if let TodoItem::RepairContent { version, .. } = item.0 {
                     if !self.repair_candidates.contains(&version) {
                         // 既に削除済み
@@ -211,7 +228,7 @@ impl Synchronizer {
 
             let duration = cmp::min(duration, Duration::from_secs(MAX_TIMEOUT_SECONDS));
             self.task = Task::Wait(timer::timeout(duration));
-            self.todo.push(Reverse(item));
+            self.todo_repair.push(Reverse(item));
 
             // NOTE:
             // 同期処理が少し遅れても全体としては大きな影響はないので、
@@ -224,6 +241,11 @@ impl Synchronizer {
         } else {
             if self.todo.capacity() > 32 && self.todo.len() < self.todo.capacity() / 2 {
                 self.todo.shrink_to_fit();
+            }
+            if self.todo_repair.capacity() > 32
+                && self.todo_repair.len() < self.todo_repair.capacity() / 2
+            {
+                self.todo_repair.shrink_to_fit();
             }
             if let TodoItem::RepairContent { version, .. } = item {
                 self.repair_candidates.remove(&version);
@@ -240,6 +262,9 @@ impl Synchronizer {
         }
         self.repair_idleness_threshold = repair_idleness_threshold;
     }
+    fn is_repair_enabled(&self) -> bool {
+        self.repair_idleness_threshold >= 0
+    }
 }
 impl Future for Synchronizer {
     type Item = ();
@@ -254,6 +279,11 @@ impl Future for Synchronizer {
             self.full_sync_remaining.set(0.0);
         }
 
+        if !self.task.is_sleeping() {
+            self.last_not_idle = Instant::now();
+            debug!(self.logger, "last_not_idle = {:?}", self.last_not_idle);
+        }
+
         while let Async::Ready(()) = self.task.poll().unwrap_or_else(|e| {
             // 同期処理のエラーは致命的ではないので、ログを出すだけに留める
             warn!(self.logger, "Task failure: {}", e);
@@ -265,10 +295,22 @@ impl Future for Synchronizer {
                     TodoItem::DeleteContent { versions } => {
                         self.dequeued_delete.increment();
                         self.task = Task::Delete(DeleteContent::new(self, versions));
+                        self.last_not_idle = Instant::now();
                     }
                     TodoItem::RepairContent { version, .. } => {
-                        self.dequeued_repair.increment();
-                        self.task = Task::Repair(RepairContent::new(self, version));
+                        if self.is_repair_enabled() {
+                            let elapsed = self.last_not_idle.elapsed();
+                            if elapsed < Duration::from_secs(self.repair_idleness_threshold as u64)
+                            {
+                                self.repair_candidates.insert(version);
+                                self.todo_repair.push(Reverse(item));
+                                break;
+                            } else {
+                                self.dequeued_repair.increment();
+                                self.task = Task::Repair(RepairContent::new(self, version));
+                                self.last_not_idle = Instant::now();
+                            }
+                        }
                     }
                 }
             } else if let Task::Idle = self.task {
@@ -324,6 +366,15 @@ enum Task {
     Wait(Timeout),
     Delete(DeleteContent),
     Repair(RepairContent),
+}
+impl Task {
+    fn is_sleeping(&self) -> bool {
+        match self {
+            Task::Idle => true,
+            Task::Wait(_) => true,
+            _ => false,
+        }
+    }
 }
 impl Future for Task {
     type Item = ();
@@ -414,6 +465,7 @@ struct RepairContent {
     started_at: Instant,
     repairs_success_total: Counter,
     repairs_failure_total: Counter,
+    repairs_unnecessary_total: Counter,
     repairs_durations_seconds: Histogram,
     phase: Phase3<BoxFuture<Option<LumpHeader>>, GetFragment, BoxFuture<bool>>,
 }
@@ -426,6 +478,7 @@ impl RepairContent {
         let started_at = Instant::now();
         let repairs_success_total = synchronizer.repairs_success_total.clone();
         let repairs_failure_total = synchronizer.repairs_failure_total.clone();
+        let repairs_unnecessary_total = synchronizer.repairs_unnecessary_total.clone();
         let repairs_durations_seconds = synchronizer.repairs_durations_seconds.clone();
         debug!(
             logger,
@@ -443,6 +496,7 @@ impl RepairContent {
             started_at,
             repairs_success_total,
             repairs_failure_total,
+            repairs_unnecessary_total,
             repairs_durations_seconds,
             phase,
         }
@@ -459,7 +513,7 @@ impl Future for RepairContent {
             let next = match phase {
                 Phase3::A(Some(_)) => {
                     debug!(self.logger, "The object {:?} already exists", self.version);
-                    self.repairs_failure_total.increment();
+                    self.repairs_unnecessary_total.increment();
                     return Ok(Async::Ready(()));
                 }
                 Phase3::A(None) => {
