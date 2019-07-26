@@ -1,6 +1,6 @@
 [package]
 name = "frugalos_raft"
-version = "0.7.0"
+version = "0.8.0"
 authors = ["The FrugalOS Developers"]
 description = "An implementation of the `raftlog::Io` trait for `frugalos`"
 homepage = "https://github.com/frugalos/frugalos"
