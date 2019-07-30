@@ -1,11 +1,12 @@
 use atomic_immut::AtomicImmut;
-use fibers::sync::mpsc;
+use fibers::sync::{mpsc, oneshot};
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
 use frugalos_core::tracer::ThreadLocalTracer;
 use frugalos_raft::{LocalNodeId, NodeId};
 use futures::{Async, Future, Poll, Stream};
 use slog::Logger;
 use std::collections::HashMap;
+use std::mem;
 use std::sync::Arc;
 
 use node::NodeHandle;
@@ -26,6 +27,7 @@ pub struct Service {
     command_tx: mpsc::Sender<Command>,
     command_rx: mpsc::Receiver<Command>,
     do_stop: bool,
+    stopping: Option<futures::SelectAll<oneshot::Monitor<(), Error>>>,
 }
 impl Service {
     /// 新しい`Service`インスタンスを生成する.
@@ -42,6 +44,7 @@ impl Service {
             command_tx,
             command_rx,
             do_stop: false,
+            stopping: None,
         };
         Server::register(this.handle(), rpc, tracer);
         Ok(this)
@@ -58,12 +61,58 @@ impl Service {
     /// サービスを停止する.
     ///
     /// サービス停止前には、全てのローカルノードでスナップショットが取得される.
+    ///
+    /// # サービスの停止時に考慮すべきこと
+    ///
+    /// (a) すべてのノードが停止するまでに発生するノードの取得エラー(存在しない
+    /// ノードへの参照)を減らすこと.
+    ///
+    /// (b) 停止時のノードのスナップショット取得以降に `LogSuffix` を伸ばしすぎ
+    /// ないこと. 次回起動に時間がかかるようになってしまうため.
+    ///
+    /// # ノードを順次停止することの問題点
+    ///
+    /// 旧実装のようにスナップショットを取得し終えたノードから順次停止して
+    /// いくと存在しないノードに対するリクエストが発生しやすくなる.なぜなら、
+    /// MDS に RPC 呼び出しをするクライアント側は RPC サーバが停止するまでは
+    /// 停止済みのノードに対するリクエストを送り続けてくるからである.
+    ///
+    /// 特にここで問題となるのは、ノードがすべて停止するまでの間に発生する、
+    /// 停止済みのノードの取得失敗によるエラーであり、この状況ではクライアント
+    /// 側のリトライで状況が改善しないため実質的にリトライが意味をなさない.
+    ///
+    /// # 停止時のエラーを極力抑える新実装
+    ///
+    /// 上述の問題を避けるためにサービスの停止処理を以下の2段階に分ける.
+    ///
+    /// 1. スナップショットの取得
+    /// 2. 1 がすべてのノードで完了するまで待ち合わせてからノードを停止
+    ///
+    /// 1 で `Node` の状態が `Stopping` に変更され、スナップショットの取得
+    /// もされる.スナップショットの取得が完了した際にそれを `Service` に
+    /// `Monitored` 経由で通知する.
+    ///
+    /// すべてのノードがスナップショットを取得したら(あるいは、スキップ)、
+    /// `Request::Exit` を `Node` に送り `Node` の状態を `Stopped` に変更
+    /// する.
+    ///
+    /// この実装と Leader ノード以外もリクエストに応答できるようにする変更
+    /// を組み合わせることで停止時のエラーを減らすことが可能になっている.
+    ///
+    /// # 新実装のデメリット
+    ///
+    /// (b) について、スナップショットの取得に時間がかかる環境では `LogSuffix`
+    /// が伸びて、スナップショット取得の効果が薄れてしまうことは許容する.
     pub fn stop(&mut self) {
         self.do_stop = true;
+        let mut stopping = Vec::new();
         for (id, node) in self.nodes.load().iter() {
             info!(self.logger, "Sends stop request: {:?}", id);
-            node.stop();
+            let (monitored, monitor) = oneshot::monitor();
+            stopping.push(monitor);
+            node.stop(monitored);
         }
+        self.stopping = Some(futures::select_all(stopping));
     }
 
     /// スナップショットを取得する.
@@ -72,6 +121,13 @@ impl Service {
         for (id, node) in self.nodes.load().iter() {
             info!(self.logger, "Sends taking snapshot request: {:?}", id);
             node.take_snapshot();
+        }
+    }
+
+    fn exit(&mut self) {
+        for (id, node) in self.nodes.load().iter() {
+            info!(self.logger, "Sends exit request: {:?}", id);
+            node.exit();
         }
     }
 
@@ -107,6 +163,32 @@ impl Future for Service {
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         loop {
+            loop {
+                match mem::replace(&mut self.stopping, None) {
+                    None => break,
+                    Some(mut future) => {
+                        let remainings = match future.poll() {
+                            Err((e, _, remainings)) => {
+                                warn!(self.logger, "{:?}", e);
+                                remainings
+                            }
+                            Ok(Async::Ready(((), _, remainings))) => {
+                                info!(self.logger, "remaing: {}", remainings.len());
+                                remainings
+                            }
+                            Ok(Async::NotReady) => {
+                                self.stopping = Some(future);
+                                break;
+                            }
+                        };
+                        if remainings.is_empty() {
+                            self.exit();
+                            break;
+                        }
+                        self.stopping = Some(futures::select_all(remainings));
+                    }
+                }
+            }
             let polled = self.command_rx.poll().expect("Never fails");
             if let Async::Ready(command) = polled {
                 let command = command.expect("Unreachable");
