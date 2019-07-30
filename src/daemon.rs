@@ -233,7 +233,7 @@ impl Future for DaemonRunner {
             for reply in self.stop_notifications.drain(..) {
                 reply.exit(Ok(()));
             }
-            return Ok(Async::NotReady);
+            return Ok(Async::Ready(()));
         }
         while let Async::Ready(Some(command)) = self.command_rx.poll().expect("Never fails") {
             self.handle_command(command);
