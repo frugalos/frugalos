@@ -76,6 +76,14 @@ struct FrugalosConfigWrapper {
     config: FrugalosConfig,
 }
 
+/// ファイルに書き出した時のフォーマットを調整する。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct FrugalosConfigWrapperForUpdate {
+    #[serde(rename = "frugalos")]
+    #[serde(default)]
+    config: FrugalosConfigForUpdate,
+}
+
 /// frugalos の設定を表す struct。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FrugalosConfig {
@@ -108,13 +116,6 @@ pub struct FrugalosConfig {
     pub segment: frugalos_segment::FrugalosSegmentConfig,
 }
 
-/// frugalos の変更用の設定を表す struct。
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FrugalosConfigForUpdate {
-    /// segment の設定
-    #[serde(default)]
-    pub segment: Option<frugalos_segment::FrugalosSegmentConfigForUpdate>,
-}
 impl FrugalosConfig {
     /// Reads `FrugalosConfig` from a YAML file.
     ///
@@ -147,6 +148,32 @@ impl Default for FrugalosConfig {
             mds: Default::default(),
             segment: Default::default(),
         }
+    }
+}
+
+/// frugalos の変更用の設定を表す struct。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct FrugalosConfigForUpdate {
+    /// segment の設定
+    #[serde(default)]
+    pub segment: Option<frugalos_segment::FrugalosSegmentConfigForUpdate>,
+}
+
+impl FrugalosConfigForUpdate {
+    /// Reads `FrugalosConfig` from a YAML file.
+    ///
+    /// Return Value:
+    ///  * The obtained value of `FrugalosConfig`.
+    pub fn from_yaml<P: AsRef<Path>>(path: P) -> Result<FrugalosConfigForUpdate> {
+        let file = File::open(path).map_err(|e| track!(Error::from(e)))?;
+        let value: serde_yaml::Value =
+            serde_yaml::from_reader(file).map_err(|e| track!(Error::from(e)))?;
+
+        let mut unknowns = std::vec::Vec::new();
+        let wrapped: FrugalosConfigWrapperForUpdate =
+            serde_ignored::deserialize(value, |path| unknowns.push(path.to_string()))
+                .map_err(|e| track!(Error::from(e)))?;
+        Ok(wrapped.config)
     }
 }
 
