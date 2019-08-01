@@ -22,8 +22,8 @@ use std::string::ToString;
 use std::time::Duration;
 use trackable::error::{ErrorKindExt, Failure};
 
-use frugalos::FrugalosConfig;
 use frugalos::{Error, ErrorKind, Result};
+use frugalos::{FrugalosConfig, FrugalosConfigForUpdate};
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
@@ -108,6 +108,7 @@ fn main() {
                     .default_value(&rpc_server_bind_addr),
             ),
         )
+        .subcommand(SubCommand::with_name("test"))
         .subcommand(
             SubCommand::with_name("take-snapshot").arg(
                 Arg::with_name("RPC_ADDR")
@@ -316,6 +317,12 @@ fn main() {
         // NOTE: ログ出力(非同期)用に少し待機
         std::thread::sleep(std::time::Duration::from_millis(100));
         debug!(logger, "config: {:?}", config);
+    } else if let Some(_matches) = matches.subcommand_matches("test") {
+        // read from test.yml
+        let filename = "test.yml";
+        let config =
+            track_try_unwrap!(FrugalosConfigForUpdate::from_yaml(filename).map_err(|e| track!(e)));
+        eprintln!("config = {:?}", config);
     } else {
         println!("Usage: {}", matches.usage());
         std::process::exit(1);
