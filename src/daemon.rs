@@ -101,7 +101,7 @@ impl FrugalosDaemon {
             &mut rpc_server_builder,
             rpc_service.handle(),
             config.mds,
-            config.segment,
+            config.segment.unwrap_or_default(),
             recovery_request,
             tracer.clone(),
         ))?;

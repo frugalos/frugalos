@@ -105,7 +105,7 @@ pub struct FrugalosConfig {
     pub mds: frugalos_mds::FrugalosMdsConfig,
     /// frugalos_segment 向けの設定。
     #[serde(default)]
-    pub segment: frugalos_segment::FrugalosSegmentConfig,
+    pub segment: Option<frugalos_segment::FrugalosSegmentConfig>,
 }
 
 impl FrugalosConfig {

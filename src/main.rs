@@ -137,6 +137,10 @@ fn main() {
 
     let (mut config, unknown_fields): (FrugalosConfig, Vec<String>) =
         track_try_unwrap!(track_any_err!(get_frugalos_config(&matches)));
+    // Fill in default values
+    if config.segment.is_none() {
+       config.segment = Some(Default::default());
+    }
 
     // Logger
     config.loglevel = matches
@@ -276,7 +280,7 @@ fn main() {
         )));
         track_try_unwrap!(track_any_err!(set_segment_config(
             &matches,
-            &mut config.segment
+            config.segment.as_mut().unwrap()
         )));
         let daemon = track_try_unwrap!(frugalos::daemon::FrugalosDaemon::new(
             &logger,
