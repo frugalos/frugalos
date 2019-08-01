@@ -108,6 +108,13 @@ pub struct FrugalosConfig {
     pub segment: frugalos_segment::FrugalosSegmentConfig,
 }
 
+/// frugalos の変更用の設定を表す struct。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FrugalosConfigForUpdate {
+    /// segment の設定
+    #[serde(default)]
+    pub segment: Option<frugalos_segment::FrugalosSegmentConfigForUpdate>,
+}
 impl FrugalosConfig {
     /// Reads `FrugalosConfig` from a YAML file.
     ///

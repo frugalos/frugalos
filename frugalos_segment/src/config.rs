@@ -366,6 +366,15 @@ impl DispersedConfig {
     }
 }
 
+/// `frugalos_segment` のリペアの変更用の設定。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RepairConfigForUpdate {
+    /// どのくらい暇ならリペアを走らせるか
+    idleness_threshold: Option<i64>, // 新しい型を作るべき
+    /// 同時実行数
+    concurrency_limit: Option<u64>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

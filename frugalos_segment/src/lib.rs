@@ -84,3 +84,11 @@ impl Default for FrugalosSegmentConfig {
         }
     }
 }
+
+/// `frugalos_segment` の変更用の設定。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FrugalosSegmentConfigForUpdate {
+    /// リペアの設定
+    #[serde(default)]
+    pub repair_config: Option<config::RepairConfigForUpdate>,
+}
