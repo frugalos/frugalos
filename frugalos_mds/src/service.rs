@@ -75,17 +75,6 @@ impl Service {
         }
     }
 
-    /// Sets the repair_idleness_threshold parameter for all SegmentNode's in this server.
-    pub fn set_repair_idleness_threshold(&mut self, idleness_threshold: i64) {
-        for (id, node) in self.nodes.load().iter() {
-            info!(
-                self.logger,
-                "Setting repair's idleness threshold: {:?} {}", id, idleness_threshold
-            );
-            node.set_repair_idleness_threshold(idleness_threshold);
-        }
-    }
-
     fn handle_command(&mut self, command: Command) {
         match command {
             Command::AddNode(id, node) => {

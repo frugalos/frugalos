@@ -39,11 +39,6 @@ impl NodeHandle {
     pub fn start_reelection(&self) {
         let _ = self.request_tx.send(Request::StartElection);
     }
-    pub fn set_repair_idleness_threshold(&self, idleness_threshold: i64) {
-        let _ = self
-            .request_tx
-            .send(Request::SetRepairIdlenessThreshold(idleness_threshold));
-    }
     pub fn get_leader(
         &self,
         started_at: Instant,

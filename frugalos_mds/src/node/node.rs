@@ -203,9 +203,6 @@ pub struct Node {
     reelection_threshold: ReElectionThreshold,
     commit_timeout: Option<usize>,
     commit_timeout_threshold: usize,
-
-    /// A field for repair functionality
-    pub repair_idleness_threshold: i64,
 }
 impl Node {
     /// 新しい`Node`インスタンスを生成する.
@@ -294,7 +291,6 @@ impl Node {
             commit_timeout: None,
             commit_timeout_threshold: config.commit_timeout_threshold,
             rpc_service,
-            repair_idleness_threshold: -1,
         })
     }
 
@@ -310,8 +306,7 @@ impl Node {
             Request::GetLeader(_, _)
             | Request::Stop
             | Request::TakeSnapshot
-            | Request::StartElection
-            | Request::SetRepairIdlenessThreshold(_) => {}
+            | Request::StartElection => {}
             _ => {
                 if let Err(e) = self.check_leader() {
                     request.failed(e);
@@ -498,9 +493,6 @@ impl Node {
                 if let Err(e) = track!(self.take_snapshot()) {
                     error!(self.logger, "Cannot take snapshot: {}", e);
                 }
-            }
-            Request::SetRepairIdlenessThreshold(idleness_threshold) => {
-                self.repair_idleness_threshold = idleness_threshold;
             }
         }
     }

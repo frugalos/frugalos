@@ -9,7 +9,7 @@ use frugalos_core::tracer::ThreadLocalTracer;
 use frugalos_mds::{
     FrugalosMdsConfig, Node, Service as RaftMdsService, ServiceHandle as MdsHandle,
 };
-use frugalos_raft::{self, NodeId};
+use frugalos_raft::{self, LocalNodeId, NodeId};
 use futures::{Async, Future, Poll, Stream};
 use raftlog::cluster::ClusterMembers;
 use slog::Logger;
@@ -19,6 +19,7 @@ use trackable::error::ErrorKindExt;
 
 use client::storage::StorageClient;
 use rpc_server::RpcServer;
+use std::collections::HashMap;
 use synchronizer::Synchronizer;
 use {Client, Error, ErrorKind, Result};
 
@@ -34,6 +35,8 @@ pub struct Service<S> {
     command_rx: mpsc::Receiver<Command>,
     mds_alive: bool,
     mds_config: FrugalosMdsConfig,
+    // Senders of `SegmentNode`s
+    segment_node_txs: HashMap<LocalNodeId, mpsc::Sender<SegmentNodeCommand>>,
 }
 impl<S> Service<S>
 where
@@ -65,6 +68,7 @@ where
             command_rx,
             mds_alive: true,
             mds_config,
+            segment_node_txs: HashMap::new(),
         };
 
         RpcServer::register(service.handle(), rpc);
@@ -96,8 +100,11 @@ where
 
     /// repair_idleness_threshold の変更要求を発行する。
     pub fn set_repair_idleness_threshold(&mut self, repair_idleness_threshold: i64) {
-        self.mds_service
-            .set_repair_idleness_threshold(repair_idleness_threshold);
+        // TODO
+        for (_, segment_node_tx) in self.segment_node_txs.iter() {
+            let command = SegmentNodeCommand::SetRepairIdlenessThreshold(repair_idleness_threshold);
+            let _ = segment_node_tx.send(command);
+        }
     }
 
     /// デバイスレジストリへの破壊的な参照を返す。
@@ -123,6 +130,14 @@ where
                 let raft_service = self.raft_service.clone();
                 let mds_config = self.mds_config.clone();
                 let mds_service = self.mds_service.handle();
+                // The sender (tx) and the receiver (rx) for SegmentNode.
+                // Rather than passing both tx and rx to SegmentNode's constructor
+                // and allow SegmentNode to make handles by cloning tx,
+                // we pass rx only and hold tx for use in SegmentService.
+                // That is because we need tx only in SegmentService.
+                let (segment_node_command_tx, segment_node_command_rx) = mpsc::channel();
+                self.segment_node_txs
+                    .insert(local_id, segment_node_command_tx);
                 let future = device
                     .map_err(|e| track!(e))
                     .and_then(move |device| {
@@ -155,6 +170,7 @@ where
                             device,
                             client,
                             cluster,
+                            segment_node_command_rx
                         ))
                     })
                     .map_err(move |e| crit!(logger, "Error: {}", e))
@@ -256,6 +272,7 @@ struct SegmentNode {
     logger: Logger,
     node: Node,
     synchronizer: Synchronizer,
+    segment_node_command_rx: mpsc::Receiver<SegmentNodeCommand>,
 }
 impl SegmentNode {
     #[allow(clippy::too_many_arguments)]
@@ -272,6 +289,7 @@ impl SegmentNode {
         device: DeviceHandle,
         client: StorageClient,
         cluster: ClusterMembers,
+        segment_node_command_rx: mpsc::Receiver<SegmentNodeCommand>,
     ) -> Result<Self>
     where
         S: Clone + Spawn + Send + 'static,
@@ -332,11 +350,15 @@ impl SegmentNode {
             logger,
             node,
             synchronizer,
+            segment_node_command_rx,
         })
     }
     fn run_once(&mut self) -> Result<bool> {
-        self.synchronizer
-            .set_repair_idleness_threshold(self.node.repair_idleness_threshold);
+        // Handle a command once at a time.
+        if let Async::Ready(command) = self.segment_node_command_rx.poll().expect("Never fails") {
+            let command = command.expect("Always Some");
+            self.handle_command(command);
+        }
         while let Async::Ready(event) = track!(self.node.poll())? {
             if let Some(event) = event {
                 self.synchronizer.handle_event(&event);
@@ -346,6 +368,14 @@ impl SegmentNode {
         }
         track!(self.synchronizer.poll())?;
         Ok(true)
+    }
+    fn handle_command(&mut self, command: SegmentNodeCommand) {
+        match command {
+            SegmentNodeCommand::SetRepairIdlenessThreshold(idleness_threshold) => {
+                self.synchronizer
+                    .set_repair_idleness_threshold(idleness_threshold);
+            }
+        }
     }
 }
 impl Future for SegmentNode {
@@ -364,4 +394,8 @@ impl Future for SegmentNode {
             Ok(true) => Ok(Async::NotReady),
         }
     }
+}
+
+enum SegmentNodeCommand {
+    SetRepairIdlenessThreshold(i64),
 }

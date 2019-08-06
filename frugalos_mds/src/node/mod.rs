@@ -199,7 +199,6 @@ enum Request {
     DeleteByPrefix(ObjectPrefix, Reply<DeleteObjectsByPrefixSummary>),
     Stop,
     TakeSnapshot,
-    SetRepairIdlenessThreshold(i64),
 }
 impl Request {
     pub fn failed(self, e: Error) {
@@ -215,10 +214,7 @@ impl Request {
             Request::DeleteByVersion(_, tx) => tx.exit(Err(track!(e))),
             Request::DeleteByRange(_, _, tx) => tx.exit(Err(track!(e))),
             Request::DeleteByPrefix(_, tx) => tx.exit(Err(track!(e))),
-            Request::Stop
-            | Request::TakeSnapshot
-            | Request::StartElection
-            | Request::SetRepairIdlenessThreshold(_) => {}
+            Request::Stop | Request::TakeSnapshot | Request::StartElection => {}
         }
     }
 }
