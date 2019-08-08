@@ -20,7 +20,7 @@ fibers_rpc = "0.2"
 fibers_tasque = "0.1"
 frugalos_raft = { version = "0.8", path = "../frugalos_raft/" }
 futures = "0.1"
-libfrugalos = { git = "https://github.com/frugalos/libfrugalos", branch = "feature/koba/add-set-segment-settings-rpc" }
+libfrugalos = "0.3.1"
 prometrics = "0.1"
 protobuf_codec = "0.2"
 raftlog = "0.5"
