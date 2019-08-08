@@ -27,6 +27,7 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use config_server::ConfigServer;
+use libfrugalos::repair::{RepairConfig, RepairIdleness};
 use recovery::prepare_recovery;
 use rpc_server::RpcServer;
 use server::{spawn_report_spans_thread, Server};
@@ -425,8 +426,17 @@ pub fn set_repair_idleness_threshold(
     executor.spawn(rpc_service.map_err(|e| panic!("{}", e)));
 
     let client = libfrugalos::client::frugalos::Client::new(rpc_addr, rpc_service_handle);
-    let fiber =
-        executor.spawn_monitor(client.set_repair_idleness_threshold(repair_idleness_threshold));
+    // TODO: accept RepairConfig instead of a mere i64
+    let repair_config = RepairConfig {
+        repair_concurrency_limit: None,
+        repair_idleness_threshold: Some(if repair_idleness_threshold < 0 {
+            RepairIdleness::Disabled
+        } else {
+            RepairIdleness::Threshold(Duration::from_secs(repair_idleness_threshold as u64))
+        }),
+        segment_gc_concurrency_limit: None,
+    };
+    let fiber = executor.spawn_monitor(client.set_repair_config(repair_config));
     track!(executor
         .run_fiber(fiber)
         .unwrap()

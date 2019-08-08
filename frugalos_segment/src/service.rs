@@ -18,6 +18,7 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use client::storage::StorageClient;
+use libfrugalos::repair::{RepairConfig, RepairIdleness};
 use rpc_server::RpcServer;
 use std::collections::HashMap;
 use synchronizer::Synchronizer;
@@ -99,11 +100,15 @@ where
     }
 
     /// repair_idleness_threshold の変更要求を発行する。
-    pub fn set_repair_idleness_threshold(&mut self, repair_idleness_threshold: i64) {
-        // TODO
-        for (_, segment_node_tx) in self.segment_node_txs.iter() {
-            let command = SegmentNodeCommand::SetRepairIdlenessThreshold(repair_idleness_threshold);
-            let _ = segment_node_tx.send(command);
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn set_repair_config(&mut self, repair_config: RepairConfig) {
+        // TODO: handle RepairConfig's other two fields (repair_concurrency_limit, segment_gc_concurrency_limit)
+        if let Some(repair_idleness_threshold) = repair_config.repair_idleness_threshold {
+            for (_, segment_node_tx) in self.segment_node_txs.iter() {
+                let command =
+                    SegmentNodeCommand::SetRepairIdlenessThreshold(repair_idleness_threshold);
+                let _ = segment_node_tx.send(command);
+            }
         }
     }
 
@@ -177,8 +182,8 @@ where
                     .and_then(|node| node);
                 self.spawner.spawn(future);
             }
-            Command::SetRepairIdlenessThreshold(repair_idleness_threshold) => {
-                self.set_repair_idleness_threshold(repair_idleness_threshold);
+            Command::SetRepairConfig(repair_config) => {
+                self.set_repair_config(repair_config);
             }
         }
     }
@@ -241,9 +246,9 @@ impl ServiceHandle {
             .map_err(|_| ErrorKind::Other.error(),))?;
         Ok(())
     }
-    /// repair_idleness_threshold の変更要求を発行する。
-    pub fn set_repair_idleness_threshold(&self, repair_idleness_threshold: i64) {
-        let command = Command::SetRepairIdlenessThreshold(repair_idleness_threshold);
+    /// repair_config の変更要求を発行する。
+    pub fn set_repair_config(&self, repair_config: RepairConfig) {
+        let command = Command::SetRepairConfig(repair_config);
         let _ = self.command_tx.send(command);
     }
 }
@@ -265,7 +270,7 @@ enum Command {
         ClusterMembers,
         RaftConfig,
     ),
-    SetRepairIdlenessThreshold(i64),
+    SetRepairConfig(RepairConfig),
 }
 
 struct SegmentNode {
@@ -369,9 +374,16 @@ impl SegmentNode {
         track!(self.synchronizer.poll())?;
         Ok(true)
     }
+    #[allow(clippy::needless_pass_by_value)]
     fn handle_command(&mut self, command: SegmentNodeCommand) {
         match command {
             SegmentNodeCommand::SetRepairIdlenessThreshold(idleness_threshold) => {
+                // TODO: modify Synchronizer to accept RepairIdleness
+                // Until then, convert it to i64 and pass it to Synchronizer.
+                let idleness_threshold = match idleness_threshold {
+                    RepairIdleness::Threshold(duration) => duration.as_secs() as i64,
+                    RepairIdleness::Disabled => -1,
+                };
                 self.synchronizer
                     .set_repair_idleness_threshold(idleness_threshold);
             }
@@ -397,5 +409,5 @@ impl Future for SegmentNode {
 }
 
 enum SegmentNodeCommand {
-    SetRepairIdlenessThreshold(i64),
+    SetRepairIdlenessThreshold(RepairIdleness),
 }

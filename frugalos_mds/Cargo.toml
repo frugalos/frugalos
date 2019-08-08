@@ -22,7 +22,7 @@ fibers_tasque = "0.1"
 frugalos_core = { version = "0.1", path = "../frugalos_core" }
 frugalos_raft = { version = "0.8", path = "../frugalos_raft/" }
 futures = "0.1"
-libfrugalos = { git = "https://github.com/frugalos/libfrugalos", branch = "feature/koba/set-repair-idleness-threshold-rpc" }
+libfrugalos = { git = "https://github.com/frugalos/libfrugalos", branch = "feature/koba/add-set-segment-settings-rpc" }
 patricia_tree = { version = "0.1.8", features = ["binary-format"] }
 prometrics = "0.1"
 protobuf_codec = "0.2"
