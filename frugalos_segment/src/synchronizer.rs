@@ -16,6 +16,7 @@ use std::time::{Duration, Instant, SystemTime};
 use client::storage::{GetFragment, MaybeFragment, StorageClient};
 use config;
 use full_sync::FullSync;
+use libfrugalos::repair::RepairIdleness;
 use util::Phase3;
 use Error;
 
@@ -50,7 +51,7 @@ pub struct Synchronizer {
     full_sync_step: u64,
     // The idleness threshold for repair functionality.
     // Set it to a negative integer if you don't want repairing at all.
-    repair_idleness_threshold: i64,
+    repair_idleness_threshold: RepairIdleness,
     last_not_idle: Instant,
 }
 impl Synchronizer {
@@ -138,7 +139,7 @@ impl Synchronizer {
                 .expect("metric should be well-formed"),
             full_sync: None,
             full_sync_step,
-            repair_idleness_threshold: -1, // No repairing happens
+            repair_idleness_threshold: RepairIdleness::Disabled, // No repairing happens
             last_not_idle: Instant::now(),
         }
     }
@@ -253,17 +254,21 @@ impl Synchronizer {
             Some(item)
         }
     }
-    pub(crate) fn set_repair_idleness_threshold(&mut self, repair_idleness_threshold: i64) {
-        if self.repair_idleness_threshold != repair_idleness_threshold {
-            info!(
-                self.logger,
-                "repair_idleness_threshold set to {}", repair_idleness_threshold,
-            );
-        }
+    pub(crate) fn set_repair_idleness_threshold(
+        &mut self,
+        repair_idleness_threshold: RepairIdleness,
+    ) {
+        info!(
+            self.logger,
+            "repair_idleness_threshold set to {:?}", repair_idleness_threshold,
+        );
         self.repair_idleness_threshold = repair_idleness_threshold;
     }
     fn is_repair_enabled(&self) -> bool {
-        self.repair_idleness_threshold >= 0
+        match self.repair_idleness_threshold {
+            RepairIdleness::Threshold(_) => true,
+            RepairIdleness::Disabled => false,
+        }
     }
 }
 impl Future for Synchronizer {
@@ -298,10 +303,11 @@ impl Future for Synchronizer {
                         self.last_not_idle = Instant::now();
                     }
                     TodoItem::RepairContent { version, .. } => {
-                        if self.is_repair_enabled() {
+                        if let RepairIdleness::Threshold(repair_idleness_threshold_duration) =
+                            self.repair_idleness_threshold
+                        {
                             let elapsed = self.last_not_idle.elapsed();
-                            if elapsed < Duration::from_secs(self.repair_idleness_threshold as u64)
-                            {
+                            if elapsed < repair_idleness_threshold_duration {
                                 self.repair_candidates.insert(version);
                                 self.todo_repair.push(Reverse(item));
                                 break;

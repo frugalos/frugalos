@@ -378,12 +378,6 @@ impl SegmentNode {
     fn handle_command(&mut self, command: SegmentNodeCommand) {
         match command {
             SegmentNodeCommand::SetRepairIdlenessThreshold(idleness_threshold) => {
-                // TODO: modify Synchronizer to accept RepairIdleness
-                // Until then, convert it to i64 and pass it to Synchronizer.
-                let idleness_threshold = match idleness_threshold {
-                    RepairIdleness::Threshold(duration) => duration.as_secs() as i64,
-                    RepairIdleness::Disabled => -1,
-                };
                 self.synchronizer
                     .set_repair_idleness_threshold(idleness_threshold);
             }
