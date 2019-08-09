@@ -27,7 +27,7 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use config_server::ConfigServer;
-use libfrugalos::repair::{RepairConfig, RepairIdleness};
+use libfrugalos::repair::RepairConfig;
 use recovery::prepare_recovery;
 use rpc_server::RpcServer;
 use server::{spawn_report_spans_thread, Server};
@@ -410,11 +410,11 @@ pub fn take_snapshot(logger: &Logger, rpc_addr: SocketAddr) -> Result<()> {
     Ok(())
 }
 
-/// 指定されたアドレスを使用しているfrugalosプロセスでrepair_idleness_thresholdを変更する。
-pub fn set_repair_idleness_threshold(
+/// 指定されたアドレスを使用しているfrugalosプロセスでrepair_configを変更する。
+pub fn set_repair_config(
     logger: &Logger,
     rpc_addr: SocketAddr,
-    repair_idleness_threshold: i64,
+    repair_config: RepairConfig,
 ) -> Result<()> {
     info!(logger, "Starts setting repair_idleness_threshold");
 
@@ -426,16 +426,6 @@ pub fn set_repair_idleness_threshold(
     executor.spawn(rpc_service.map_err(|e| panic!("{}", e)));
 
     let client = libfrugalos::client::frugalos::Client::new(rpc_addr, rpc_service_handle);
-    // TODO: accept RepairConfig instead of a mere i64
-    let repair_config = RepairConfig {
-        repair_concurrency_limit: None,
-        repair_idleness_threshold: Some(if repair_idleness_threshold < 0 {
-            RepairIdleness::Disabled
-        } else {
-            RepairIdleness::Threshold(Duration::from_secs(repair_idleness_threshold as u64))
-        }),
-        segment_gc_concurrency_limit: None,
-    };
     let fiber = executor.spawn_monitor(client.set_repair_config(repair_config));
     track!(executor
         .run_fiber(fiber)

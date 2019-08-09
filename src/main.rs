@@ -24,6 +24,7 @@ use trackable::error::{ErrorKindExt, Failure};
 
 use frugalos::FrugalosConfig;
 use frugalos::{Error, ErrorKind, Result};
+use libfrugalos::repair::{RepairConfig, RepairIdleness};
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
@@ -117,7 +118,7 @@ fn main() {
             ),
         )
         .subcommand(
-            SubCommand::with_name("set-repair-idleness-threshold")
+            SubCommand::with_name("set-repair-config")
                 .arg(
                     Arg::with_name("RPC_ADDR")
                         .long("rpc-addr")
@@ -127,8 +128,7 @@ fn main() {
                 .arg(
                     Arg::with_name("REPAIR_IDLENESS_THRESHOLD")
                         .long("repair-idleness-threshold")
-                        .takes_value(true)
-                        .default_value("-1"),
+                        .takes_value(true),
                 ),
         )
         .arg(
@@ -331,7 +331,7 @@ fn main() {
         // NOTE: ログ出力(非同期)用に少し待機
         std::thread::sleep(std::time::Duration::from_millis(100));
         debug!(logger, "config: {:?}", config);
-    } else if let Some(matches) = matches.subcommand_matches("set-repair-idleness-threshold") {
+    } else if let Some(matches) = matches.subcommand_matches("set-repair-config") {
         // Set repair_idleness_threshold
         let mut logger = track_try_unwrap!(logger_builder.build());
         warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
@@ -339,25 +339,32 @@ fn main() {
             .value_of("RPC_ADDR")
             .unwrap()
             .to_socket_addrs()));
-        let repair_idleness_threshold = track_try_unwrap!(matches
-            .value_of("REPAIR_IDLENESS_THRESHOLD")
-            .expect("REPAIR_IDLENESS_THRESHOLD must be provided")
-            .parse()
-            .map_err(|_| Error::from(
-                ErrorKind::InvalidInput.cause("repair-idleness-threshold must be an integer"),
-            )));
+        let repair_idleness_threshold = matches.value_of("REPAIR_IDLENESS_THRESHOLD").map(|str| {
+            if str == "disabled" {
+                RepairIdleness::Disabled
+            } else {
+                let duration_secs: f64 = track_try_unwrap!(str.parse().map_err(|_| Error::from(
+                    ErrorKind::InvalidInput
+                        .cause("repair-idleness-threshold must be a float or \"disabled\"")
+                )));
+                // TODO check if duration_secs is non-negative
+                RepairIdleness::Threshold(Duration::from_millis((duration_secs * 1000.0) as u64))
+            }
+        });
+        // TODO: accept repair_concurrency_limit and segment_gc_concurrency_limit
+        let repair_config = RepairConfig {
+            repair_concurrency_limit: None,
+            repair_idleness_threshold,
+            segment_gc_concurrency_limit: None,
+        };
         let rpc_addr = rpc_addrs.nth(0).expect("No available TCP address");
         let logger = logger.new(o!("rpc_addr" => rpc_addr.to_string(),
-        "repair_idleness_threshold" => repair_idleness_threshold));
-        track_try_unwrap!(frugalos::daemon::set_repair_idleness_threshold(
+            "repair_config" => format!("{:?}", repair_config)));
+        track_try_unwrap!(frugalos::daemon::set_repair_config(
             &logger,
             rpc_addr,
-            repair_idleness_threshold
+            repair_config,
         ));
-
-        // NOTE: ログ出力(非同期)用に少し待機
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        debug!(logger, "config: {:?}", config);
     } else {
         println!("Usage: {}", matches.usage());
         std::process::exit(1);
