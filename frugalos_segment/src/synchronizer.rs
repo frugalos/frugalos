@@ -32,8 +32,9 @@ pub struct Synchronizer {
     device: DeviceHandle,
     client: StorageClient,
     task: Task,
-    todo: BinaryHeap<Reverse<TodoItem>>,
-    todo_repair: BinaryHeap<Reverse<TodoItem>>, // To-do queue for repair
+    // TODO: define specific types for two kinds of items and specialize the procedure for each todo queue
+    todo_delete: BinaryHeap<Reverse<TodoItem>>, // To-do queue for delete. Can hold `TodoItem::DeleteContent`s only.
+    todo_repair: BinaryHeap<Reverse<TodoItem>>, // To-do queue for repair. Can hold `TodoItem::RepairContent`s only.
     repair_candidates: BTreeSet<ObjectVersion>,
     enqueued_repair: Counter,
     enqueued_delete: Counter,
@@ -50,7 +51,6 @@ pub struct Synchronizer {
     full_sync: Option<FullSync>,
     full_sync_step: u64,
     // The idleness threshold for repair functionality.
-    // Set it to a negative integer if you don't want repairing at all.
     repair_idleness_threshold: RepairIdleness,
     last_not_idle: Instant,
 }
@@ -73,7 +73,7 @@ impl Synchronizer {
             device,
             client,
             task: Task::Idle,
-            todo: BinaryHeap::new(),
+            todo_delete: BinaryHeap::new(),
             todo_repair: BinaryHeap::new(),
             repair_candidates: BTreeSet::new(),
             enqueued_repair: metric_builder
@@ -149,7 +149,7 @@ impl Synchronizer {
             "New event: {:?} (metadata={}, todo.len={})",
             event,
             self.client.is_metadata(),
-            self.todo.len()
+            self.todo_delete.len()
         );
         if !self.client.is_metadata() {
             match *event {
@@ -159,7 +159,7 @@ impl Synchronizer {
                 }
                 Event::Deleted { version } => {
                     self.repair_candidates.remove(&version);
-                    if let Some(mut head) = self.todo.peek_mut() {
+                    if let Some(mut head) = self.todo_delete.peek_mut() {
                         if let TodoItem::DeleteContent { ref mut versions } = head.0 {
                             if versions.len() < DELETE_CONCURRENCY {
                                 versions.push(version);
@@ -176,7 +176,7 @@ impl Synchronizer {
                     next_commit,
                 } => {
                     // If FullSync is not being processed now, this event lets the synchronizer to handle one.
-                    if self.full_sync.is_none() && self.is_repair_enabled() {
+                    if self.full_sync.is_none() {
                         self.full_sync = Some(FullSync::new(
                             &self.logger,
                             self.node_id,
@@ -195,7 +195,7 @@ impl Synchronizer {
             } else if let Event::Putted { .. } = &event {
                 self.todo_repair.push(Reverse(TodoItem::new(&event)));
             } else {
-                self.todo.push(Reverse(TodoItem::new(&event)));
+                self.todo_delete.push(Reverse(TodoItem::new(&event)));
             }
         }
     }
@@ -206,10 +206,10 @@ impl Synchronizer {
                 if let Some(item) = self.todo_repair.pop() {
                     Some(item)
                 } else {
-                    self.todo.pop()
+                    self.todo_delete.pop()
                 }
             } else {
-                self.todo.pop()
+                self.todo_delete.pop()
             };
             if let Some(item) = maybe_item {
                 if let TodoItem::RepairContent { version, .. } = item.0 {
@@ -240,8 +240,10 @@ impl Synchronizer {
             // `MAX_TIMEOUT_SECONDS`以上に後続のTODOの処理が(Waitによって)遅延することはない.
             None
         } else {
-            if self.todo.capacity() > 32 && self.todo.len() < self.todo.capacity() / 2 {
-                self.todo.shrink_to_fit();
+            if self.todo_delete.capacity() > 32
+                && self.todo_delete.len() < self.todo_delete.capacity() / 2
+            {
+                self.todo_delete.shrink_to_fit();
             }
             if self.todo_repair.capacity() > 32
                 && self.todo_repair.len() < self.todo_repair.capacity() / 2
