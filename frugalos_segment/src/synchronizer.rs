@@ -5,7 +5,7 @@ use frugalos_raft::NodeId;
 use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
 use libfrugalos::repair::RepairIdleness;
-use prometrics::metrics::{Counter, Gauge, Histogram, MetricBuilder};
+use prometrics::metrics::{Counter, Gauge, MetricBuilder};
 use slog::Logger;
 use std::cmp::{self, Reverse};
 use std::collections::{BTreeSet, BinaryHeap};
@@ -15,7 +15,7 @@ use std::time::{Duration, Instant, SystemTime};
 use client::storage::StorageClient;
 use delete::DeleteContent;
 use full_sync::FullSync;
-use repair::RepairContent;
+use repair::{RepairContent, RepairMetrics};
 use service::{RepairLock, ServiceHandle};
 use Error;
 
@@ -38,10 +38,7 @@ pub struct Synchronizer {
     enqueued_delete: Counter,
     dequeued_repair: Counter,
     dequeued_delete: Counter,
-    pub(crate) repairs_success_total: Counter,
-    pub(crate) repairs_failure_total: Counter,
-    pub(crate) repairs_unnecessary_total: Counter,
-    pub(crate) repairs_durations_seconds: Histogram,
+    pub(crate) repair_metrics: RepairMetrics,
     full_sync_count: Counter,
     full_sync_deleted_objects: Counter,
     // How many objects have to be swept before full_sync is completed (including non-existent ones)
@@ -101,35 +98,7 @@ impl Synchronizer {
                 .label("type", "delete")
                 .finish()
                 .expect("metric should be well-formed"),
-            repairs_success_total: metric_builder
-                .counter("repairs_success_total")
-                .label("type", "repair")
-                .finish()
-                .expect("metric should be well-formed"),
-            repairs_failure_total: metric_builder
-                .counter("repairs_failure_total")
-                .label("type", "repair")
-                .finish()
-                .expect("metric should be well-formed"),
-            repairs_unnecessary_total: metric_builder
-                .counter("repairs_unnecessary_total")
-                .label("type", "repair")
-                .finish()
-                .expect("metric should be well-formed"),
-            repairs_durations_seconds: metric_builder
-                .histogram("repairs_durations_seconds")
-                .bucket(0.001)
-                .bucket(0.005)
-                .bucket(0.01)
-                .bucket(0.05)
-                .bucket(0.1)
-                .bucket(0.5)
-                .bucket(1.0)
-                .bucket(5.0)
-                .bucket(10.0)
-                .label("type", "repair")
-                .finish()
-                .expect("metric should be well-formed"),
+            repair_metrics: RepairMetrics::new(&metric_builder),
             full_sync_count: metric_builder
                 .counter("full_sync_count")
                 .finish()
