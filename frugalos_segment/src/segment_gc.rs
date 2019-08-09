@@ -15,40 +15,40 @@ use config;
 use Error;
 
 #[derive(Clone)]
-pub(crate) struct FullSyncMetrics {
-    full_sync_count: Counter,
-    full_sync_deleted_objects: Counter,
-    // How many objects have to be swept before full_sync is completed (including non-existent ones)
-    full_sync_remaining: Gauge,
+pub(crate) struct SegmentGcMetrics {
+    segment_gc_count: Counter,
+    segment_gc_deleted_objects: Counter,
+    // How many objects have to be swept before segment_gc is completed (including non-existent ones)
+    segment_gc_remaining: Gauge,
 }
 
-impl FullSyncMetrics {
+impl SegmentGcMetrics {
     pub(crate) fn new(metric_builder: &MetricBuilder) -> Self {
-        FullSyncMetrics {
-            full_sync_count: metric_builder
-                .counter("full_sync_count")
+        SegmentGcMetrics {
+            segment_gc_count: metric_builder
+                .counter("segment_gc_count")
                 .finish()
                 .expect("metric should be well-formed"),
-            full_sync_deleted_objects: metric_builder
-                .counter("full_sync_deleted_objects")
+            segment_gc_deleted_objects: metric_builder
+                .counter("segment_gc_deleted_objects")
                 .finish()
                 .expect("metric should be well-formed"),
-            full_sync_remaining: metric_builder
-                .gauge("full_sync_remaining")
+            segment_gc_remaining: metric_builder
+                .gauge("segment_gc_remaining")
                 .finish()
                 .expect("metric should be well-formed"),
         }
     }
     pub(crate) fn reset(&self) {
-        self.full_sync_remaining.set(0.0);
+        self.segment_gc_remaining.set(0.0);
     }
 }
 
-pub(crate) struct FullSync {
+pub(crate) struct SegmentGc {
     future: Box<dyn Future<Item = (), Error = Error> + Send + 'static>,
 }
 
-impl FullSync {
+impl SegmentGc {
     #[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
     pub fn new(
         logger: &Logger,
@@ -56,12 +56,12 @@ impl FullSync {
         device: &DeviceHandle,
         machine: Machine,
         object_version_limit: ObjectVersion,
-        full_sync_metrics: FullSyncMetrics,
-        full_sync_step: u64,
+        segment_gc_metrics: SegmentGcMetrics,
+        segment_gc_step: u64,
     ) -> Self {
         let logger = logger.clone();
-        info!(logger, "Starts full sync");
-        full_sync_metrics.full_sync_count.increment();
+        info!(logger, "Starts segment_gc");
+        segment_gc_metrics.segment_gc_count.increment();
         let create_object_table = make_create_object_table(logger.clone(), machine);
 
         let logger = logger.clone();
@@ -75,16 +75,16 @@ impl FullSync {
                     &device,
                     node_id,
                     object_version_limit,
-                    full_sync_step,
+                    segment_gc_step,
                     object_table,
-                    full_sync_metrics.full_sync_deleted_objects,
-                    full_sync_metrics.full_sync_remaining,
+                    segment_gc_metrics.segment_gc_deleted_objects,
+                    segment_gc_metrics.segment_gc_remaining,
                 )
             })
-            .map(move |()| info!(logger2, "FullSync objects done"));
+            .map(move |()| info!(logger2, "SegmentGc objects done"));
 
         let future = Box::new(combined_future);
-        FullSync { future }
+        SegmentGc { future }
     }
     /// Returns the `ObjectVersion`s of objects that should be deleted.
     fn compute_deleted_versions(
@@ -103,7 +103,7 @@ impl FullSync {
     }
 }
 
-impl Future for FullSync {
+impl Future for SegmentGc {
     type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
@@ -120,8 +120,8 @@ pub(self) fn make_list_and_delete_content(
     object_version_limit: ObjectVersion,
     step: u64,
     object_table: ObjectTable,
-    full_sync_deleted_objects: Counter,
-    full_sync_remaining: Gauge,
+    segment_gc_deleted_objects: Counter,
+    segment_gc_remaining: Gauge,
 ) -> impl Future<Item = (), Error = Error> + Send {
     assert!(step > 0);
     let logger = logger.clone();
@@ -137,11 +137,11 @@ pub(self) fn make_list_and_delete_content(
         move |(current_version, object_table)| {
             if current_version >= object_version_limit {
                 // We're done. Stop processing.
-                full_sync_remaining.set(0.0);
+                segment_gc_remaining.set(0.0);
                 return Either::A(ok(Loop::Break(())));
             }
-            full_sync_remaining.set((object_version_limit.0 - current_version.0) as f64);
-            let full_sync_deleted_objects = full_sync_deleted_objects.clone();
+            segment_gc_remaining.set((object_version_limit.0 - current_version.0) as f64);
+            let segment_gc_deleted_objects = segment_gc_deleted_objects.clone();
             let start_lump_id = config::make_lump_id(&node_id, current_version);
             let end_object_version = std::cmp::min(
                 ObjectVersion(current_version.0 + step),
@@ -155,12 +155,12 @@ pub(self) fn make_list_and_delete_content(
                 .list_range(start_lump_id..end_lump_id)
                 .and_then(move |lump_ids| {
                     let deleted_objects =
-                        FullSync::compute_deleted_versions(lump_ids, &object_table);
+                        SegmentGc::compute_deleted_versions(lump_ids, &object_table);
                     let delete_future = make_delete_objects(
                         deleted_objects,
                         &device_cloned,
                         node_id,
-                        &full_sync_deleted_objects,
+                        &segment_gc_deleted_objects,
                     );
                     delete_future.map(move |()| object_table)
                 })
@@ -178,7 +178,7 @@ pub(self) fn make_create_object_table(
     logger: Logger,
     machine: Machine,
 ) -> impl Future<Item = ObjectTable, Error = Error> + Send {
-    debug!(logger, "Starts full sync");
+    debug!(logger, "Starts segment_gc");
     DefaultCpuTaskQueue
         .async_call(move || get_object_table(&logger, &machine))
         .map_err(From::from)
@@ -188,7 +188,10 @@ fn get_object_table(logger: &Logger, machine: &Machine) -> ObjectTable {
     let mut versions = machine.to_versions();
     versions.sort_unstable();
     let objects_count = versions.len();
-    debug!(logger, "FullSync machine_objects_count = {}", objects_count);
+    debug!(
+        logger,
+        "SegmentGc machine_objects_count = {}", objects_count
+    );
     ObjectTable(versions)
 }
 
@@ -197,13 +200,13 @@ fn make_delete_objects(
     deleted_objects: Vec<ObjectVersion>,
     device: &DeviceHandle,
     node_id: NodeId,
-    full_sync_deleted_objects: &Counter,
+    segment_gc_deleted_objects: &Counter,
 ) -> impl Future<Item = (), Error = cannyls::Error> {
-    let full_sync_deleted_objects = full_sync_deleted_objects.clone();
+    let segment_gc_deleted_objects = segment_gc_deleted_objects.clone();
     let futures: Vec<_> = deleted_objects
         .into_iter()
         .map(|object| {
-            let full_sync_deleted_objects = full_sync_deleted_objects.clone();
+            let segment_gc_deleted_objects = segment_gc_deleted_objects.clone();
             let lump_id = config::make_lump_id(&node_id, object);
             device
                 .request()
@@ -211,7 +214,7 @@ fn make_delete_objects(
                 .delete(lump_id)
                 .then(move |result| {
                     if let Ok(true) = result {
-                        full_sync_deleted_objects.increment();
+                        segment_gc_deleted_objects.increment();
                     }
                     // Ignores all errors that occur in deletion
                     ok(())
@@ -237,12 +240,12 @@ mod tests {
     use cannyls::deadline::Deadline;
     use cannyls::device::DeviceHandle;
     use cannyls::lump::LumpId;
-    use full_sync::{
-        make_create_object_table, make_list_and_delete_content, FullSync, ObjectTable,
-    };
     use futures::future::Future;
     use libfrugalos::entity::object::{Metadata, ObjectVersion};
     use libfrugalos::expect::Expect;
+    use segment_gc::{
+        make_create_object_table, make_list_and_delete_content, ObjectTable, SegmentGc,
+    };
     use slog::{Discard, Logger};
     use std::{thread, time};
     use test_util::tests::{setup_system, wait, System};
@@ -279,9 +282,9 @@ mod tests {
         }
 
         let object_table = ObjectTable(vec![]);
-        let full_sync_deleted_objects =
-            Counter::new("full_sync_deleted_objects").expect("Never fails");
-        let full_sync_remaining = Gauge::new("full_sync_remaining").expect("Never fails");
+        let segment_gc_deleted_objects =
+            Counter::new("segment_gc_deleted_objects").expect("Never fails");
+        let segment_gc_remaining = Gauge::new("segment_gc_remaining").expect("Never fails");
 
         wait(make_list_and_delete_content(
             &logger,
@@ -290,8 +293,8 @@ mod tests {
             ObjectVersion(10),
             1,
             object_table,
-            full_sync_deleted_objects.clone(),
-            full_sync_remaining.clone(),
+            segment_gc_deleted_objects.clone(),
+            segment_gc_remaining.clone(),
         ))?;
 
         // Assert objects are deleted and therefore not found
@@ -307,7 +310,7 @@ mod tests {
         }
 
         // Assert 10 objects are deleted
-        assert_eq!(full_sync_deleted_objects.value() as u64, 10);
+        assert_eq!(segment_gc_deleted_objects.value() as u64, 10);
         Ok(())
     }
 
@@ -344,7 +347,7 @@ mod tests {
             LumpId::new(100),
         ];
         let object_table = ObjectTable(vec![ObjectVersion(1), ObjectVersion(8), ObjectVersion(25)]);
-        let deleted_objects = FullSync::compute_deleted_versions(lump_ids, &object_table);
+        let deleted_objects = SegmentGc::compute_deleted_versions(lump_ids, &object_table);
         // deleted_objects are listed in a newest-first manner.
         assert_eq!(deleted_objects, vec![ObjectVersion(100), ObjectVersion(5)]);
 

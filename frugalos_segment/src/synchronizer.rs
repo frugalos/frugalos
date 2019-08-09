@@ -14,8 +14,8 @@ use std::time::{Duration, Instant, SystemTime};
 
 use client::storage::StorageClient;
 use delete::DeleteContent;
-use full_sync::{FullSync, FullSyncMetrics};
 use repair::{RepairContent, RepairMetrics};
+use segment_gc::{SegmentGc, SegmentGcMetrics};
 use service::{RepairLock, ServiceHandle};
 use Error;
 
@@ -39,9 +39,9 @@ pub struct Synchronizer {
     dequeued_repair: Counter,
     dequeued_delete: Counter,
     pub(crate) repair_metrics: RepairMetrics,
-    full_sync_metrics: FullSyncMetrics,
-    full_sync: Option<FullSync>,
-    full_sync_step: u64,
+    segment_gc_metrics: SegmentGcMetrics,
+    segment_gc: Option<SegmentGc>,
+    segment_gc_step: u64,
     // The idleness threshold for repair functionality.
     repair_idleness_threshold: RepairIdleness,
     last_not_idle: Instant,
@@ -55,7 +55,7 @@ impl Synchronizer {
         device: DeviceHandle,
         service_handle: ServiceHandle,
         client: StorageClient,
-        full_sync_step: u64,
+        segment_gc_step: u64,
     ) -> Self {
         let metric_builder = MetricBuilder::new()
             .namespace("frugalos")
@@ -96,9 +96,9 @@ impl Synchronizer {
                 .finish()
                 .expect("metric should be well-formed"),
             repair_metrics: RepairMetrics::new(&metric_builder),
-            full_sync_metrics: FullSyncMetrics::new(&metric_builder),
-            full_sync: None,
-            full_sync_step,
+            segment_gc_metrics: SegmentGcMetrics::new(&metric_builder),
+            segment_gc: None,
+            segment_gc_step,
             repair_idleness_threshold: RepairIdleness::Disabled, // No repairing happens
             last_not_idle: Instant::now(),
             repair_enabled,
@@ -142,15 +142,15 @@ impl Synchronizer {
                     next_commit,
                 } => {
                     // If FullSync is not being processed now, this event lets the synchronizer to handle one.
-                    if self.full_sync.is_none() {
-                        self.full_sync = Some(FullSync::new(
+                    if self.segment_gc.is_none() {
+                        self.segment_gc = Some(SegmentGc::new(
                             &self.logger,
                             self.node_id,
                             &self.device,
                             machine.clone(),
                             ObjectVersion(next_commit.as_u64()),
-                            self.full_sync_metrics.clone(),
-                            self.full_sync_step,
+                            self.segment_gc_metrics.clone(),
+                            self.segment_gc_step,
                         ));
                     }
                 }
@@ -244,13 +244,13 @@ impl Future for Synchronizer {
     type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        while let Async::Ready(Some(())) = self.full_sync.poll().unwrap_or_else(|e| {
+        while let Async::Ready(Some(())) = self.segment_gc.poll().unwrap_or_else(|e| {
             warn!(self.logger, "Task failure: {}", e);
             Async::Ready(Some(()))
         }) {
-            // Full sync is done. Clearing the full_sync field.
-            self.full_sync = None;
-            self.full_sync_metrics.reset();
+            // Full sync is done. Clearing the segment_gc field.
+            self.segment_gc = None;
+            self.segment_gc_metrics.reset();
         }
 
         if !self.task.is_sleeping() {
