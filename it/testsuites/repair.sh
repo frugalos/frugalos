@@ -60,13 +60,17 @@ it/scripts/http_requests.sh GET 200 $WORK_DIR/req.json $WORK_DIR/res.json || ech
 
 # Waits for repairing to complete, at most for 120 seconds.
 SUCC=0
+ENQ=0
+DEQ=0
 for i in `seq 1 40`
 do
   # Constantly send repair requests, because frugalos shortly after booting can fail to serve these requests.
   docker exec clusters_frugalos01_1 \
     frugalos set-repair-config --rpc-addr 172.18.0.22:8080 --repair-idleness-threshold 0.5 >/dev/null # sends rpc
   SUCC=`curl frugalos02/metrics 2>/dev/null | grep repairs_success_total | awk 'BEGIN { a = 0; } { a+= $2; } END { print a; }'`
-  echo "i=${i} succ=${SUCC}"
+  ENQ=`curl frugalos02/metrics 2>/dev/null | grep enqueued_item | grep repair | awk 'BEGIN { a = 0; } { a+= $2; } END { print a; }'`
+  DEQ=`curl frugalos02/metrics 2>/dev/null | grep dequeued_item | grep repair | awk 'BEGIN { a = 0; } { a+= $2; } END { print a; }'`
+  echo "i=${i} succ=${SUCC} enq=${ENQ} deq=${DEQ}"
   if [ ${SUCC} -eq 1000 ]
   then
     break
