@@ -839,10 +839,12 @@ impl Stream for Node {
             Async::Ready(Some(result)) => {
                 let (new_head, machine, versions) = track!(result)?;
                 info!(self.logger, "Snapshot decoded: new_head={:?}", new_head);
+                // Synchronizer takes care of load control, so this setting is no longer necessary.
+                // The default value of delay is 0, which means no delay happens by this.
                 let delay = env::var("FRUGALOS_SNAPSHOT_REPAIR_DELAY")
                     .ok()
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(10);
+                    .unwrap_or(0);
                 self.events.reserve_exact(machine.len());
                 self.events
                     .extend(versions.into_iter().map(|version| Event::Putted {
