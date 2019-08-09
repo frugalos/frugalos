@@ -58,7 +58,7 @@ it/scripts/http_requests.sh GET 200 $WORK_DIR/req.json $WORK_DIR/res.json
 #
 docker-compose -f $CLUSTER start frugalos02
 sleep 50  # Waits for starting
-docker exec clusters_frugalos01_1 frugalos set-repair-idleness-threshold --rpc-addr 172.18.0.22:8080 --repair-idleness-threshold 0 # sends rpc
+docker exec clusters_frugalos01_1 frugalos set-repair-config --rpc-addr 172.18.0.22:8080 --repair-idleness-threshold 0 # sends rpc
 it/scripts/http_requests.sh GET 200 $WORK_DIR/req.json $WORK_DIR/res.json || echo "OK"
 sleep 60  # Waits for repairing
 
