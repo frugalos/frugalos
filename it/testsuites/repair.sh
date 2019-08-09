@@ -44,7 +44,6 @@ docker-compose -f $CLUSTER kill frugalos02
 # Puts objects
 #
 it/scripts/gen_put_requests.sh frugalos01 live_archive_chunk 1 1000 $WORK_DIR/req.json
-sleep 30
 hb run -i $WORK_DIR/req.json | hb summary
 hb run -i $WORK_DIR/req.json | hb summary
 
@@ -57,16 +56,33 @@ it/scripts/http_requests.sh GET 200 $WORK_DIR/req.json $WORK_DIR/res.json
 # Restarts the second server
 #
 docker-compose -f $CLUSTER start frugalos02
-sleep 50  # Waits for starting
-docker exec clusters_frugalos01_1 frugalos set-repair-config --rpc-addr 172.18.0.22:8080 --repair-idleness-threshold 0 # sends rpc
 it/scripts/http_requests.sh GET 200 $WORK_DIR/req.json $WORK_DIR/res.json || echo "OK"
-sleep 60  # Waits for repairing
+
+# Waits for repairing to complete, at most for 120 seconds.
+SUCC=0
+for i in `seq 1 40`
+do
+  # Constantly send repair requests, because frugalos shortly after booting can fail to serve these requests.
+  docker exec clusters_frugalos01_1 \
+    frugalos set-repair-config --rpc-addr 172.18.0.22:8080 --repair-idleness-threshold 0.5 >/dev/null # sends rpc
+  SUCC=`curl frugalos02/metrics 2>/dev/null | grep repairs_success_total | awk 'BEGIN { a = 0; } { a+= $2; } END { print a; }'`
+  echo "i=${i} succ=${SUCC}"
+  if [ ${SUCC} -eq 1000 ]
+  then
+    break
+  fi
+  sleep 3 # Waits for repairing
+done
+if [ ${SUCC} -ne 1000 ]
+then
+  echo "Error! Repairing didn't finish in 120 seconds" 1>&2
+  exit 1
+fi
 
 #
 # Kills the third server
 #
 docker-compose -f $CLUSTER kill frugalos03
-sleep 30
 
 #
 # GET => DELETE => GET
