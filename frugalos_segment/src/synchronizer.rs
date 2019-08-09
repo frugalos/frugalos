@@ -5,7 +5,7 @@ use frugalos_raft::NodeId;
 use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
 use libfrugalos::repair::RepairIdleness;
-use prometrics::metrics::{Counter, Gauge, MetricBuilder};
+use prometrics::metrics::{Counter, MetricBuilder};
 use slog::Logger;
 use std::cmp::{self, Reverse};
 use std::collections::{BTreeSet, BinaryHeap};
@@ -14,7 +14,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use client::storage::StorageClient;
 use delete::DeleteContent;
-use full_sync::FullSync;
+use full_sync::{FullSync, FullSyncMetrics};
 use repair::{RepairContent, RepairMetrics};
 use service::{RepairLock, ServiceHandle};
 use Error;
@@ -39,10 +39,7 @@ pub struct Synchronizer {
     dequeued_repair: Counter,
     dequeued_delete: Counter,
     pub(crate) repair_metrics: RepairMetrics,
-    full_sync_count: Counter,
-    full_sync_deleted_objects: Counter,
-    // How many objects have to be swept before full_sync is completed (including non-existent ones)
-    full_sync_remaining: Gauge,
+    full_sync_metrics: FullSyncMetrics,
     full_sync: Option<FullSync>,
     full_sync_step: u64,
     // The idleness threshold for repair functionality.
@@ -99,18 +96,7 @@ impl Synchronizer {
                 .finish()
                 .expect("metric should be well-formed"),
             repair_metrics: RepairMetrics::new(&metric_builder),
-            full_sync_count: metric_builder
-                .counter("full_sync_count")
-                .finish()
-                .expect("metric should be well-formed"),
-            full_sync_deleted_objects: metric_builder
-                .counter("full_sync_deleted_objects")
-                .finish()
-                .expect("metric should be well-formed"),
-            full_sync_remaining: metric_builder
-                .gauge("full_sync_remaining")
-                .finish()
-                .expect("metric should be well-formed"),
+            full_sync_metrics: FullSyncMetrics::new(&metric_builder),
             full_sync: None,
             full_sync_step,
             repair_idleness_threshold: RepairIdleness::Disabled, // No repairing happens
@@ -163,9 +149,7 @@ impl Synchronizer {
                             &self.device,
                             machine.clone(),
                             ObjectVersion(next_commit.as_u64()),
-                            self.full_sync_count.clone(),
-                            self.full_sync_deleted_objects.clone(),
-                            self.full_sync_remaining.clone(),
+                            self.full_sync_metrics.clone(),
                             self.full_sync_step,
                         ));
                     }
@@ -266,7 +250,7 @@ impl Future for Synchronizer {
         }) {
             // Full sync is done. Clearing the full_sync field.
             self.full_sync = None;
-            self.full_sync_remaining.set(0.0);
+            self.full_sync_metrics.reset();
         }
 
         if !self.task.is_sleeping() {

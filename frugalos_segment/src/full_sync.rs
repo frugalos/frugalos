@@ -8,11 +8,41 @@ use futures::future::{join_all, loop_fn, ok, Either};
 use futures::future::{Future, Loop};
 use futures::Poll;
 use libfrugalos::entity::object::ObjectVersion;
+use prometrics::metrics::{Counter, Gauge, MetricBuilder};
 use slog::Logger;
 
 use config;
-use prometrics::metrics::{Counter, Gauge};
 use Error;
+
+#[derive(Clone)]
+pub(crate) struct FullSyncMetrics {
+    full_sync_count: Counter,
+    full_sync_deleted_objects: Counter,
+    // How many objects have to be swept before full_sync is completed (including non-existent ones)
+    full_sync_remaining: Gauge,
+}
+
+impl FullSyncMetrics {
+    pub(crate) fn new(metric_builder: &MetricBuilder) -> Self {
+        FullSyncMetrics {
+            full_sync_count: metric_builder
+                .counter("full_sync_count")
+                .finish()
+                .expect("metric should be well-formed"),
+            full_sync_deleted_objects: metric_builder
+                .counter("full_sync_deleted_objects")
+                .finish()
+                .expect("metric should be well-formed"),
+            full_sync_remaining: metric_builder
+                .gauge("full_sync_remaining")
+                .finish()
+                .expect("metric should be well-formed"),
+        }
+    }
+    pub(crate) fn reset(&self) {
+        self.full_sync_remaining.set(0.0);
+    }
+}
 
 pub(crate) struct FullSync {
     future: Box<dyn Future<Item = (), Error = Error> + Send + 'static>,
@@ -26,14 +56,12 @@ impl FullSync {
         device: &DeviceHandle,
         machine: Machine,
         object_version_limit: ObjectVersion,
-        full_sync_count: Counter,
-        full_sync_deleted_objects: Counter,
-        full_sync_remaining: Gauge,
+        full_sync_metrics: FullSyncMetrics,
         full_sync_step: u64,
     ) -> Self {
         let logger = logger.clone();
         info!(logger, "Starts full sync");
-        full_sync_count.increment();
+        full_sync_metrics.full_sync_count.increment();
         let create_object_table = make_create_object_table(logger.clone(), machine);
 
         let logger = logger.clone();
@@ -49,8 +77,8 @@ impl FullSync {
                     object_version_limit,
                     full_sync_step,
                     object_table,
-                    full_sync_deleted_objects,
-                    full_sync_remaining,
+                    full_sync_metrics.full_sync_deleted_objects,
+                    full_sync_metrics.full_sync_remaining,
                 )
             })
             .map(move |()| info!(logger2, "FullSync objects done"));
