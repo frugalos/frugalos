@@ -2,8 +2,6 @@ use futures::{Future, Poll};
 
 use Error;
 
-pub(crate) type BoxFuture<T> = Box<dyn Future<Item = T, Error = Error> + Send + 'static>;
-
 #[derive(Debug)]
 pub enum Phase<A, B> {
     A(A),
@@ -47,4 +45,13 @@ where
             Phase3::C(f) => track!(f.poll()).map(|t| t.map(Phase3::C)),
         }
     }
+}
+
+pub(crate) type BoxFuture<T> = Box<dyn Future<Item = T, Error = Error> + Send + 'static>;
+
+pub(crate) fn into_box_future<F>(future: F) -> BoxFuture<F::Item>
+where
+    F: Future<Error = cannyls::Error> + Send + 'static,
+{
+    Box::new(future.map_err(Error::from))
 }
