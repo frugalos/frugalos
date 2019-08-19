@@ -139,6 +139,7 @@ where
                 let logger = self.logger.clone();
                 let logger0 = logger.clone();
                 let logger1 = logger.clone();
+                let service_handle = self.handle();
                 let local_id = node_id.local_id;
                 let spawner = self.spawner.clone();
                 let rpc_service = self.rpc_service.clone();
@@ -184,6 +185,7 @@ where
                             mds_service,
                             node_id,
                             device,
+                            service_handle,
                             client,
                             cluster,
                             segment_node_command_rx
@@ -352,6 +354,7 @@ impl SegmentNode {
 
         node_id: NodeId,
         device: DeviceHandle,
+        service_handle: ServiceHandle,
         client: StorageClient,
         cluster: ClusterMembers,
         segment_node_command_rx: mpsc::Receiver<SegmentNodeCommand>,
@@ -408,8 +411,14 @@ impl SegmentNode {
             .unwrap_or(100);
         info!(logger, "FullSync step: {}", full_sync_step);
 
-        let synchronizer =
-            Synchronizer::new(logger.clone(), node_id, device, client, full_sync_step);
+        let synchronizer = Synchronizer::new(
+            logger.clone(),
+            node_id,
+            device,
+            service_handle,
+            client,
+            full_sync_step,
+        );
 
         Ok(SegmentNode {
             logger,

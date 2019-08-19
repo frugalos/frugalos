@@ -17,6 +17,7 @@ use client::storage::{GetFragment, MaybeFragment, StorageClient};
 use config;
 use full_sync::FullSync;
 use libfrugalos::repair::RepairIdleness;
+use service::ServiceHandle;
 use util::Phase3;
 use Error;
 
@@ -31,6 +32,8 @@ pub struct Synchronizer {
     node_id: NodeId,
     device: DeviceHandle,
     client: StorageClient,
+    #[allow(dead_code)]
+    service_handle: ServiceHandle,
     task: Task,
     // TODO: define specific types for two kinds of items and specialize the procedure for each todo queue
     todo_delete: BinaryHeap<Reverse<TodoItem>>, // To-do queue for delete. Can hold `TodoItem::DeleteContent`s only.
@@ -59,6 +62,7 @@ impl Synchronizer {
         logger: Logger,
         node_id: NodeId,
         device: DeviceHandle,
+        service_handle: ServiceHandle,
         client: StorageClient,
         full_sync_step: u64,
     ) -> Self {
@@ -71,6 +75,7 @@ impl Synchronizer {
             logger,
             node_id,
             device,
+            service_handle,
             client,
             task: Task::Idle,
             todo_delete: BinaryHeap::new(),
