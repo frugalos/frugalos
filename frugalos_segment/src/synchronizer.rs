@@ -17,7 +17,7 @@ use client::storage::{GetFragment, MaybeFragment, StorageClient};
 use config;
 use full_sync::FullSync;
 use libfrugalos::repair::RepairIdleness;
-use service::ServiceHandle;
+use service::{RepairLock, ServiceHandle};
 use util::Phase3;
 use Error;
 
@@ -32,7 +32,6 @@ pub struct Synchronizer {
     node_id: NodeId,
     device: DeviceHandle,
     client: StorageClient,
-    #[allow(dead_code)]
     service_handle: ServiceHandle,
     task: Task,
     // TODO: define specific types for two kinds of items and specialize the procedure for each todo queue
@@ -321,9 +320,19 @@ impl Future for Synchronizer {
                                 self.todo_repair.push(Reverse(item));
                                 break;
                             } else {
-                                self.dequeued_repair.increment();
-                                self.task = Task::Repair(RepairContent::new(self, version));
-                                self.last_not_idle = Instant::now();
+                                let repair_lock = self.service_handle.acquire_repair_lock();
+                                if let Some(repair_lock) = repair_lock {
+                                    self.dequeued_repair.increment();
+                                    self.task = Task::Repair(
+                                        RepairContent::new(self, version),
+                                        repair_lock,
+                                    );
+                                    self.last_not_idle = Instant::now();
+                                } else {
+                                    self.repair_candidates.insert(version);
+                                    self.todo_repair.push(Reverse(item));
+                                    break;
+                                }
                             }
                         }
                     }
@@ -380,7 +389,7 @@ enum Task {
     Idle,
     Wait(Timeout),
     Delete(DeleteContent),
-    Repair(RepairContent),
+    Repair(RepairContent, RepairLock),
 }
 impl Task {
     fn is_sleeping(&self) -> bool {
@@ -399,7 +408,7 @@ impl Future for Task {
             Task::Idle => Ok(Async::Ready(())),
             Task::Wait(ref mut f) => track!(f.poll().map_err(Error::from)),
             Task::Delete(ref mut f) => track!(f.poll()),
-            Task::Repair(ref mut f) => track!(f.poll()),
+            Task::Repair(ref mut f, _) => track!(f.poll()),
         }
     }
 }
