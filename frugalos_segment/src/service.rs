@@ -14,6 +14,7 @@ use futures::{Async, Future, Poll, Stream};
 use raftlog::cluster::ClusterMembers;
 use slog::Logger;
 use std::env;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
@@ -38,6 +39,7 @@ pub struct Service<S> {
     mds_config: FrugalosMdsConfig,
     // Senders of `SegmentNode`s
     segment_node_handles: HashMap<LocalNodeId, SegmentNodeHandle>,
+    repair_concurrency: Arc<Mutex<RepairConcurrency>>,
 }
 impl<S> Service<S>
 where
@@ -70,6 +72,7 @@ where
             mds_alive: true,
             mds_config,
             segment_node_handles: HashMap::new(),
+            repair_concurrency: Arc::new(Mutex::new(RepairConcurrency::new())),
         };
 
         RpcServer::register(service.handle(), rpc);
@@ -84,6 +87,7 @@ where
             mds: self.mds_service.handle(),
             device_registry: self.device_registry.handle(),
             command_tx: self.command_tx.clone(),
+            repair_concurrency: Arc::clone(&self.repair_concurrency),
         }
     }
 
@@ -102,13 +106,19 @@ where
     /// repair_idleness_threshold の変更要求を発行する。
     #[allow(clippy::needless_pass_by_value)]
     pub fn set_repair_config(&mut self, repair_config: RepairConfig) {
-        // TODO: handle RepairConfig's other two fields (repair_concurrency_limit, segment_gc_concurrency_limit)
+        // TODO: handle RepairConfig's remaining field (segment_gc_concurrency_limit)
         if let Some(repair_idleness_threshold) = repair_config.repair_idleness_threshold {
             for (_, segment_node_handle) in self.segment_node_handles.iter() {
                 let command =
                     SegmentNodeCommand::SetRepairIdlenessThreshold(repair_idleness_threshold);
                 segment_node_handle.send(command);
             }
+        }
+        if let Some(repair_concurrency_limit) = repair_config.repair_concurrency_limit {
+            // Even if more than repair_concurrency_limit threads are running, we don't do anything to them.
+            // Just let them finish their jobs.
+            let mut lock = self.repair_concurrency.lock().unwrap();
+            lock.set_limit(repair_concurrency_limit.0);
         }
     }
 
@@ -224,6 +234,7 @@ pub struct ServiceHandle {
     mds: MdsHandle,
     device_registry: DeviceRegistryHandle,
     command_tx: mpsc::Sender<Command>,
+    repair_concurrency: Arc<Mutex<RepairConcurrency>>,
 }
 impl ServiceHandle {
     // FIXME: 将来的には`client`と`cluster`は統合可能(前者から後者を引ける)
@@ -251,6 +262,54 @@ impl ServiceHandle {
     pub fn set_repair_config(&self, repair_config: RepairConfig) {
         let command = Command::SetRepairConfig(repair_config);
         let _ = self.command_tx.send(command);
+    }
+    /// Attempt to acquire repair lock.
+    pub fn acquire_repair_lock(&self) -> Option<RepairLock> {
+        RepairLock::new(&self.repair_concurrency)
+    }
+}
+
+// Settings of repair's concurrency.
+struct RepairConcurrency {
+    repair_concurrency_limit: u64,
+    current_repair_threads: u64,
+}
+
+impl RepairConcurrency {
+    fn new() -> Self {
+        RepairConcurrency {
+            repair_concurrency_limit: 0,
+            current_repair_threads: 0,
+        }
+    }
+    fn set_limit(&mut self, limit: u64) {
+        self.repair_concurrency_limit = limit;
+    }
+}
+
+// Lock object for repair. Owner of this object is allowed to perform repair.
+pub struct RepairLock {
+    repair_concurrency: Arc<Mutex<RepairConcurrency>>,
+}
+
+impl RepairLock {
+    fn new(repair_concurrency: &Arc<Mutex<RepairConcurrency>>) -> Option<Self> {
+        let mut lock = repair_concurrency.lock().expect("Lock never fails");
+        // Too many threads running.
+        if lock.current_repair_threads >= lock.repair_concurrency_limit {
+            return None;
+        }
+        lock.current_repair_threads += 1;
+        Some(RepairLock {
+            repair_concurrency: repair_concurrency.clone(),
+        })
+    }
+}
+
+impl Drop for RepairLock {
+    fn drop(&mut self) {
+        let mut lock = self.repair_concurrency.lock().expect("Lock never fails");
+        lock.current_repair_threads -= 1;
     }
 }
 
