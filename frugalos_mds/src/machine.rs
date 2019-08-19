@@ -106,9 +106,9 @@ impl Machine {
         if let Some(owner_id) = owner_id {
             let owner_id: ObjectId = track!(String::from_utf8(owner_id).map_err(Error::from))?;
             self.id_to_data.remove(&owner_id);
-            return Ok(self.id_to_version.remove(&owner_id));
+            Ok(self.id_to_version.remove(&owner_id))
         } else {
-            return Ok(None);
+            Ok(None)
         }
     }
     pub fn delete_by_prefix(&mut self, object_prefix: &ObjectPrefix) -> Result<Vec<ObjectVersion>> {
