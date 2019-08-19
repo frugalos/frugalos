@@ -141,6 +141,7 @@ where
                 // we pass rx only and hold tx for use in SegmentService.
                 // That is because we need tx only in SegmentService.
                 let (segment_node_command_tx, segment_node_command_rx) = mpsc::channel();
+                // TODO: Remove a node from segment_node_handles when a SegmentNode terminates with an error
                 self.segment_node_handles
                     .insert(local_id, SegmentNodeHandle(segment_node_command_tx));
                 let future = device
