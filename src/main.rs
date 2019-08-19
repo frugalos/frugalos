@@ -22,9 +22,10 @@ use std::string::ToString;
 use std::time::Duration;
 use trackable::error::{ErrorKindExt, Failure};
 
+use frugalos::command::set_repair_config::SetRepairConfigCommand;
+use frugalos::command::FrugalosSubcommand;
 use frugalos::FrugalosConfig;
 use frugalos::{Error, ErrorKind, Result};
-use libfrugalos::repair::{RepairConfig, RepairIdleness};
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
@@ -38,6 +39,10 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 fn main() {
     let rpc_server_bind_addr = default_rpc_server_bind_addr();
     let long_version = track_try_unwrap!(make_long_version());
+
+    // Subcommand definitions
+    let set_repair_config_command = SetRepairConfigCommand;
+
     let matches = App::new("frugalos")
         .version(env!("CARGO_PKG_VERSION"))
         .long_version(long_version.as_str())
@@ -117,20 +122,7 @@ fn main() {
                     .default_value(&rpc_server_bind_addr),
             ),
         )
-        .subcommand(
-            SubCommand::with_name("set-repair-config")
-                .arg(
-                    Arg::with_name("RPC_ADDR")
-                        .long("rpc-addr")
-                        .takes_value(true)
-                        .default_value(&rpc_server_bind_addr),
-                )
-                .arg(
-                    Arg::with_name("REPAIR_IDLENESS_THRESHOLD")
-                        .long("repair-idleness-threshold")
-                        .takes_value(true),
-                ),
-        )
+        .subcommand(set_repair_config_command.get_subcommand())
         .arg(
             Arg::with_name("LOGLEVEL")
                 .short("l")
@@ -331,40 +323,8 @@ fn main() {
         // NOTE: ログ出力(非同期)用に少し待機
         std::thread::sleep(std::time::Duration::from_millis(100));
         debug!(logger, "config: {:?}", config);
-    } else if let Some(matches) = matches.subcommand_matches("set-repair-config") {
-        // Set repair_idleness_threshold
-        let mut logger = track_try_unwrap!(logger_builder.build());
-        warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
-        let mut rpc_addrs = track_try_unwrap!(track_any_err!(matches
-            .value_of("RPC_ADDR")
-            .unwrap()
-            .to_socket_addrs()));
-        let repair_idleness_threshold = matches.value_of("REPAIR_IDLENESS_THRESHOLD").map(|str| {
-            if str == "disabled" {
-                RepairIdleness::Disabled
-            } else {
-                let duration_secs: f64 = track_try_unwrap!(str.parse().map_err(|_| Error::from(
-                    ErrorKind::InvalidInput
-                        .cause("repair-idleness-threshold must be a float or \"disabled\"")
-                )));
-                // TODO check if duration_secs is non-negative
-                RepairIdleness::Threshold(Duration::from_millis((duration_secs * 1000.0) as u64))
-            }
-        });
-        // TODO: accept repair_concurrency_limit and segment_gc_concurrency_limit
-        let repair_config = RepairConfig {
-            repair_concurrency_limit: None,
-            repair_idleness_threshold,
-            segment_gc_concurrency_limit: None,
-        };
-        let rpc_addr = rpc_addrs.nth(0).expect("No available TCP address");
-        let logger = logger.new(o!("rpc_addr" => rpc_addr.to_string(),
-            "repair_config" => format!("{:?}", repair_config)));
-        track_try_unwrap!(frugalos::daemon::set_repair_config(
-            &logger,
-            rpc_addr,
-            repair_config,
-        ));
+    } else if let Some(matches) = set_repair_config_command.check_matches(&matches) {
+        set_repair_config_command.handle_matches(logger_builder, matches, &unknown_fields);
     } else {
         println!("Usage: {}", matches.usage());
         std::process::exit(1);
@@ -419,7 +379,7 @@ fn put_content_timeout_arg<'a, 'b>() -> Arg<'a, 'b> {
 }
 
 fn default_rpc_server_bind_addr() -> String {
-    "127.0.0.1:14278".to_owned()
+    frugalos::command::default_rpc_server_bind_addr().to_owned()
 }
 
 fn get_server_seqno(matches: &ArgMatches) -> Result<u32> {
@@ -524,12 +484,7 @@ fn set_segment_config(
 }
 
 fn warn_if_there_are_unknown_fields(logger: &mut slog::Logger, unknown_fields: &[String]) {
-    if !unknown_fields.is_empty() {
-        warn!(
-            logger,
-            "The following unknown fields were passed:\n{:?}", unknown_fields
-        );
-    }
+    frugalos::command::warn_if_there_are_unknown_fields(logger, unknown_fields);
 }
 
 fn make_long_version() -> Result<String> {
