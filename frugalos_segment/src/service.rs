@@ -37,7 +37,7 @@ pub struct Service<S> {
     mds_alive: bool,
     mds_config: FrugalosMdsConfig,
     // Senders of `SegmentNode`s
-    segment_node_txs: HashMap<LocalNodeId, mpsc::Sender<SegmentNodeCommand>>,
+    segment_node_handles: HashMap<LocalNodeId, SegmentNodeHandle>,
 }
 impl<S> Service<S>
 where
@@ -69,7 +69,7 @@ where
             command_rx,
             mds_alive: true,
             mds_config,
-            segment_node_txs: HashMap::new(),
+            segment_node_handles: HashMap::new(),
         };
 
         RpcServer::register(service.handle(), rpc);
@@ -104,10 +104,10 @@ where
     pub fn set_repair_config(&mut self, repair_config: RepairConfig) {
         // TODO: handle RepairConfig's other two fields (repair_concurrency_limit, segment_gc_concurrency_limit)
         if let Some(repair_idleness_threshold) = repair_config.repair_idleness_threshold {
-            for (_, segment_node_tx) in self.segment_node_txs.iter() {
+            for (_, segment_node_handle) in self.segment_node_handles.iter() {
                 let command =
                     SegmentNodeCommand::SetRepairIdlenessThreshold(repair_idleness_threshold);
-                let _ = segment_node_tx.send(command);
+                segment_node_handle.send(command);
             }
         }
     }
@@ -141,8 +141,8 @@ where
                 // we pass rx only and hold tx for use in SegmentService.
                 // That is because we need tx only in SegmentService.
                 let (segment_node_command_tx, segment_node_command_rx) = mpsc::channel();
-                self.segment_node_txs
-                    .insert(local_id, segment_node_command_tx);
+                self.segment_node_handles
+                    .insert(local_id, SegmentNodeHandle(segment_node_command_tx));
                 let future = device
                     .map_err(|e| track!(e))
                     .and_then(move |device| {
@@ -399,6 +399,15 @@ impl Future for SegmentNode {
             }
             Ok(true) => Ok(Async::NotReady),
         }
+    }
+}
+
+#[derive(Clone)]
+struct SegmentNodeHandle(mpsc::Sender<SegmentNodeCommand>);
+
+impl SegmentNodeHandle {
+    fn send(&self, command: SegmentNodeCommand) {
+        let _ = self.0.send(command);
     }
 }
 
