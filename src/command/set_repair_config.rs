@@ -1,6 +1,6 @@
 //! Definitions for frugalos set-repair-config
 use clap::{App, Arg, ArgMatches, SubCommand};
-use libfrugalos::repair::{RepairConfig, RepairIdleness};
+use libfrugalos::repair::{RepairConcurrencyLimit, RepairConfig, RepairIdleness};
 use sloggers::Build;
 use sloggers::LoggerBuilder;
 use std::time::Duration;
@@ -31,6 +31,11 @@ impl FrugalosSubcommand for SetRepairConfigCommand {
                 Arg::with_name(DISABLE_REPAIR_IDLENESS)
                     .long(DISABLE_REPAIR_IDLENESS_LONG_ARG)
                     .takes_value(false),
+            )
+            .arg(
+                Arg::with_name("REPAIR_CONCURRENCY_LIMIT")
+                    .long("repair-concurrency-limit")
+                    .takes_value(true),
             )
     }
 
@@ -73,9 +78,15 @@ impl SetRepairConfigCommand {
                 RepairIdleness::Threshold(Duration::from_millis((duration_secs * 1000.0) as u64))
             })
         }
-        // TODO: accept repair_concurrency_limit and segment_gc_concurrency_limit
+        let repair_concurrency_limit = matches.value_of("REPAIR_CONCURRENCY_LIMIT").map(|str| {
+            let limit: u64 = track_try_unwrap!(str.parse().map_err(|_| Error::from(
+                ErrorKind::InvalidInput.cause("repair-concurrency-limit must be a u64")
+            )));
+            RepairConcurrencyLimit(limit)
+        });
+        // TODO: accept segment_gc_concurrency_limit
         RepairConfig {
-            repair_concurrency_limit: None,
+            repair_concurrency_limit,
             repair_idleness_threshold,
             segment_gc_concurrency_limit: None,
         }
