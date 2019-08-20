@@ -146,10 +146,12 @@ impl Synchronizer {
     pub fn handle_event(&mut self, event: &Event) {
         debug!(
             self.logger,
-            "New event: {:?} (metadata={}, todo.len={})",
+            "New event: {:?} (metadata={}, todo.len={}, todo_repair.len = {}, todo_delete.len = {})",
             event,
             self.client.is_metadata(),
-            self.todo_delete.len()
+            self.todo_repair.len() + self.todo_delete.len(),
+            self.todo_repair.len(),
+            self.todo_delete.len(),
         );
         if !self.client.is_metadata() {
             match *event {
