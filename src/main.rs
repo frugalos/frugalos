@@ -17,11 +17,11 @@ use libfrugalos::entity::server::Server;
 use libfrugalos::time::Seconds;
 use sloggers::Build;
 use std::env;
-use std::net::ToSocketAddrs;
 use std::string::ToString;
 use std::time::Duration;
 use trackable::error::{ErrorKindExt, Failure};
 
+use frugalos::command::rpc_addr;
 use frugalos::command::set_repair_config::SetRepairConfigCommand;
 use frugalos::command::FrugalosSubcommand;
 use frugalos::FrugalosConfig;
@@ -106,22 +106,8 @@ fn main() {
                 .arg(data_dir_arg())
                 .arg(put_content_timeout_arg()),
         )
-        .subcommand(
-            SubCommand::with_name("stop").arg(
-                Arg::with_name("RPC_ADDR")
-                    .long("rpc-addr")
-                    .takes_value(true)
-                    .default_value(&rpc_server_bind_addr),
-            ),
-        )
-        .subcommand(
-            SubCommand::with_name("take-snapshot").arg(
-                Arg::with_name("RPC_ADDR")
-                    .long("rpc-addr")
-                    .takes_value(true)
-                    .default_value(&rpc_server_bind_addr),
-            ),
-        )
+        .subcommand(SubCommand::with_name("stop").arg(rpc_addr::get_arg()))
+        .subcommand(SubCommand::with_name("take-snapshot").arg(rpc_addr::get_arg()))
         .subcommand(set_repair_config_command.get_subcommand())
         .arg(
             Arg::with_name("LOGLEVEL")
@@ -297,11 +283,7 @@ fn main() {
         // STOP SERVER
         let mut logger = track_try_unwrap!(logger_builder.build());
         warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
-        let mut rpc_addrs = track_try_unwrap!(track_any_err!(matches
-            .value_of("RPC_ADDR")
-            .unwrap()
-            .to_socket_addrs()));
-        let rpc_addr = rpc_addrs.nth(0).expect("No available TCP address");
+        let rpc_addr = rpc_addr::from_matches(&matches);
         let logger = logger.new(o!("rpc_addr" => rpc_addr.to_string()));
         track_try_unwrap!(frugalos::daemon::stop(&logger, rpc_addr));
 
@@ -312,11 +294,7 @@ fn main() {
         // TAKE SNAPSHOT
         let mut logger = track_try_unwrap!(logger_builder.build());
         warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
-        let mut rpc_addrs = track_try_unwrap!(track_any_err!(matches
-            .value_of("RPC_ADDR")
-            .unwrap()
-            .to_socket_addrs()));
-        let rpc_addr = rpc_addrs.nth(0).expect("No available TCP address");
+        let rpc_addr = rpc_addr::from_matches(&matches);
         let logger = logger.new(o!("rpc_addr" => rpc_addr.to_string()));
         track_try_unwrap!(frugalos::daemon::take_snapshot(&logger, rpc_addr));
 
@@ -379,7 +357,7 @@ fn put_content_timeout_arg<'a, 'b>() -> Arg<'a, 'b> {
 }
 
 fn default_rpc_server_bind_addr() -> String {
-    frugalos::command::default_rpc_server_bind_addr().to_owned()
+    frugalos::command::rpc_addr::default_rpc_server_bind_addr().to_owned()
 }
 
 fn get_server_seqno(matches: &ArgMatches) -> Result<u32> {

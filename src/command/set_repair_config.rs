@@ -3,11 +3,11 @@ use clap::{App, Arg, ArgMatches, SubCommand};
 use libfrugalos::repair::{RepairConfig, RepairIdleness};
 use sloggers::Build;
 use sloggers::LoggerBuilder;
-use std::net::ToSocketAddrs;
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
-use command::{default_rpc_server_bind_addr, warn_if_there_are_unknown_fields, FrugalosSubcommand};
+use command::rpc_addr;
+use command::{warn_if_there_are_unknown_fields, FrugalosSubcommand};
 use {Error, ErrorKind};
 
 /// frugalos set-repair-config
@@ -21,12 +21,7 @@ static DISABLE_REPAIR_IDLENESS_LONG_ARG: &str = "disable-repair-idleness";
 impl FrugalosSubcommand for SetRepairConfigCommand {
     fn get_subcommand<'a, 'b: 'a>(&self) -> App<'a, 'b> {
         SubCommand::with_name("set-repair-config")
-            .arg(
-                Arg::with_name("RPC_ADDR")
-                    .long("rpc-addr")
-                    .takes_value(true)
-                    .default_value(default_rpc_server_bind_addr()),
-            )
+            .arg(rpc_addr::get_arg())
             .arg(
                 Arg::with_name(REPAIR_IDLENESS_THRESHOLD)
                     .long(REPAIR_IDLENESS_THRESHOLD_LONG_ARG)
@@ -49,15 +44,10 @@ impl FrugalosSubcommand for SetRepairConfigCommand {
         matches: &ArgMatches,
         unknown_fields: &[String],
     ) {
-        // Set repair_idleness_threshold
         let mut logger = track_try_unwrap!(logger_builder.build());
         warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
-        let mut rpc_addrs = track_try_unwrap!(track_any_err!(matches
-            .value_of("RPC_ADDR")
-            .unwrap()
-            .to_socket_addrs()));
+        let rpc_addr = rpc_addr::from_matches(&matches);
         let repair_config = Self::get_repair_config_from_matches(matches);
-        let rpc_addr = rpc_addrs.nth(0).expect("No available TCP address");
         let logger = logger.new(o!("rpc_addr" => rpc_addr.to_string(),
             "repair_config" => format!("{:?}", repair_config)));
         track_try_unwrap!(crate::daemon::set_repair_config(

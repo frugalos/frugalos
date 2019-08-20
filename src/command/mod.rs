@@ -3,6 +3,7 @@
 use clap::{App, ArgMatches};
 use sloggers::LoggerBuilder;
 
+pub mod rpc_addr;
 pub mod set_repair_config;
 
 /// Trait for frugalos' subcommands.
@@ -20,11 +21,6 @@ pub trait FrugalosSubcommand {
         matches: &ArgMatches,
         unknown_fields: &[String],
     );
-}
-
-/// Returns default rpc server's port.
-pub fn default_rpc_server_bind_addr() -> &'static str {
-    "127.0.0.1:14278"
 }
 
 /// Emits warnings if there are unknown fields in parsing the config file.
