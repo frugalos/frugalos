@@ -17,6 +17,8 @@ static REPAIR_IDLENESS_THRESHOLD: &str = "REPAIR_IDLENESS_THRESHOLD";
 static REPAIR_IDLENESS_THRESHOLD_LONG_ARG: &str = "repair-idleness-threshold";
 static DISABLE_REPAIR_IDLENESS: &str = "DISABLE_REPAIR_IDLENESS";
 static DISABLE_REPAIR_IDLENESS_LONG_ARG: &str = "disable-repair-idleness";
+static REPAIR_CONCURRENCY_LIMIT: &str = "REPAIR_CONCURRENCY_LIMIT";
+static REPAIR_CONCURRENCY_LIMIT_LONG_ARG: &str = "repair-concurrency-limit";
 
 impl FrugalosSubcommand for SetRepairConfigCommand {
     fn get_subcommand<'a, 'b: 'a>(&self) -> App<'a, 'b> {
@@ -33,8 +35,8 @@ impl FrugalosSubcommand for SetRepairConfigCommand {
                     .takes_value(false),
             )
             .arg(
-                Arg::with_name("REPAIR_CONCURRENCY_LIMIT")
-                    .long("repair-concurrency-limit")
+                Arg::with_name(REPAIR_CONCURRENCY_LIMIT)
+                    .long(REPAIR_CONCURRENCY_LIMIT_LONG_ARG)
                     .takes_value(true),
             )
     }
@@ -78,7 +80,7 @@ impl SetRepairConfigCommand {
                 RepairIdleness::Threshold(Duration::from_millis((duration_secs * 1000.0) as u64))
             })
         }
-        let repair_concurrency_limit = matches.value_of("REPAIR_CONCURRENCY_LIMIT").map(|str| {
+        let repair_concurrency_limit = matches.value_of(REPAIR_CONCURRENCY_LIMIT).map(|str| {
             let limit: u64 = track_try_unwrap!(str.parse().map_err(|_| Error::from(
                 ErrorKind::InvalidInput.cause("repair-concurrency-limit must be a u64")
             )));
@@ -96,7 +98,7 @@ impl SetRepairConfigCommand {
 #[cfg(test)]
 mod tests {
     use clap::App;
-    use libfrugalos::repair::{RepairConfig, RepairIdleness};
+    use libfrugalos::repair::{RepairConcurrencyLimit, RepairConfig, RepairIdleness};
     use std::time::Duration;
 
     use super::SetRepairConfigCommand;
@@ -112,14 +114,15 @@ mod tests {
                 "set-repair-config",
                 "--repair-idleness-threshold",
                 "4.0",
+                "--repair-concurrency-limit",
+                "100",
             ]);
         if let Some(matches) = set_repair_config_command.check_matches(&matches) {
             let repair_config = SetRepairConfigCommand::get_repair_config_from_matches(&matches);
             // TODO: we want to check repair_config directly, but it's not possible because RepairConfig doesn't implement Eq.
             // To circumvent this, we perform pattern matching.
-            eprintln!("{:?}", repair_config);
             if let RepairConfig {
-                repair_concurrency_limit: None,
+                repair_concurrency_limit: Some(RepairConcurrencyLimit(100)),
                 repair_idleness_threshold: Some(RepairIdleness::Threshold(duration)),
                 segment_gc_concurrency_limit: None,
             } = repair_config
