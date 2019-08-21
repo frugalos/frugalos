@@ -17,6 +17,7 @@ use config::ClientConfig;
 use {Error, ObjectValue, Result};
 
 mod mds;
+mod replicated_storage;
 pub mod storage; // TODO: private
 
 /// セグメントにアクセスるために使用するクライアント。
