@@ -93,22 +93,16 @@ impl DispersedClient {
             spares
         );
 
-        // rand::thread_rng().shuffle(&mut spares);
-        let dummy: BoxFuture<_> = Box::new(futures::finished(None));
-        let future = CollectFragments {
-            logger: self.logger.clone(),
-            futures: vec![dummy],
-            fragments: Vec::new(),
-            data_fragments: self.data_fragments,
+        let future = CollectFragments::new(
+            self.logger,
+            self.data_fragments,
             spares,
             version,
-            deadline: Deadline::Infinity,
-            cannyls_config: self.client_config.cannyls.clone(),
-            rpc_service: self.rpc_service,
-            parent: Span::inactive().handle(), // TODO
-            timeout: None,
-            next_timeout_duration: self.client_config.get_timeout,
-        };
+            Deadline::Infinity,
+            &self.client_config,
+            self.rpc_service,
+            Span::inactive().handle(),
+        );
         ReconstructDispersedFragment {
             phase: Phase::A(future),
             ec: self.ec.clone(),
@@ -121,14 +115,12 @@ impl DispersedClient {
         deadline: Deadline,
         parent: SpanHandle,
     ) -> BoxFuture<Vec<u8>> {
-        let mut spares = self
+        let mut candidates = self
             .cluster
             .candidates(version)
             .cloned()
             .collect::<Vec<_>>();
-        spares.reverse();
-        // rand::thread_rng().shuffle(&mut spares);
-        let dummy: BoxFuture<_> = Box::new(futures::finished(None));
+        candidates.reverse();
 
         let span = parent.child("get_content", |span| {
             span.tag(StdTag::component(module_path!()))
@@ -136,20 +128,16 @@ impl DispersedClient {
                 .tag(Tag::new("storage.type", "dispersed"))
                 .start()
         });
-        let future = CollectFragments {
-            logger: self.logger.clone(),
-            futures: vec![dummy],
-            fragments: Vec::new(),
-            data_fragments: self.data_fragments,
-            spares,
+        let future = CollectFragments::new(
+            self.logger,
+            self.data_fragments,
+            candidates,
             version,
             deadline,
-            cannyls_config: self.client_config.cannyls.clone(),
-            rpc_service: self.rpc_service,
-            parent: span.handle(),
-            timeout: Some(timer::timeout(self.client_config.get_timeout)),
-            next_timeout_duration: self.client_config.get_timeout,
-        };
+            &self.client_config,
+            self.rpc_service,
+            span.handle(),
+        );
         Box::new(DispersedGet {
             phase: Phase::A(future),
             ec: self.ec.clone(),
@@ -361,6 +349,34 @@ struct CollectFragments {
     next_timeout_duration: Duration,
 }
 impl CollectFragments {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        logger: Logger,
+        data_fragments: usize,
+        candidates: Vec<ClusterMember>,
+        version: ObjectVersion,
+        deadline: Deadline,
+        client_config: &DispersedClientConfig,
+        rpc_service: RpcServiceHandle,
+        parent: SpanHandle,
+    ) -> Self {
+        // rand::thread_rng().shuffle(&mut candidates);
+        let dummy: BoxFuture<_> = Box::new(futures::finished(None));
+        CollectFragments {
+            logger: logger.clone(),
+            futures: vec![dummy],
+            fragments: Vec::new(),
+            data_fragments,
+            spares: candidates,
+            version,
+            deadline,
+            cannyls_config: client_config.cannyls.clone(),
+            rpc_service,
+            parent,
+            timeout: None,
+            next_timeout_duration: client_config.get_timeout,
+        }
+    }
     fn fill_shortage_from_spare(&mut self, mut force: bool) -> Result<()> {
         while force || self.futures.len() + self.fragments.len() < self.data_fragments {
             force = false;
