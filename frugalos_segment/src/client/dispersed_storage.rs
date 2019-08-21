@@ -64,7 +64,11 @@ impl DispersedClient {
             rpc_service,
         }
     }
-    pub fn get_fragment(self, local_node: NodeId, version: ObjectVersion) -> GetDispersedFragment {
+    pub fn get_fragment(
+        self,
+        local_node: NodeId,
+        version: ObjectVersion,
+    ) -> ReconstructDispersedFragment {
         let candidates = self
             .cluster
             .candidates(version)
@@ -105,7 +109,7 @@ impl DispersedClient {
             timeout: None,
             next_timeout_duration: self.client_config.get_timeout,
         };
-        GetDispersedFragment {
+        ReconstructDispersedFragment {
             phase: Phase::A(future),
             ec: self.ec.clone(),
             missing_index,
@@ -475,7 +479,7 @@ impl Future for CollectFragments {
 
 /// Reconstructs original data from dispersed fragments even if
 /// a focusing node loses its data fragment.
-pub struct GetDispersedFragment {
+pub struct ReconstructDispersedFragment {
     /// The processing order of futures
     phase: Phase<CollectFragments, BoxFuture<Vec<u8>>>,
 
@@ -486,7 +490,7 @@ pub struct GetDispersedFragment {
     /// None represents that there is no missing index.
     missing_index: Option<usize>,
 }
-impl Future for GetDispersedFragment {
+impl Future for ReconstructDispersedFragment {
     type Item = MaybeFragment;
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {

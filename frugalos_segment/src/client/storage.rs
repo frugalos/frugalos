@@ -11,7 +11,7 @@ use rustracing_jaeger::span::SpanHandle;
 use slog::Logger;
 use trackable::error::ErrorKindExt;
 
-use client::dispersed_storage::{DispersedClient, GetDispersedFragment};
+use client::dispersed_storage::{DispersedClient, ReconstructDispersedFragment};
 use client::ec::ErasureCoder;
 use client::replicated_storage::{GetReplicatedFragment, ReplicatedClient};
 use config::ClientConfig;
@@ -181,7 +181,7 @@ pub enum MaybeFragment {
 pub enum GetFragment {
     Failed(future::Failed<Vec<u8>, Error>),
     Replicated(GetReplicatedFragment),
-    Dispersed(GetDispersedFragment),
+    Dispersed(ReconstructDispersedFragment),
 }
 impl Future for GetFragment {
     type Item = MaybeFragment;
