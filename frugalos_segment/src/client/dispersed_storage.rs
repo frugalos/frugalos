@@ -1,3 +1,4 @@
+#![allow(clippy::needless_pass_by_value)]
 use cannyls::deadline::Deadline;
 use cannyls::lump::LumpData;
 use cannyls_rpc::Client as CannyLsClient;
