@@ -170,10 +170,16 @@ impl Future for PutAll {
                     if self.ok_count >= self.required_ok_count {
                         // Finish all remaining futures. This future itself will never fail.
                         enum Void {}; // TODO: use never type after it is stabilized
+                        let lost_fragments_total = self.metrics.lost_fragments_total.clone();
                         let mut remaining =
-                            future::join_all(remainings.into_iter().map(|future| {
-                                future.then(|_result| {
-                                    // ignore errors
+                            future::join_all(remainings.into_iter().map(move |future| {
+                                let lost_fragments_total = lost_fragments_total.clone();
+                                future.then(move |result| {
+                                    // ignore errors, just count
+                                    match result {
+                                        Ok(()) => (),
+                                        Err(_) => lost_fragments_total.increment(),
+                                    }
                                     future::ok::<(), Void>(())
                                 })
                             }));
@@ -500,6 +506,30 @@ mod tests {
         }
         assert_eq!(atomic_count.load(Ordering::SeqCst), future_count);
 
+        Ok(())
+    }
+    #[test]
+    fn put_all_tracks_all_futures_errors() -> TestResult {
+        let futures: Vec<BoxFuture<_>> = vec![
+            Box::new(futures::future::err(ErrorKind::Other.into())),
+            Box::new(futures::future::ok(())),
+            Box::new(futures::future::err(ErrorKind::Other.into())),
+        ];
+        let put_all_metrics = track!(PutAllMetrics::new("test_client"))?;
+        let put = track!(PutAll::new(put_all_metrics.clone(), futures.into_iter(), 1))?;
+        assert!(wait(put).is_ok());
+        // The first and the third futures will eventually fail.
+        // Wait for at most three seconds and check if lost_fragments_total is actually modified.
+        let now = Instant::now();
+        let maximum_waiting_time = Duration::from_secs(3);
+        while now.elapsed() < maximum_waiting_time {
+            sleep(Duration::from_millis(10));
+            if (put_all_metrics.lost_fragments_total.value() - 2.0).abs() <= 1e-5 {
+                break;
+            }
+        }
+
+        assert!((put_all_metrics.lost_fragments_total.value() - 2.0).abs() <= 1e-5);
         Ok(())
     }
 }
