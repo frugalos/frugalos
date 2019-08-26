@@ -25,7 +25,7 @@ fibers_rpc = "0.2"
 fibers_tasque = "0.1"
 frugalos_core = { version = "0.1", path = "frugalos_core" }
 frugalos_config = { version = "0.6", path = "frugalos_config" }
-frugalos_mds = { version = "0.8", path = "frugalos_mds" }
+frugalos_mds = { version = "0.9", path = "frugalos_mds" }
 frugalos_raft = { version = "0.8", path = "frugalos_raft" }
 frugalos_segment = { version = "0.9", path = "frugalos_segment" }
 futures = "0.1"
