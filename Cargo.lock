@@ -193,7 +193,7 @@ dependencies = [
  "fibers 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_tasque 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
- "liberasurecode 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "liberasurecode 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "trackable 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -570,7 +570,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "liberasurecode"
-version = "1.0.2"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "libc 0.2.43 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1349,7 +1349,7 @@ dependencies = [
 "checksum lazy_static 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ca488b89a5657b0a2ecd45b95609b3e848cf1755da332a0da46e2b2b1cb371a7"
 "checksum lazycell 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ddba4c30a78328befecec92fc94970e53b3ae385827d28620f0f5bb2493081e0"
 "checksum libc 0.2.43 (registry+https://github.com/rust-lang/crates.io-index)" = "76e3a3ef172f1a0b9a9ff0dd1491ae5e6c948b94479a3021819ba7d860c8645d"
-"checksum liberasurecode 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "0f9a33156ba336ec0b10cd982e7d0d7f07069e17ff3d00690475538d01054b64"
+"checksum liberasurecode 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "5b9b4f294bb41a7f5333ab240eb33c71631378e32825d9db11f45e4ed0198325"
 "checksum libflate 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)" = "21138fc6669f438ed7ae3559d5789a5f0ba32f28c1f0608d1e452b0bb06ee936"
 "checksum libfrugalos 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "2c63925b90d468fd6bb2836a7d4476cd16fca4accbaf0b51525abfdb66edd51a"
 "checksum linked-hash-map 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "70fb39025bc7cdd76305867c4eccf2f2dcf6e9a57f5b21a93e1c2d86cd03ec9e"
