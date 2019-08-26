@@ -50,6 +50,24 @@ it/scripts/http_requests.sh GET 200 $WORK_DIR/req.json $WORK_DIR/res.json
 it/scripts/http_requests.sh DELETE 200 $WORK_DIR/req.json $WORK_DIR/res.json
 it/scripts/http_requests.sh GET 404 $WORK_DIR/req.json $WORK_DIR/res.json
 
+## Does the same for a replicated bucket
+
+#
+# Puts objects
+#
+it/scripts/gen_put_requests.sh frugalos01 replicated 1 1000 $WORK_DIR/req.json
+sleep 10
+hb run -i $WORK_DIR/req.json | hb summary
+sleep 10
+hb run -i $WORK_DIR/req.json | hb summary
+
+#
+# GET => DELETE => GET
+#
+it/scripts/http_requests.sh GET 200 $WORK_DIR/req.json $WORK_DIR/res.json
+it/scripts/http_requests.sh DELETE 200 $WORK_DIR/req.json $WORK_DIR/res.json
+it/scripts/http_requests.sh GET 404 $WORK_DIR/req.json $WORK_DIR/res.json
+
 #
 # Cleanups cluster
 #
