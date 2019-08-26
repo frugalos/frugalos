@@ -9,12 +9,15 @@ use futures::{self, Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
 use rustracing_jaeger::span::SpanHandle;
 use slog::Logger;
+use std::thread;
+use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use client::dispersed_storage::{DispersedClient, ReconstructDispersedFragment};
 use client::ec::ErasureCoder;
 use client::replicated_storage::{GetReplicatedFragment, ReplicatedClient};
 use config::ClientConfig;
+use fibers_tasque::DefaultCpuTaskQueue;
 use metrics::{DispersedClientMetrics, PutAllMetrics, ReplicatedClientMetrics};
 use util::BoxFuture;
 use {Error, ErrorKind, ObjectValue, Result};
@@ -154,6 +157,8 @@ impl Future for PutAll {
             let remainings = match self.future.poll() {
                 Err((e, _, remainings)) => {
                     self.metrics.lost_fragments_total.increment();
+                    // If completing required_ok_count futures become impossible,
+                    // immediately stops execution.
                     if remainings.len() + self.ok_count < self.required_ok_count {
                         self.metrics.failures_total.increment();
                         return Err(track!(e));
@@ -163,7 +168,28 @@ impl Future for PutAll {
                 Ok(Async::Ready(((), _, remainings))) => {
                     self.ok_count += 1;
                     if self.ok_count >= self.required_ok_count {
-                        // TODO: パラメータ化
+                        // Finish all remaining futures. This future itself will never fail.
+                        enum Void {}; // TODO: use never type after it is stabilized
+                        let mut remaining =
+                            future::join_all(remainings.into_iter().map(|future| {
+                                future.then(|_result| {
+                                    // ignore errors
+                                    future::ok::<(), Void>(())
+                                })
+                            }));
+
+                        // Because TaskQueue accepts closure (FnOnce()), convert the future into a closure.
+                        let doer = move || loop {
+                            match remaining.poll() {
+                                Ok(Async::Ready(_)) => return,
+                                Ok(Async::NotReady) => (),
+                                Err(_) => unreachable!(),
+                            }
+                            thread::sleep(Duration::from_millis(1));
+                        };
+
+                        // Ask DefaultCpuTaskQueue to do it.
+                        DefaultCpuTaskQueue.get().enqueue(doer);
                         return Ok(Async::Ready(()));
                     }
                     remainings
@@ -234,7 +260,12 @@ pub(crate) fn verify_and_remove_checksum(bytes: &mut Vec<u8>) -> Result<()> {
 mod tests {
     use super::*;
     use config::{ClusterConfig, ClusterMember};
+    use futures::future::poll_fn;
     use rustracing_jaeger::Span;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::thread::sleep;
+    use std::time::{Duration, Instant};
     use test_util::tests::{setup_system, wait, System};
     use trackable::result::TestResult;
 
@@ -392,7 +423,7 @@ mod tests {
         let version = ObjectVersion(6);
         let expected = vec![0x02];
 
-        // This assersion means that
+        // This assertion means that
         //  the node `node_id` is not a member of participants that put a data to a dispersed device
         //  with high probability.
         assert!(
@@ -416,6 +447,58 @@ mod tests {
         let result = wait(storage_client.clone().get_fragment(node_id, version))?;
 
         assert_eq!(result, MaybeFragment::NotParticipant);
+
+        Ok(())
+    }
+
+    #[test]
+    fn put_all_ensures_all_futures_completion() -> TestResult {
+        // We use the fact that PutAll doesn't know what passed futures do.
+        // Specifically, it's okay to pass PutAll futures that are not related to PUT operations.
+        let future_count = 12;
+        let required_ok_count = 8;
+        let atomic_limit = Arc::new(AtomicUsize::new(required_ok_count));
+        let atomic_count = Arc::new(AtomicUsize::new(0));
+        let mut futures = vec![];
+        for i in 0..future_count {
+            let atomic_limit = atomic_limit.clone();
+            let atomic_count = atomic_count.clone();
+            // Limited by atomic_limit. In the initial configuration, only 8 futures will finish,
+            // and the other 4 will be run forever.
+            let future = poll_fn(move || -> Poll<(), Error> {
+                if i < atomic_limit.load(Ordering::SeqCst) {
+                    atomic_count.fetch_add(1, Ordering::SeqCst);
+                    return Ok(Async::Ready(()));
+                }
+                Ok(Async::NotReady)
+            });
+            futures.push(Box::new(future) as BoxFuture<()>);
+        }
+        let put_all_metrics = PutAllMetrics::new("test")?;
+        let put_all = PutAll::new(
+            put_all_metrics.clone(),
+            futures.into_iter(),
+            required_ok_count,
+        )?;
+        wait(put_all)?;
+        // No failures so far - 8 completed, 4 pending
+        assert!(put_all_metrics.lost_fragments_total.value().abs() <= 1e-5);
+        assert_eq!(atomic_count.load(Ordering::SeqCst), required_ok_count);
+
+        // Change limit to 12.
+        // If futures given to PutAll are taken care of, atomic_count will eventually become 12.
+        atomic_limit.store(future_count, Ordering::SeqCst);
+
+        // Wait for at most three seconds.
+        let now = Instant::now();
+        let maximum_waiting_time = Duration::from_secs(3);
+        while now.elapsed() < maximum_waiting_time {
+            sleep(Duration::from_millis(10));
+            if atomic_count.load(Ordering::SeqCst) == future_count {
+                break;
+            }
+        }
+        assert_eq!(atomic_count.load(Ordering::SeqCst), future_count);
 
         Ok(())
     }
