@@ -3,12 +3,14 @@ use adler32;
 use byteorder::{BigEndian, ByteOrder};
 use cannyls::deadline::Deadline;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
+use fibers_tasque::DefaultCpuTaskQueue;
 use frugalos_raft::NodeId;
 use futures::future;
 use futures::{self, Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
 use rustracing_jaeger::span::SpanHandle;
 use slog::Logger;
+use std::env;
 use std::thread;
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
@@ -17,7 +19,6 @@ use client::dispersed_storage::{DispersedClient, ReconstructDispersedFragment};
 use client::ec::ErasureCoder;
 use client::replicated_storage::{GetReplicatedFragment, ReplicatedClient};
 use config::ClientConfig;
-use fibers_tasque::DefaultCpuTaskQueue;
 use metrics::{DispersedClientMetrics, PutAllMetrics, ReplicatedClientMetrics};
 use util::BoxFuture;
 use {Error, ErrorKind, ObjectValue, Result};
@@ -157,7 +158,7 @@ impl Future for PutAll {
             let remainings = match self.future.poll() {
                 Err((e, _, remainings)) => {
                     self.metrics.lost_fragments_total.increment();
-                    // If completing required_ok_count futures become impossible,
+                    // If completing required_ok_count futures becomes impossible,
                     // immediately stops execution.
                     if remainings.len() + self.ok_count < self.required_ok_count {
                         self.metrics.failures_total.increment();
@@ -184,14 +185,20 @@ impl Future for PutAll {
                                 })
                             }));
 
-                        // Because TaskQueue accepts closure (FnOnce()), convert the future into a closure.
+                        // Because TaskQueue accepts a closure (FnOnce()), convert the future into a closure.
+                        let poll_frequency_millis =
+                            env::var("FRUGALOS_PUT_ALL_POLL_FREQUENCY_MILLIS")
+                                .ok()
+                                .and_then(|v| v.parse().ok())
+                                .unwrap_or(100); // defaults to 100ms
+                        let waiting_time = Duration::from_millis(poll_frequency_millis);
                         let doer = move || loop {
                             match remaining.poll() {
                                 Ok(Async::Ready(_)) => return,
                                 Ok(Async::NotReady) => (),
                                 Err(_) => unreachable!(),
                             }
-                            thread::sleep(Duration::from_millis(1));
+                            thread::sleep(waiting_time);
                         };
 
                         // Ask DefaultCpuTaskQueue to do it.
