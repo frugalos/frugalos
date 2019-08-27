@@ -106,13 +106,16 @@ impl Service {
     pub fn stop(&mut self) {
         self.do_stop = true;
         let mut stopping = Vec::new();
-        for (id, node) in self.nodes.load().iter() {
-            info!(self.logger, "Sends stop request: {:?}", id);
-            let (monitored, monitor) = oneshot::monitor();
-            stopping.push(monitor);
-            node.stop(monitored);
+        let nodes = self.nodes.load();
+        if !nodes.is_empty() {
+            for (id, node) in nodes.iter() {
+                info!(self.logger, "Sends stop request: {:?}", id);
+                let (monitored, monitor) = oneshot::monitor();
+                stopping.push(monitor);
+                node.stop(monitored);
+            }
+            self.stopping = Some(futures::select_all(stopping));
         }
-        self.stopping = Some(futures::select_all(stopping));
     }
 
     /// スナップショットを取得する.
@@ -193,7 +196,7 @@ impl Future for Service {
             if let Async::Ready(command) = polled {
                 let command = command.expect("Unreachable");
                 self.handle_command(command);
-                if self.do_stop && self.nodes.load().is_empty() {
+                if self.do_stop && self.stopping.is_none() && self.nodes.load().is_empty() {
                     return Ok(Async::Ready(()));
                 }
             } else {
@@ -242,5 +245,67 @@ impl ServiceHandle {
     }
     pub(crate) fn nodes(&self) -> Arc<HashMap<LocalNodeId, NodeHandle>> {
         self.nodes.load()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fibers::sync::mpsc;
+    use rustracing::sampler::NullSampler;
+    use slog::Discard;
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::str::FromStr;
+    use trackable::result::TestResult;
+
+    use node::Request;
+
+    struct TestNode {
+        node_id: NodeId,
+        tx: mpsc::Sender<Request>,
+        rx: mpsc::Receiver<Request>,
+    }
+    impl TestNode {
+        fn new(node_id: &str) -> Self {
+            let node_id = NodeId::from_str(node_id).unwrap();
+            let (tx, rx) = mpsc::channel();
+            Self { node_id, tx, rx }
+        }
+        fn handle(&self) -> NodeHandle {
+            NodeHandle::new(self.tx.clone())
+        }
+    }
+    impl Future for TestNode {
+        type Item = ();
+        type Error = Error;
+        fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+            while let Async::Ready(Some(request)) = self.rx.poll().unwrap() {
+                match request {
+                    Request::Stop(monitored) => {
+                        monitored.exit(Ok(()));
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Async::NotReady)
+        }
+    }
+
+    #[test]
+    fn stop_works() -> TestResult {
+        let mut node = TestNode::new("1000a00.0@127.0.0.1:14278");
+        let (tracer, _) = rustracing_jaeger::Tracer::new(NullSampler);
+        let tracer = ThreadLocalTracer::new(tracer);
+        let logger = Logger::root(Discard, o!());
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let mut rpc_server_builder = RpcServerBuilder::new(addr);
+        let mut service = track!(Service::new(logger, &mut rpc_server_builder, tracer))?;
+        track!(service.handle().add_node(node.node_id, node.handle()))?;
+        while track!(service.poll())?.is_not_ready() {
+            track!(node.poll())?;
+            service.stop();
+            track!(service.handle().remove_node(node.node_id))?;
+        }
+        Ok(())
     }
 }

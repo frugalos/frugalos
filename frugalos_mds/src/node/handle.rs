@@ -27,7 +27,7 @@ pub struct NodeHandle {
     request_tx: mpsc::Sender<Request>,
 }
 impl NodeHandle {
-    pub(super) fn new(request_tx: mpsc::Sender<Request>) -> Self {
+    pub(crate) fn new(request_tx: mpsc::Sender<Request>) -> Self {
         NodeHandle { request_tx }
     }
     pub fn stop(&self, reply: Reply<()>) {

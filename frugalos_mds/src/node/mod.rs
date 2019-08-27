@@ -176,7 +176,7 @@ impl ProposalMetrics {
 
 /// `Node`に発行される要求.
 #[derive(Debug)]
-enum Request {
+pub(crate) enum Request {
     StartElection,
     GetLeader(Instant, Reply<NodeId>),
     List(Reply<Vec<ObjectSummary>>),
