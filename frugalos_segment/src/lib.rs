@@ -43,6 +43,7 @@ mod client;
 mod error;
 mod full_sync;
 mod metrics;
+mod rpc_server;
 mod service;
 mod synchronizer;
 mod test_util;

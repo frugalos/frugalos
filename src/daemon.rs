@@ -27,6 +27,7 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use config_server::ConfigServer;
+use libfrugalos::repair::RepairConfig;
 use recovery::prepare_recovery;
 use rpc_server::RpcServer;
 use server::{spawn_report_spans_thread, Server};
@@ -406,5 +407,34 @@ pub fn take_snapshot(logger: &Logger, rpc_addr: SocketAddr) -> Result<()> {
         .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected"))))?;
 
     info!(logger, "The frugalos server has taken snapshot");
+    Ok(())
+}
+
+/// 指定されたアドレスを使用しているfrugalosプロセスでrepair_configを変更する。
+pub fn set_repair_config(
+    logger: &Logger,
+    rpc_addr: SocketAddr,
+    repair_config: RepairConfig,
+) -> Result<()> {
+    info!(logger, "Starts setting repair_idleness_threshold");
+
+    let mut executor = track!(ThreadPoolExecutor::with_thread_count(1).map_err(Error::from))?;
+    let rpc_service = RpcServiceBuilder::new()
+        .logger(logger.clone())
+        .finish(executor.handle());
+    let rpc_service_handle = rpc_service.handle();
+    executor.spawn(rpc_service.map_err(|e| panic!("{}", e)));
+
+    let client = libfrugalos::client::frugalos::Client::new(rpc_addr, rpc_service_handle);
+    let fiber = executor.spawn_monitor(client.set_repair_config(repair_config));
+    track!(executor
+        .run_fiber(fiber)
+        .unwrap()
+        .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected"))))?;
+
+    info!(
+        logger,
+        "The frugalos server has set repair_idleness_threshold"
+    );
     Ok(())
 }

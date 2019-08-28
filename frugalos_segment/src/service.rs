@@ -9,7 +9,7 @@ use frugalos_core::tracer::ThreadLocalTracer;
 use frugalos_mds::{
     FrugalosMdsConfig, Node, Service as RaftMdsService, ServiceHandle as MdsHandle,
 };
-use frugalos_raft::{self, NodeId};
+use frugalos_raft::{self, LocalNodeId, NodeId};
 use futures::{Async, Future, Poll, Stream};
 use raftlog::cluster::ClusterMembers;
 use slog::Logger;
@@ -18,6 +18,9 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use client::storage::StorageClient;
+use libfrugalos::repair::{RepairConfig, RepairIdleness};
+use rpc_server::RpcServer;
+use std::collections::HashMap;
 use synchronizer::Synchronizer;
 use {Client, Error, ErrorKind, Result};
 
@@ -33,6 +36,8 @@ pub struct Service<S> {
     command_rx: mpsc::Receiver<Command>,
     mds_alive: bool,
     mds_config: FrugalosMdsConfig,
+    // Senders of `SegmentNode`s
+    segment_node_handles: HashMap<LocalNodeId, SegmentNodeHandle>,
 }
 impl<S> Service<S>
 where
@@ -50,10 +55,10 @@ where
     ) -> Result<Self> {
         let mds_service = track!(RaftMdsService::new(logger.clone(), rpc, tracer))?;
         let device_registry = DeviceRegistry::new(logger.clone());
+        let (command_tx, command_rx) = mpsc::channel();
         CannyLsRpcServer::new(device_registry.handle()).register(rpc);
 
-        let (command_tx, command_rx) = mpsc::channel();
-        Ok(Service {
+        let service = Service {
             logger,
             rpc_service,
             spawner,
@@ -64,7 +69,12 @@ where
             command_rx,
             mds_alive: true,
             mds_config,
-        })
+            segment_node_handles: HashMap::new(),
+        };
+
+        RpcServer::register(service.handle(), rpc);
+
+        Ok(service)
     }
 
     /// サービスを操作するためのハンドルを返す。
@@ -87,6 +97,19 @@ where
     /// Raftのスナップショット取得要求を発行する。
     pub fn take_snapshot(&mut self) {
         self.mds_service.take_snapshot();
+    }
+
+    /// repair_idleness_threshold の変更要求を発行する。
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn set_repair_config(&mut self, repair_config: RepairConfig) {
+        // TODO: handle RepairConfig's other two fields (repair_concurrency_limit, segment_gc_concurrency_limit)
+        if let Some(repair_idleness_threshold) = repair_config.repair_idleness_threshold {
+            for (_, segment_node_handle) in self.segment_node_handles.iter() {
+                let command =
+                    SegmentNodeCommand::SetRepairIdlenessThreshold(repair_idleness_threshold);
+                segment_node_handle.send(command);
+            }
+        }
     }
 
     /// デバイスレジストリへの破壊的な参照を返す。
@@ -112,6 +135,15 @@ where
                 let raft_service = self.raft_service.clone();
                 let mds_config = self.mds_config.clone();
                 let mds_service = self.mds_service.handle();
+                // The sender (tx) and the receiver (rx) for SegmentNode.
+                // Rather than passing both tx and rx to SegmentNode's constructor
+                // and allow SegmentNode to make handles by cloning tx,
+                // we pass rx only and hold tx for use in SegmentService.
+                // That is because we need tx only in SegmentService.
+                let (segment_node_command_tx, segment_node_command_rx) = mpsc::channel();
+                // TODO: Remove a node from segment_node_handles when a SegmentNode terminates with an error
+                self.segment_node_handles
+                    .insert(local_id, SegmentNodeHandle(segment_node_command_tx));
                 let future = device
                     .map_err(|e| track!(e))
                     .and_then(move |device| {
@@ -144,11 +176,15 @@ where
                             device,
                             client,
                             cluster,
+                            segment_node_command_rx
                         ))
                     })
                     .map_err(move |e| crit!(logger, "Error: {}", e))
                     .and_then(|node| node);
                 self.spawner.spawn(future);
+            }
+            Command::SetRepairConfig(repair_config) => {
+                self.set_repair_config(repair_config);
             }
         }
     }
@@ -211,6 +247,11 @@ impl ServiceHandle {
             .map_err(|_| ErrorKind::Other.error(),))?;
         Ok(())
     }
+    /// repair_config の変更要求を発行する。
+    pub fn set_repair_config(&self, repair_config: RepairConfig) {
+        let command = Command::SetRepairConfig(repair_config);
+        let _ = self.command_tx.send(command);
+    }
 }
 
 pub type CreateDeviceHandle = Box<dyn Future<Item = DeviceHandle, Error = Error> + Send + 'static>;
@@ -221,6 +262,7 @@ struct RaftConfig {
     discard_former_log: bool,
 }
 
+#[allow(clippy::large_enum_variant)]
 enum Command {
     AddNode(
         NodeId,
@@ -229,12 +271,14 @@ enum Command {
         ClusterMembers,
         RaftConfig,
     ),
+    SetRepairConfig(RepairConfig),
 }
 
 struct SegmentNode {
     logger: Logger,
     node: Node,
     synchronizer: Synchronizer,
+    segment_node_command_rx: mpsc::Receiver<SegmentNodeCommand>,
 }
 impl SegmentNode {
     #[allow(clippy::too_many_arguments)]
@@ -251,6 +295,7 @@ impl SegmentNode {
         device: DeviceHandle,
         client: StorageClient,
         cluster: ClusterMembers,
+        segment_node_command_rx: mpsc::Receiver<SegmentNodeCommand>,
     ) -> Result<Self>
     where
         S: Clone + Spawn + Send + 'static,
@@ -298,34 +343,28 @@ impl SegmentNode {
             rpc_service
         ))?;
 
-        // TODO: optionにする
-        let repair_enabled = env::var("FRUGALOS_REPAIR_ENABLED")
-            .ok()
-            .map_or(false, |v| v == "1");
-        info!(logger, "Repair enabled: {}", repair_enabled);
-
         let full_sync_step = env::var("FRUGALOS_FULL_SYNC_STEP")
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(100);
         info!(logger, "FullSync step: {}", full_sync_step);
 
-        let synchronizer = Synchronizer::new(
-            logger.clone(),
-            node_id,
-            device,
-            client,
-            repair_enabled,
-            full_sync_step,
-        );
+        let synchronizer =
+            Synchronizer::new(logger.clone(), node_id, device, client, full_sync_step);
 
         Ok(SegmentNode {
             logger,
             node,
             synchronizer,
+            segment_node_command_rx,
         })
     }
     fn run_once(&mut self) -> Result<bool> {
+        // Handle a command once at a time.
+        if let Async::Ready(command) = self.segment_node_command_rx.poll().expect("Never fails") {
+            let command = command.expect("Always Some");
+            self.handle_command(command);
+        }
         while let Async::Ready(event) = track!(self.node.poll())? {
             if let Some(event) = event {
                 self.synchronizer.handle_event(&event);
@@ -335,6 +374,15 @@ impl SegmentNode {
         }
         track!(self.synchronizer.poll())?;
         Ok(true)
+    }
+    #[allow(clippy::needless_pass_by_value)]
+    fn handle_command(&mut self, command: SegmentNodeCommand) {
+        match command {
+            SegmentNodeCommand::SetRepairIdlenessThreshold(idleness_threshold) => {
+                self.synchronizer
+                    .set_repair_idleness_threshold(idleness_threshold);
+            }
+        }
     }
 }
 impl Future for SegmentNode {
@@ -353,4 +401,17 @@ impl Future for SegmentNode {
             Ok(true) => Ok(Async::NotReady),
         }
     }
+}
+
+#[derive(Clone)]
+struct SegmentNodeHandle(mpsc::Sender<SegmentNodeCommand>);
+
+impl SegmentNodeHandle {
+    fn send(&self, command: SegmentNodeCommand) {
+        let _ = self.0.send(command);
+    }
+}
+
+enum SegmentNodeCommand {
+    SetRepairIdlenessThreshold(RepairIdleness),
 }
