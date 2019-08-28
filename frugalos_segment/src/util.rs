@@ -2,6 +2,8 @@ use futures::{Future, Poll};
 
 use Error;
 
+pub(crate) type BoxFuture<T> = Box<dyn Future<Item = T, Error = Error> + Send + 'static>;
+
 #[derive(Debug)]
 pub enum Phase<A, B> {
     A(A),

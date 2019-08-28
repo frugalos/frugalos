@@ -40,3 +40,13 @@ JSON=$(cat <<EOF
 EOF
 )
 curl -f -XPUT -d "$JSON" http://$API_HOST/v1/buckets/chunk
+
+JSON=$(cat <<EOF
+{"replicated": {
+  "id": "replicated",
+  "device": "rack",
+  "tolerable_faults": $TOLERABLE_FAULTS
+}}
+EOF
+)
+curl -f -XPUT -d "$JSON" http://$API_HOST/v1/buckets/replicated
