@@ -18,7 +18,6 @@ use raftlog::{self, ReplicatedLog};
 use slog::Logger;
 use std::collections::VecDeque;
 use std::env;
-use std::mem;
 use std::ops::Range;
 use std::time::{Duration, Instant};
 use trackable::error::ErrorKindExt;
@@ -170,7 +169,7 @@ impl Stopping {
 }
 impl Drop for Stopping {
     fn drop(&mut self) {
-        if let Some(monitored) = mem::replace(&mut self.0, None) {
+        if let Some(monitored) = self.0.take() {
             monitored.exit(Ok(()));
         }
     }

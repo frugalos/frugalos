@@ -167,7 +167,7 @@ impl Future for Service {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         loop {
             loop {
-                match mem::replace(&mut self.stopping, None) {
+                match self.stopping.take() {
                     None => break,
                     Some(mut future) => {
                         let remainings = match future.poll() {
