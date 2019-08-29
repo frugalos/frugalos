@@ -38,6 +38,8 @@ extern crate trackable;
 extern crate clap;
 extern crate sloggers;
 
+extern crate new_libfrugalos;
+
 use std::fs::File;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};

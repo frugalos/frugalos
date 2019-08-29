@@ -13,6 +13,7 @@ use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, ObjectPrefix, ObjectSummary, ObjectVersion,
 };
 use libfrugalos::expect::Expect;
+use new_libfrugalos::multiplicity::{InnerRetryCount, MultiplicityConfig, NumberOfEnsuredSaves};
 use rustracing::tag::{StdTag, Tag};
 use rustracing_jaeger::reporter::JaegerCompactReporter;
 use rustracing_jaeger::span::{SpanContext, SpanReceiver};
@@ -549,6 +550,7 @@ impl HandleRequest for PutObject {
         let logger = self.0.logger.clone();
         let expect = try_badarg!(get_expect(&req.header()));
         let deadline = try_badarg!(get_deadline(&req.url()));
+        let _multiplicity_config = try_badarg!(get_multiplicity_config(&req.url()));
         let future = self
             .0
             .client
@@ -724,4 +726,23 @@ fn get_deadline(url: &Url) -> Result<Deadline> {
         }
     }
     Ok(Deadline::Within(Duration::from_secs(5)))
+}
+
+fn get_multiplicity_config(url: &Url) -> Result<MultiplicityConfig> {
+    let mut inner_retry_count = InnerRetryCount::default();
+    let mut number_of_ensured_saves = NumberOfEnsuredSaves::default();
+    for (k, v) in url.query_pairs() {
+        if k == "inner_retry_count" {
+            let n: usize = track!(v.parse().map_err(Error::from))?;
+            inner_retry_count = InnerRetryCount(n);
+        }
+        if k == "number_of_ensured_saves" {
+            let n: usize = track!(v.parse().map_err(Error::from))?;
+            number_of_ensured_saves = NumberOfEnsuredSaves(n);
+        }
+    }
+    Ok(MultiplicityConfig {
+        inner_retry_count,
+        number_of_ensured_saves,
+    })
 }
