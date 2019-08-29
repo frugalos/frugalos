@@ -746,3 +746,38 @@ fn get_multiplicity_config(url: &Url) -> Result<MultiplicityConfig> {
         number_of_ensured_saves,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use new_libfrugalos::multiplicity::{
+        InnerRetryCount, MultiplicityConfig, NumberOfEnsuredSaves,
+    };
+    use server::get_multiplicity_config;
+    use trackable::result::TestResult;
+    use url::Url;
+
+    #[test]
+    fn get_multiplicity_config_works() -> TestResult {
+        let url_str = "localhost:3100/v1/buckets/live_archive_chunk/objects/foo00?inner_retry_count=4&number_of_ensured_saves=3";
+        let url = Url::parse(url_str).expect("Never fails");
+        let multiplicity_config = get_multiplicity_config(&url)?;
+        assert_eq!(
+            multiplicity_config,
+            MultiplicityConfig {
+                inner_retry_count: InnerRetryCount(4),
+                number_of_ensured_saves: NumberOfEnsuredSaves(3),
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn get_multiplicity_config_fails_given_invalid_parameters() -> TestResult {
+        let url_str =
+            "localhost:3100/v1/buckets/live_archive_chunk/objects/foo00?inner_retry_count=-1";
+        let url = Url::parse(url_str).expect("Never fails");
+        let result = get_multiplicity_config(&url);
+        assert!(result.is_err());
+        Ok(())
+    }
+}
