@@ -117,7 +117,10 @@ where
         if let Some(repair_concurrency_limit) = repair_config.repair_concurrency_limit {
             // Even if more than repair_concurrency_limit threads are running, we don't do anything to them.
             // Just let them finish their jobs.
-            let mut lock = self.repair_concurrency.lock().unwrap();
+            let mut lock = self
+                .repair_concurrency
+                .lock()
+                .unwrap_or_else(|e| panic!("Lock failed with error: {:?}", e));
             lock.set_limit(repair_concurrency_limit.0);
         }
     }
