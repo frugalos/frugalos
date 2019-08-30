@@ -307,6 +307,7 @@ impl Node {
         self.next_commit
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn handle_request(&mut self, request: Request) {
         // NOTE: 整合性を保証したいので、更新系の要求を処理できるのはリーダのみとする.
         //       Get と Head はクライアントが指定した整合性に従う.

@@ -141,7 +141,7 @@ impl HandleCall<rpc::GetObjectRpc> for Server {
             node.get_object(
                 request.object_id,
                 request.expect,
-                request.consistency.unwrap_or(Default::default()),
+                request.consistency.unwrap_or_default(),
                 Instant::now(),
             )
             .map_err(to_rpc_error)
@@ -157,7 +157,7 @@ impl HandleCall<rpc::HeadObjectRpc> for Server {
             node.head_object(
                 request.object_id,
                 request.expect,
-                request.consistency.unwrap_or(Default::default()),
+                request.consistency.unwrap_or_default(),
             )
             .map_err(to_rpc_error)
             .then(Ok),

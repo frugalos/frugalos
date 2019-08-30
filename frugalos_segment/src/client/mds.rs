@@ -837,39 +837,36 @@ where
         // 1. オブジェクトの有無は多数決で決める。同数の場合は存在することとする。
         // 2. オブジェクトが存在する場合は、取得できた中で最新のものを返す。
         // 3. レスポンスが1つも取得できなかったためエラーとする。
-        loop {
-            let mut i = 0;
-            while i < self.futures.len() {
-                match track!(self.futures[i].poll()) {
-                    Err(e) => {
-                        self.futures.swap_remove(i);
-                        return track!(Err(MdsError::from(e)));
-                    }
-                    Ok(Async::NotReady) => {
-                        i += 1;
-                    }
-                    Ok(Async::Ready(response)) => {
-                        self.futures.swap_remove(i);
-                        if let (leader, Some(value)) = response {
-                            self.values.push((leader, value));
-                        } else {
-                            self.not_found_count += 1;
-                        }
+        let mut i = 0;
+        while i < self.futures.len() {
+            match track!(self.futures[i].poll()) {
+                Err(e) => {
+                    self.futures.swap_remove(i);
+                    return track!(Err(e));
+                }
+                Ok(Async::NotReady) => {
+                    i += 1;
+                }
+                Ok(Async::Ready(response)) => {
+                    self.futures.swap_remove(i);
+                    if let (leader, Some(value)) = response {
+                        self.values.push((leader, value));
+                    } else {
+                        self.not_found_count += 1;
                     }
                 }
             }
-            if self.futures.is_empty() {
-                let values = mem::replace(&mut self.values, Vec::new());
-                if self.not_found_count > values.len() {
-                    return Ok(Async::Ready((None, None)));
-                }
-                if let Some((leader, value)) = select_latest(values) {
-                    return Ok(Async::Ready((leader, Some(value))));
-                }
-                let e = MdsErrorKind::Other.cause("No MDS response");
-                return track!(Err(MdsError::from(e)));
+        }
+        if self.futures.is_empty() {
+            let values = mem::replace(&mut self.values, Vec::new());
+            if self.not_found_count > values.len() {
+                return Ok(Async::Ready((None, None)));
             }
-            break;
+            if let Some((leader, value)) = select_latest(values) {
+                return Ok(Async::Ready((leader, Some(value))));
+            }
+            let e = MdsErrorKind::Other.cause("No MDS response");
+            return track!(Err(e.into()));
         }
         Ok(Async::NotReady)
     }

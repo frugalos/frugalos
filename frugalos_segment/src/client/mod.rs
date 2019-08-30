@@ -274,13 +274,18 @@ mod tests {
         // Heads return `object_version`
         // since it only looks for the <ObjectId, ObjectVersion>-table in the MDS
         // and does not visit the dispersed device.
-        let result = wait(client.head(object_id.to_owned(), Span::inactive().handle()))?;
+        let result = wait(client.head(
+            object_id.to_owned(),
+            ReadConsistency::Consistent,
+            Span::inactive().handle(),
+        ))?;
         assert_eq!(result, Some(object_version));
 
         // Gets failed since there are no fragments in the dispersed device.
         let result = wait(client.get(
             object_id.to_owned(),
             Deadline::Infinity,
+            ReadConsistency::Consistent,
             Span::inactive().handle(),
         ));
 
@@ -320,6 +325,7 @@ mod tests {
         let data = wait(client.get(
             object_id.clone(),
             Deadline::Infinity,
+            ReadConsistency::Consistent,
             Span::inactive().handle(),
         ))?;
 
@@ -335,6 +341,7 @@ mod tests {
         let data = wait(client.get(
             object_id.clone(),
             Deadline::Infinity,
+            ReadConsistency::Consistent,
             Span::inactive().handle(),
         ))?;
 
