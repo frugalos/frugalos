@@ -313,11 +313,8 @@ mod tests {
         type Error = Error;
         fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
             while let Async::Ready(Some(request)) = self.rx.poll().unwrap() {
-                match request {
-                    Request::Stop(monitored) => {
-                        monitored.exit(Ok(()));
-                    }
-                    _ => {}
+                if let Request::Stop(monitored) = request {
+                    monitored.exit(Ok(()));
                 }
             }
             Ok(Async::NotReady)
