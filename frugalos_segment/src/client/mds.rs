@@ -85,9 +85,9 @@ use rustracing_jaeger::span::{Span, SpanHandle};
 use slog::Logger;
 use std::collections::hash_set::HashSet;
 use std::fmt::Debug;
-use std::mem;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
+use std::vec::Drain;
 use trackable::error::ErrorKindExt;
 
 use config::{ClusterConfig, MdsClientConfig, MdsRequestPolicy};
@@ -792,7 +792,7 @@ impl ContainObjectVersion for (Option<RemoteNodeId>, ObjectVersion) {
 }
 
 #[inline]
-fn select_latest<T: ContainObjectVersion>(values: Vec<T>) -> Option<T> {
+fn select_latest<T: ContainObjectVersion>(values: Drain<T>) -> Option<T> {
     values
         .into_iter()
         .max_by_key(ContainObjectVersion::object_version)
@@ -858,7 +858,7 @@ where
             }
         }
         if self.futures.is_empty() {
-            let values = mem::replace(&mut self.values, Vec::new());
+            let values = self.values.drain(..);
             if self.not_found_count > values.len() {
                 return Ok(Async::Ready((None, None)));
             }
