@@ -164,7 +164,7 @@ impl LeaderWaiting {
 struct Stopping(Option<Reply<()>>);
 impl Stopping {
     fn new(reply: Reply<()>) -> Self {
-        Self(Some(reply))
+        Stopping(Some(reply))
     }
 }
 impl Drop for Stopping {
