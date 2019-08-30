@@ -42,6 +42,8 @@ mod machine;
 mod protobuf;
 mod rpc;
 mod service;
+#[cfg(test)]
+mod test_util;
 
 /// クレート固有の`Result`型。
 pub type Result<T> = ::std::result::Result<T, Error>;

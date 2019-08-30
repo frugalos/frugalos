@@ -161,6 +161,7 @@ pub mod tests {
                         ),
                         client,
                         cluster.clone(),
+                        false,
                     )
                     .unwrap();
             }

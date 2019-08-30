@@ -443,7 +443,7 @@ impl MdsClient {
 }
 
 type BoxFuture<V> =
-    Box<Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>;
+    Box<dyn Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>;
 
 fn to_object_value(
     response: (Option<RemoteNodeId>, Option<Metadata>),

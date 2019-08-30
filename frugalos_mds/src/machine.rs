@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use {Error, Result};
 
 /// ノードの状態を管理するための状態機械.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Machine {
     // NOTE:
     // - `PatriciaMap`は、`HashMap`よりもメモリ消費量が少ないので採用
@@ -67,6 +67,9 @@ impl Machine {
     pub fn len(&self) -> usize {
         self.id_to_version.len()
     }
+    pub fn is_empty(&self) -> bool {
+        self.id_to_version.is_empty()
+    }
     pub fn put(
         &mut self,
         object_id: ObjectId,
@@ -103,9 +106,9 @@ impl Machine {
         if let Some(owner_id) = owner_id {
             let owner_id: ObjectId = track!(String::from_utf8(owner_id).map_err(Error::from))?;
             self.id_to_data.remove(&owner_id);
-            return Ok(self.id_to_version.remove(&owner_id));
+            Ok(self.id_to_version.remove(&owner_id))
         } else {
-            return Ok(None);
+            Ok(None)
         }
     }
     pub fn delete_by_prefix(&mut self, object_prefix: &ObjectPrefix) -> Result<Vec<ObjectVersion>> {
@@ -134,6 +137,22 @@ impl Machine {
             .map(|(id, version)| (String::from_utf8(id).unwrap(), version))
             .map(|(id, &version)| ObjectSummary { id, version })
             .collect()
+    }
+    // FIXME: ad-hoc bit vector backed by u64. Bit (64k + j) will be stored in array[k] & 1 << j.
+    // This function is added for future use. See arguments here https://github.com/frugalos/frugalos/pull/166#discussion_r291900772
+    pub fn enumerate_object_versions(&self) -> Vec<u64> {
+        let size = if let Some(x) = self.latest_version() {
+            x.version.0 + 1
+        } else {
+            0
+        };
+        let u64size = ((size + 63) / 64) as usize;
+        let mut result = vec![0; u64size];
+        self.id_to_version.iter().for_each(|(_id, version)| {
+            let version = version.0 as usize;
+            result[version / 64] |= 1 << (version % 64);
+        });
+        result
     }
     pub fn latest_version(&self) -> Option<ObjectSummary> {
         self.id_to_version

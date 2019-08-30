@@ -31,10 +31,10 @@ fn main() {
         format!(
             "
 /// This takes one of \"debug\" or \"release\", that we've used to build this frugalos.
-pub static BUILD_PROFILE: &'static str = \"{}\";\n\n
+pub static BUILD_PROFILE: &str = \"{}\";\n\n
 
 /// This means the rustc version that we've used to build this frugalos.
-pub static BUILD_VERSION: &'static str = \"{}\";
+pub static BUILD_VERSION: &str = \"{}\";
 ",
             profile, version
         )

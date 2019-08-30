@@ -1,7 +1,7 @@
 ##
 ## FrugalOSビルド用のベースイメージ
 ##
-FROM centos:7
+FROM ringo/scientific:7.2
 
 ##
 ## yumパッケージ群をインストール
@@ -17,5 +17,7 @@ ENV PATH $PATH:/root/.cargo/bin
 ##
 ## Frugalosをビルド
 ##
-RUN git clone https://github.com/frugalos/frugalos.git
+## ビルド対象の git のブランチ/コミットIDを指定する
+ARG git_ref=master
+RUN git clone https://github.com/frugalos/frugalos.git && cd frugalos && git checkout $git_ref
 RUN cd frugalos && cargo build --release --all

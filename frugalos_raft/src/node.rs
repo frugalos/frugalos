@@ -5,6 +5,7 @@ use raftlog::node::NodeId as RaftNodeId;
 use raftlog::{Error, ErrorKind, Result};
 use std::fmt;
 use std::net::SocketAddr;
+use std::ops::Range;
 use std::str::FromStr;
 use std::u32;
 use trackable::error::ErrorKindExt;
@@ -138,6 +139,30 @@ impl LocalNodeId {
         id[7] = LUMP_TYPE_LOG_PREFIX;
         BigEndian::write_u64(&mut id[8..], index);
         LumpId::new(BigEndian::read_u128(&id[..]))
+    }
+
+    /// このノードが取り得る `LumpId` の範囲を返す.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use frugalos_raft::LocalNodeId;
+    ///
+    /// let mut id = [0; 7];
+    /// id[6] = 1;
+    /// let range = LocalNodeId::new(id).to_available_lump_id_range();
+    /// assert_eq!(range.start.as_u128(), 4722366482869645213696);
+    /// assert_eq!(range.end.as_u128(), 9444732965739290427392);
+    /// assert_eq!(range.end.as_u128() / range.start.as_u128(), 2);
+    /// ```
+    pub fn to_available_lump_id_range(self) -> Range<LumpId> {
+        let mut id = [0; 16];
+        (&mut id[0..7]).copy_from_slice(&self.0[..]);
+        let start = LumpId::new(BigEndian::read_u128(&id[..]));
+        let local_id_and_type = BigEndian::read_u64(&id[0..8]);
+        BigEndian::write_u64(&mut id[0..8], local_id_and_type + (0x01 << 8));
+        let end = LumpId::new(BigEndian::read_u128(&id[..]));
+        Range { start, end }
     }
 }
 impl fmt::Debug for LocalNodeId {

@@ -59,12 +59,15 @@ impl Future for DeleteOldLogPrefixBytes {
 }
 
 // #[derive(Debug)]
-pub(crate) struct DeleteOldLogEntries {
+pub struct DeleteOldLogEntries {
     handle: Handle,
     future: BoxFuture<()>,
 }
 impl DeleteOldLogEntries {
     pub(crate) fn new(handle: Handle, old_entries: Range<LogIndex>) -> Result<Self> {
+        // TODO もともと範囲を指定して個別に古いエントリを削除していた名残で
+        // `Range` を受け取っているが、常に 0 から削除するようになったため
+        // 終了位置だけ受け取るように変更する。
         track_assert!(
             old_entries.start <= old_entries.end,
             ErrorKind::InconsistentState,
@@ -112,16 +115,14 @@ impl Future for DeleteOldLogEntries {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     use cannyls::device::DeviceHandle;
     use cannyls::lump::LumpData;
-    use cannyls::Error;
-    use futures;
     use std::ops::Range;
-    use test_util;
-    use test_util::{NodeIndex, System};
     use trackable::result::TestResult;
 
-    use super::*;
+    use test_util::{self, NodeIndex, System};
 
     const NODE_SIZE: usize = 3;
 
@@ -136,7 +137,7 @@ mod tests {
         device_handle: &DeviceHandle,
         leader: NodeIndex,
         range: Range<u64>,
-    ) -> impl Future<Item = Vec<Option<LumpData>>, Error = Error> {
+    ) -> impl Future<Item = Vec<Option<LumpData>>, Error = cannyls::Error> {
         futures::future::join_all(
             range
                 .map(|i| {

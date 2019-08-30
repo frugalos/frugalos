@@ -1,5 +1,5 @@
 # STAGE-1: Build frugalos binary
-FROM centos:7
+FROM ringo/scientific:7.2
 
 ARG FRUGALOS_VERSION
 

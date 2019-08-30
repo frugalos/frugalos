@@ -7,7 +7,7 @@ use frugalos_mds::Event;
 use frugalos_raft::NodeId;
 use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
-use prometrics::metrics::{Counter, Histogram, MetricBuilder};
+use prometrics::metrics::{Counter, Gauge, Histogram, MetricBuilder};
 use slog::Logger;
 use std::cmp::{self, Reverse};
 use std::collections::{BTreeSet, BinaryHeap};
@@ -15,13 +15,14 @@ use std::time::{Duration, Instant, SystemTime};
 
 use client::storage::{GetFragment, MaybeFragment, StorageClient};
 use config;
+use full_sync::FullSync;
 use util::Phase3;
 use Error;
 
 const MAX_TIMEOUT_SECONDS: u64 = 60;
 const DELETE_CONCURRENCY: usize = 16;
 
-type BoxFuture<T> = Box<Future<Item = T, Error = Error> + Send + 'static>;
+type BoxFuture<T> = Box<dyn Future<Item = T, Error = Error> + Send + 'static>;
 
 // TODO: 起動直後の確認は`device.list()`の結果を使った方が効率的
 pub struct Synchronizer {
@@ -40,6 +41,12 @@ pub struct Synchronizer {
     repairs_success_total: Counter,
     repairs_failure_total: Counter,
     repairs_durations_seconds: Histogram,
+    full_sync_count: Counter,
+    full_sync_deleted_objects: Counter,
+    // How many objects have to be swept before full_sync is completed (including non-existent ones)
+    full_sync_remaining: Gauge,
+    full_sync: Option<FullSync>,
+    full_sync_step: u64,
 }
 impl Synchronizer {
     pub fn new(
@@ -48,6 +55,7 @@ impl Synchronizer {
         device: DeviceHandle,
         client: StorageClient,
         repair_enabled: bool,
+        full_sync_step: u64,
     ) -> Self {
         let metric_builder = MetricBuilder::new()
             .namespace("frugalos")
@@ -107,6 +115,20 @@ impl Synchronizer {
                 .label("type", "repair")
                 .finish()
                 .expect("metric should be well-formed"),
+            full_sync_count: metric_builder
+                .counter("full_sync_count")
+                .finish()
+                .expect("metric should be well-formed"),
+            full_sync_deleted_objects: metric_builder
+                .counter("full_sync_deleted_objects")
+                .finish()
+                .expect("metric should be well-formed"),
+            full_sync_remaining: metric_builder
+                .gauge("full_sync_remaining")
+                .finish()
+                .expect("metric should be well-formed"),
+            full_sync: None,
+            full_sync_step,
         }
     }
     pub fn handle_event(&mut self, event: &Event) {
@@ -137,8 +159,32 @@ impl Synchronizer {
                     }
                     self.enqueued_delete.increment();
                 }
+                // Because pushing FullSync into the task queue causes difficulty in implementation,
+                // we decided not to push this task to the task priority queue and handle it manually.
+                Event::FullSync {
+                    ref machine,
+                    next_commit,
+                } => {
+                    // If FullSync is not being processed now, this event lets the synchronizer to handle one.
+                    if self.full_sync.is_none() && self.repair_enabled {
+                        self.full_sync = Some(FullSync::new(
+                            &self.logger,
+                            self.node_id,
+                            &self.device,
+                            machine.clone(),
+                            ObjectVersion(next_commit.as_u64()),
+                            self.full_sync_count.clone(),
+                            self.full_sync_deleted_objects.clone(),
+                            self.full_sync_remaining.clone(),
+                            self.full_sync_step,
+                        ));
+                    }
+                }
             }
-            self.todo.push(Reverse(TodoItem::new(&event)));
+            if let Event::FullSync { .. } = &event {
+            } else {
+                self.todo.push(Reverse(TodoItem::new(&event)));
+            }
         }
     }
     fn next_todo_item(&mut self) -> Option<TodoItem> {
@@ -186,6 +232,15 @@ impl Future for Synchronizer {
     type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        while let Async::Ready(Some(())) = self.full_sync.poll().unwrap_or_else(|e| {
+            warn!(self.logger, "Task failure: {}", e);
+            Async::Ready(Some(()))
+        }) {
+            // Full sync is done. Clearing the full_sync field.
+            self.full_sync = None;
+            self.full_sync_remaining.set(0.0);
+        }
+
         while let Async::Ready(()) = self.task.poll().unwrap_or_else(|e| {
             // 同期処理のエラーは致命的ではないので、ログを出すだけに留める
             warn!(self.logger, "Task failure: {}", e);
@@ -237,6 +292,7 @@ impl TodoItem {
                     version,
                 }
             }
+            Event::FullSync { .. } => unreachable!(),
         }
     }
     pub fn wait_time(&self) -> Option<Duration> {

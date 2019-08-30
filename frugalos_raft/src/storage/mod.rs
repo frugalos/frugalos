@@ -1,7 +1,7 @@
 use cannyls;
 use cannyls::device::DeviceHandle;
 use fibers::sync::mpsc;
-use futures::{Async, Future, Stream};
+use futures::{Async, Future, Poll, Stream};
 use prometrics::metrics::{Histogram, HistogramBuilder, MetricBuilder};
 use raftlog::election::Ballot;
 use raftlog::log::{LogIndex, LogPosition, LogPrefix, LogSuffix};
@@ -13,7 +13,7 @@ use trackable::error::ErrorKindExt;
 use LocalNodeId;
 
 pub use self::ballot::{LoadBallot, SaveBallot};
-pub use self::log::{LoadLog, SaveLog};
+pub use self::log::{DeleteLog, LoadLog, SaveLog};
 pub use self::log_prefix::{LoadLogPrefix, SaveLogPrefix};
 pub use self::log_suffix::{LoadLogSuffix, SaveLogSuffix};
 
@@ -84,6 +84,14 @@ impl Storage {
         }
     }
 
+    /// 永続化されているログを削除する.
+    ///
+    /// 接頭辞部分と接尾部分の両方が削除対象となる. 不正なログが混入した時など異常事態に
+    /// 使うことを想定していて、通常はログを削除する必要はない.
+    pub(crate) fn delete_log(&mut self) -> DeleteLog {
+        DeleteLog::new(&self.handle, self.event_tx.clone(), self.node_id())
+    }
+
     pub(crate) fn logger(&self) -> Logger {
         self.handle.logger.clone()
     }
@@ -135,6 +143,9 @@ impl Storage {
             // 「終端が未指定」かつ「開始地点が0」は、ノード起動時の最初のログ読み込みを示している
             // => まずスナップショットのロードを試みる
             let future = log_prefix::LoadLogPrefix::new(self);
+            // ここでログの前半部分が読み込めなかった場合、ログの接尾部分の開始位置は 0 番目から
+            // 開始しているという暗黙の前提があるため、ログの接尾部分の開始位置が 0 番目の状態で
+            // `LoadLogSuffix` を生成しても接尾部分が正しく読み込める。
             let next = Some(log_suffix::LoadLogSuffix::new(self));
             log::LoadLogInner::LoadLogPrefix {
                 next,
@@ -221,6 +232,9 @@ impl Storage {
                 Event::LogSuffixLoaded(suffix) => {
                     track!(self.handle_log_suffix_loaded_event(suffix))?;
                 }
+                Event::LogSuffixDeleted => {
+                    track!(self.handle_log_suffix_deleted_event())?;
+                }
             }
         }
         Ok(())
@@ -260,6 +274,16 @@ impl Storage {
             dump!(suffix.head, suffix.entries.len())
         );
         self.log_suffix = suffix;
+        Ok(())
+    }
+    fn handle_log_suffix_deleted_event(&mut self) -> Result<()> {
+        // ログの接尾部分がストレージから削除されたので、バッファに反映する
+        info!(
+            self.handle.logger,
+            "Event::LogSuffixDeleted: {}",
+            dump!(self.log_suffix.head)
+        );
+        self.log_suffix = Default::default();
         Ok(())
     }
     fn append_to_local_buffer(&mut self, suffix: &LogSuffix) -> Result<()> {
@@ -313,12 +337,14 @@ pub(crate) struct Handle {
 }
 
 #[derive(Debug)]
+#[allow(clippy::enum_variant_names)]
 pub(crate) enum Event {
     LogPrefixUpdated { new_head: LogPosition },
     LogSuffixLoaded(LogSuffix),
+    LogSuffixDeleted,
 }
 
-type BoxFuture<T> = Box<Future<Item = T, Error = Error> + Send + 'static>;
+type BoxFuture<T> = Box<dyn Future<Item = T, Error = Error> + Send + 'static>;
 
 fn into_box_future<F>(future: F) -> BoxFuture<F::Item>
 where
@@ -434,4 +460,38 @@ fn make_histogram(builder: &mut HistogramBuilder) -> Histogram {
         .bucket(50.0)
         .finish()
         .expect("Never fails")
+}
+
+/// ログの接頭辞部分と接尾部分を削除する。
+pub enum ClearLog {
+    /// ログを削除する。
+    DeleteLog(DeleteLog),
+
+    /// ログの削除をスキップする。
+    Skip,
+}
+impl ClearLog {
+    /// ログを消去するためのインスタンスを生成する。
+    ///
+    /// ログ消去後は新たに `Storage` を生成して状態を初期化するのが安全で望ましいため、
+    /// 古い `Storage` の所有権を奪う。
+    pub fn new(mut storage: Storage) -> Self {
+        let future = storage.delete_log();
+        ClearLog::DeleteLog(future)
+    }
+
+    /// ログの削除をスキップする。
+    pub fn skip() -> Self {
+        ClearLog::Skip
+    }
+}
+impl Future for ClearLog {
+    type Item = ();
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        match self {
+            ClearLog::DeleteLog(future) => Ok(track!(future.poll())?),
+            ClearLog::Skip => Ok(Async::Ready(())),
+        }
+    }
 }

@@ -219,6 +219,7 @@ pub fn virtual_device_decoder() -> impl MessageDecode<Item = VirtualDevice> {
             1 => SegmentAllocationPolicy::Scatter,
             2 => SegmentAllocationPolicy::Neutral,
             3 => SegmentAllocationPolicy::Gather,
+            4 => SegmentAllocationPolicy::AsEvenAsPossible,
             n => track_panic!(ErrorKind::InvalidInput, "Unknown policy: {}", n),
         };
         Ok(VirtualDevice {

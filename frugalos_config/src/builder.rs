@@ -87,6 +87,8 @@ impl<'a> SegmentsBuilder<'a> {
         Ok(segments)
     }
 
+    /// Recursively descends the tree of devices and assigns suitable devices.
+    /// Note that assigned devices form a chain from the root device to a leaf device.
     fn allocate_segment_slot(&mut self, key: SlotKey, device: &Device) -> Result<DeviceNo> {
         self.segment_owners
             .entry(key.segment_no)
@@ -116,6 +118,9 @@ impl<'a> SegmentsBuilder<'a> {
                     }
                 }
                 SegmentAllocationPolicy::Gather => self.select_gather_slot(key, d),
+                SegmentAllocationPolicy::AsEvenAsPossible => {
+                    self.select_as_evenly_as_possible_slot(key, d)
+                }
             };
             let child = self.get_device(child_no);
             track!(self.allocate_segment_slot(key, child))
@@ -123,6 +128,7 @@ impl<'a> SegmentsBuilder<'a> {
             Ok(device.seqno())
         }
     }
+    /// Returns whether at least one slot of segment_no is already owned by device_no.
     fn is_same_device_group(&self, segment_no: SegmentNo, device_no: DeviceNo) -> bool {
         self.segment_owners
             .get(&segment_no)
@@ -176,6 +182,38 @@ impl<'a> SegmentsBuilder<'a> {
         } else {
             self.gathered_segments[&key.segment_no]
         }
+    }
+    fn select_as_evenly_as_possible_slot(
+        &mut self,
+        key: SlotKey,
+        parent: &VirtualDevice,
+    ) -> DeviceNo {
+        // Pick a slot with the minimum allocated / capacity.
+        // If there are multiple such slots, pick one uniformly randomly.
+        // Note that it takes O(#slot log #slot) for each call.
+        let mut minimum_ratio = usize::max_value();
+        let mut ratio_map = HashMap::new();
+        let ring = self.get_ring(parent.seqno);
+        let candidates: Vec<_> = ring.calc_candidates(&key).collect();
+        for item in candidates.iter() {
+            let device_no = *item.node;
+            let device_state = &self.device_states[&device_no];
+            let ratio = if device_state.capacity > 0 {
+                1_000_000 * device_state.allocated / device_state.capacity
+            } else {
+                usize::max_value()
+            };
+            minimum_ratio = std::cmp::min(minimum_ratio, ratio);
+            ratio_map.insert(device_no, ratio);
+        }
+        candidates
+            .iter()
+            .find(|item| {
+                let id = *item.node;
+                *ratio_map.get(&id).expect("never fails") == minimum_ratio
+            })
+            .map(|item| *item.node)
+            .expect("at least one node has the minimum ratio")
     }
 
     #[allow(clippy::mut_from_ref)]
@@ -253,7 +291,7 @@ impl<'a> SegmentsBuilder<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct SlotKey {
     bucket_no: BucketNo,
-    segment_no: u16,
+    segment_no: SegmentNo,
     member_no: u8,
 }
 
@@ -267,11 +305,146 @@ struct DeviceState<'a> {
     // 割当済みのスロット数
     allocated: usize,
 
-    // 割当スロット数の期待値
+    // 割当スロット数の期待値。あくまでも参考値なので、allocated <= capacity は必ずしも成立するとは限らない。
     // FIXME: `capacity`という用語は不適切なので変更する
     capacity: usize,
 
     ring: HashRing,
 
     device: &'a Device,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Result;
+    use builder::SegmentTableBuilder;
+    use libfrugalos::entity::bucket::{Bucket, DispersedBucket};
+    use libfrugalos::entity::device::{Device, DeviceId, SegmentAllocationPolicy};
+    use std::collections::HashMap;
+    use test_util::build_device_tree;
+
+    fn get_bucket_8_4(segment_count: u32, root_device_id: DeviceId) -> Bucket {
+        Bucket::Dispersed(DispersedBucket {
+            id: "bucket_id".to_string(),
+            seqno: 42,
+            device: root_device_id,
+            segment_count,
+            tolerable_faults: 4,
+            data_fragment_count: 8,
+        })
+    }
+
+    fn get_bucket_4_1(segment_count: u32, root_device_id: DeviceId) -> Bucket {
+        Bucket::Dispersed(DispersedBucket {
+            id: "bucket_id".to_string(),
+            seqno: 43,
+            device: root_device_id,
+            segment_count,
+            tolerable_faults: 1,
+            data_fragment_count: 4,
+        })
+    }
+
+    #[test]
+    fn segment_table_builder_works() -> Result<()> {
+        let (devices, root_device_id) =
+            build_device_tree(&[3, 8], SegmentAllocationPolicy::ScatterIfPossible);
+        let builder = SegmentTableBuilder::new(&devices);
+        let bucket = get_bucket_8_4(2, root_device_id);
+        let _ = builder.build(&bucket)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn segment_table_builder_evenly_distributes_segments() -> Result<()> {
+        let (devices, root_device_id) =
+            build_device_tree(&[3, 8], SegmentAllocationPolicy::AsEvenAsPossible);
+        let builder = SegmentTableBuilder::new(&devices);
+        let bucket = get_bucket_8_4(500, root_device_id.clone());
+        let segment_table = builder.build(&bucket)?;
+
+        let mut seqno_to_intermediate_device = HashMap::new();
+        let root_device = &devices[&root_device_id];
+        assert!(root_device.is_virtual());
+        let virtual_device = match root_device {
+            Device::Virtual(x) => x,
+            _ => unreachable!(),
+        };
+        let intermediate_devices = &virtual_device.children;
+        for intermediate_device in intermediate_devices {
+            let device = &devices[intermediate_device];
+            assert!(device.is_virtual());
+            let virtual_device = match device {
+                Device::Virtual(x) => x,
+                _ => unreachable!(),
+            };
+            for child in &virtual_device.children {
+                let seqno = devices[child].seqno();
+                seqno_to_intermediate_device.insert(seqno, device.seqno());
+            }
+        }
+
+        // Assert that for each segment there are exactly 4 (= 12 / 3) slots in each intermediate device.
+        for segment in &segment_table.segments {
+            assert_eq!(segment.groups.len(), 1);
+            let members = segment.groups[0].members.clone();
+            let mut frequency = HashMap::new();
+            for seqno in members {
+                let intermediate_seqno = seqno_to_intermediate_device[&seqno];
+                *frequency.entry(intermediate_seqno).or_insert(0) += 1;
+            }
+            for (_, value) in frequency {
+                assert_eq!(value, 4);
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn segment_table_builder_nearly_evenly_distributes_segments() -> Result<()> {
+        let (devices, root_device_id) =
+            build_device_tree(&[3, 8], SegmentAllocationPolicy::AsEvenAsPossible);
+        let builder = SegmentTableBuilder::new(&devices);
+        let bucket = get_bucket_4_1(500, root_device_id.clone());
+        let segment_table = builder.build(&bucket)?;
+
+        let mut seqno_to_intermediate_device = HashMap::new();
+        let root_device = &devices[&root_device_id];
+        assert!(root_device.is_virtual());
+        let virtual_device = match root_device {
+            Device::Virtual(x) => x,
+            _ => unreachable!(),
+        };
+        let intermediate_devices = &virtual_device.children;
+        for intermediate_device in intermediate_devices {
+            let device = &devices[intermediate_device];
+            assert!(device.is_virtual());
+            let virtual_device = match device {
+                Device::Virtual(x) => x,
+                _ => unreachable!(),
+            };
+            for child in &virtual_device.children {
+                let seqno = devices[child].seqno();
+                seqno_to_intermediate_device.insert(seqno, device.seqno());
+            }
+        }
+
+        // Assert that for each segment there are at most 3 slots in each intermediate device.
+        for segment in &segment_table.segments {
+            assert_eq!(segment.groups.len(), 1);
+            let members = segment.groups[0].members.clone();
+            let mut frequency = HashMap::new();
+            for seqno in members {
+                let intermediate_seqno = seqno_to_intermediate_device[&seqno];
+                *frequency.entry(intermediate_seqno).or_insert(0) += 1;
+            }
+            for (_, value) in frequency {
+                assert!(1 <= value && value <= 3);
+            }
+        }
+
+        Ok(())
+    }
 }
