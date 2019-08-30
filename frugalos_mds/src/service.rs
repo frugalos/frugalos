@@ -6,6 +6,7 @@ use frugalos_raft::{LocalNodeId, NodeId};
 use futures::{Async, Future, Poll, Stream};
 use slog::Logger;
 use std::collections::HashMap;
+use std::fmt;
 use std::mem;
 use std::sync::Arc;
 
@@ -23,11 +24,9 @@ type Nodes = Arc<AtomicImmut<HashMap<LocalNodeId, NodeHandle>>>;
 #[derive(Debug)]
 pub struct Service {
     logger: Logger,
-    nodes: Nodes,
     command_tx: mpsc::Sender<Command>,
     command_rx: mpsc::Receiver<Command>,
-    do_stop: bool,
-    stopping: Option<futures::SelectAll<oneshot::Monitor<(), Error>>>,
+    state: ServiceState,
 }
 impl Service {
     /// 新しい`Service`インスタンスを生成する.
@@ -40,11 +39,9 @@ impl Service {
         let (command_tx, command_rx) = mpsc::channel();
         let this = Service {
             logger,
-            nodes,
             command_tx,
             command_rx,
-            do_stop: false,
-            stopping: None,
+            state: ServiceState::Running(nodes),
         };
         Server::register(this.handle(), rpc, tracer);
         Ok(this)
@@ -53,7 +50,7 @@ impl Service {
     /// `Service`を操作するためのハンドルを返す.
     pub fn handle(&self) -> ServiceHandle {
         ServiceHandle {
-            nodes: self.nodes.clone(),
+            nodes: self.state.nodes(),
             command_tx: self.command_tx.clone(),
         }
     }
@@ -104,31 +101,37 @@ impl Service {
     /// (b) について、スナップショットの取得に時間がかかる環境では `LogSuffix`
     /// が伸びて、スナップショット取得の効果が薄れてしまうことは許容する.
     pub fn stop(&mut self) {
-        self.do_stop = true;
-        let mut stopping = Vec::new();
-        let nodes = self.nodes.load();
-        if !nodes.is_empty() {
-            for (id, node) in nodes.iter() {
-                info!(self.logger, "Sends stop request: {:?}", id);
-                let (monitored, monitor) = oneshot::monitor();
-                stopping.push(monitor);
-                node.stop(monitored);
+        self.state = match mem::replace(&mut self.state, ServiceState::Stopped) {
+            ServiceState::Running(nodes) => {
+                let mut futures = Vec::new();
+                for (id, node) in nodes.load().iter() {
+                    let logger = self.logger.clone();
+                    info!(logger, "Sends stop request: {:?}", id);
+                    let (monitored, monitor) = oneshot::monitor();
+                    futures.push(monitor.then(move |result| {
+                        if let Err(e) = result {
+                            warn!(logger, "{}", e);
+                        }
+                        futures::future::ok(())
+                    }));
+                    node.stop(monitored);
+                }
+                ServiceState::Stopping(nodes.clone(), Box::new(futures::future::join_all(futures)))
             }
-            self.stopping = Some(futures::select_all(stopping));
-        }
+            next => next,
+        };
     }
 
     /// スナップショットを取得する.
     pub fn take_snapshot(&mut self) {
-        self.do_stop = true;
-        for (id, node) in self.nodes.load().iter() {
+        for (id, node) in self.state.nodes().load().iter() {
             info!(self.logger, "Sends taking snapshot request: {:?}", id);
             node.take_snapshot();
         }
     }
 
     fn exit(&mut self) {
-        for (id, node) in self.nodes.load().iter() {
+        for (id, node) in self.state.nodes().load().iter() {
             info!(self.logger, "Sends exit request: {:?}", id);
             node.exit();
         }
@@ -137,21 +140,21 @@ impl Service {
     fn handle_command(&mut self, command: Command) {
         match command {
             Command::AddNode(id, node) => {
-                if self.do_stop {
+                if !self.state.is_running() {
                     warn!(self.logger, "Ignored: id={:?}, node={:?}", id, node);
                     return;
                 }
                 info!(self.logger, "Adds node: id={:?}, node={:?}", id, node);
 
-                let mut nodes = (&*self.nodes.load()).clone();
+                let mut nodes = (&*self.state.nodes().load()).clone();
                 nodes.insert(id, node);
-                self.nodes.store(nodes);
+                self.state.nodes().store(nodes);
             }
             Command::RemoveNode(id) => {
-                let mut nodes = (&*self.nodes.load()).clone();
+                let mut nodes = (&*self.state.nodes().load()).clone();
                 let removed = nodes.remove(&id);
                 let len = nodes.len();
-                self.nodes.store(nodes);
+                self.state.nodes().store(nodes);
 
                 info!(
                     self.logger,
@@ -165,38 +168,17 @@ impl Future for Service {
     type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        // NOTE: `Err` は返ってこないので考慮しなくてよい
+        if let Ok(Async::Ready(true)) = self.state.poll() {
+            self.exit();
+            self.state = ServiceState::Stopped;
+        }
         loop {
-            loop {
-                match self.stopping.take() {
-                    None => break,
-                    Some(mut future) => {
-                        let remainings = match future.poll() {
-                            Err((e, _, remainings)) => {
-                                warn!(self.logger, "{:?}", e);
-                                remainings
-                            }
-                            Ok(Async::Ready(((), _, remainings))) => {
-                                info!(self.logger, "remaing: {}", remainings.len());
-                                remainings
-                            }
-                            Ok(Async::NotReady) => {
-                                self.stopping = Some(future);
-                                break;
-                            }
-                        };
-                        if remainings.is_empty() {
-                            self.exit();
-                            break;
-                        }
-                        self.stopping = Some(futures::select_all(remainings));
-                    }
-                }
-            }
             let polled = self.command_rx.poll().expect("Never fails");
             if let Async::Ready(command) = polled {
                 let command = command.expect("Unreachable");
                 self.handle_command(command);
-                if self.do_stop && self.stopping.is_none() && self.nodes.load().is_empty() {
+                if self.state.is_stopped() {
                     return Ok(Async::Ready(()));
                 }
             } else {
@@ -245,6 +227,57 @@ impl ServiceHandle {
     }
     pub(crate) fn nodes(&self) -> Arc<HashMap<LocalNodeId, NodeHandle>> {
         self.nodes.load()
+    }
+}
+
+enum ServiceState {
+    Running(Nodes),
+    Stopping(
+        Nodes,
+        Box<dyn Future<Item = Vec<()>, Error = ()> + Send + 'static>,
+    ),
+    Stopped,
+}
+impl ServiceState {
+    fn nodes(&self) -> Nodes {
+        match self {
+            ServiceState::Running(nodes) => nodes.clone(),
+            ServiceState::Stopping(nodes, _) => nodes.clone(),
+            ServiceState::Stopped => Arc::new(AtomicImmut::new(HashMap::new())),
+        }
+    }
+    fn is_running(&self) -> bool {
+        if let ServiceState::Running(_) = self {
+            return true;
+        }
+        false
+    }
+    fn is_stopped(&self) -> bool {
+        if let ServiceState::Stopped = self {
+            return true;
+        }
+        false
+    }
+}
+impl Future for ServiceState {
+    type Item = bool;
+    type Error = ();
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        match self {
+            ServiceState::Running(_) => Ok(Async::NotReady),
+            ServiceState::Stopping(_, ref mut future) => future.poll().map(|f| f.map(|_| true)),
+            ServiceState::Stopped => Ok(Async::Ready(false)),
+        }
+    }
+}
+impl fmt::Debug for ServiceState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let state = match self {
+            ServiceState::Running(_) => "Running",
+            ServiceState::Stopping(_, _) => "Stopping",
+            ServiceState::Stopped => "Stopped",
+        };
+        write!(f, "{}", state)
     }
 }
 
