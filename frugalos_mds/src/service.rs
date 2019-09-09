@@ -38,10 +38,10 @@ impl Service {
         let nodes = Arc::new(AtomicImmut::new(HashMap::new()));
         let (command_tx, command_rx) = mpsc::channel();
         let this = Service {
-            logger,
+            logger: logger.clone(),
             command_tx,
             command_rx,
-            state: ServiceState::Running(nodes),
+            state: ServiceState::Running { logger, nodes },
         };
         Server::register(this.handle(), rpc, tracer);
         Ok(this)
@@ -101,8 +101,9 @@ impl Service {
     /// (b) について、スナップショットの取得に時間がかかる環境では `LogSuffix`
     /// が伸びて、スナップショット取得の効果が薄れてしまうことは許容する.
     pub fn stop(&mut self) {
-        self.state = match mem::replace(&mut self.state, ServiceState::Stopped) {
-            ServiceState::Running(nodes) => {
+        self.state = match mem::replace(&mut self.state, ServiceState::Stopped(self.logger.clone()))
+        {
+            ServiceState::Running { nodes, .. } => {
                 let mut futures = Vec::new();
                 for (id, node) in nodes.load().iter() {
                     let logger = self.logger.clone();
@@ -116,7 +117,11 @@ impl Service {
                     }));
                     node.stop(monitored);
                 }
-                ServiceState::Stopping(nodes.clone(), Box::new(futures::future::join_all(futures)))
+                ServiceState::Stopping {
+                    logger: self.logger.clone(),
+                    nodes: nodes.clone(),
+                    future: Box::new(futures::future::join_all(futures)),
+                }
             }
             next => next,
         };
@@ -140,26 +145,10 @@ impl Service {
     fn handle_command(&mut self, command: Command) {
         match command {
             Command::AddNode(id, node) => {
-                if !self.state.is_running() {
-                    warn!(self.logger, "Ignored: id={:?}, node={:?}", id, node);
-                    return;
-                }
-                info!(self.logger, "Adds node: id={:?}, node={:?}", id, node);
-
-                let mut nodes = (&*self.state.nodes().load()).clone();
-                nodes.insert(id, node);
-                self.state.nodes().store(nodes);
+                self.state.add_node(id, node);
             }
             Command::RemoveNode(id) => {
-                let mut nodes = (&*self.state.nodes().load()).clone();
-                let removed = nodes.remove(&id);
-                let len = nodes.len();
-                self.state.nodes().store(nodes);
-
-                info!(
-                    self.logger,
-                    "Removes node: id={:?}, node={:?} (len={})", id, removed, len
-                );
+                self.state.remove_node(id);
             }
         }
     }
@@ -169,9 +158,9 @@ impl Future for Service {
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         // NOTE: `Err` は返ってこないので考慮しなくてよい
-        if let Ok(Async::Ready(true)) = self.state.poll() {
+        if let Async::Ready(true) = self.state.poll().expect("Never fails") {
             self.exit();
-            self.state = ServiceState::Stopped;
+            self.state = ServiceState::Stopped(self.logger.clone());
         }
         loop {
             let polled = self.command_rx.poll().expect("Never fails");
@@ -230,30 +219,64 @@ impl ServiceHandle {
     }
 }
 
+// ノード群の管理は `ServiceState` の責務.
 enum ServiceState {
-    Running(Nodes),
-    Stopping(
-        Nodes,
-        Box<dyn Future<Item = Vec<()>, Error = ()> + Send + 'static>,
-    ),
-    Stopped,
+    Running {
+        logger: Logger,
+        nodes: Nodes,
+    },
+    Stopping {
+        logger: Logger,
+        nodes: Nodes,
+        future: Box<dyn Future<Item = Vec<()>, Error = ()> + Send + 'static>,
+    },
+    Stopped(Logger),
 }
 impl ServiceState {
     fn nodes(&self) -> Nodes {
         match self {
-            ServiceState::Running(nodes) => nodes.clone(),
-            ServiceState::Stopping(nodes, _) => nodes.clone(),
-            ServiceState::Stopped => Arc::new(AtomicImmut::new(HashMap::new())),
+            ServiceState::Running { nodes, .. } => nodes.clone(),
+            ServiceState::Stopping { nodes, .. } => nodes.clone(),
+            ServiceState::Stopped(_) => Arc::new(AtomicImmut::new(HashMap::new())),
         }
     }
+    fn logger(&self) -> &Logger {
+        match self {
+            ServiceState::Running { ref logger, .. } => logger,
+            ServiceState::Stopping { ref logger, .. } => logger,
+            ServiceState::Stopped(ref logger) => logger,
+        }
+    }
+    fn add_node(&mut self, id: LocalNodeId, node: NodeHandle) {
+        if !self.is_running() {
+            warn!(self.logger(), "Ignored: id={:?}, node={:?}", id, node);
+            return;
+        }
+        info!(self.logger(), "Adds node: id={:?}, node={:?}", id, node);
+
+        let mut nodes = (&*self.nodes().load()).clone();
+        nodes.insert(id, node);
+        self.nodes().store(nodes);
+    }
+    fn remove_node(&mut self, id: LocalNodeId) {
+        let mut nodes = (&*self.nodes().load()).clone();
+        let removed = nodes.remove(&id);
+        let len = nodes.len();
+        self.nodes().store(nodes);
+
+        info!(
+            self.logger(),
+            "Removes node: id={:?}, node={:?} (len={})", id, removed, len
+        );
+    }
     fn is_running(&self) -> bool {
-        if let ServiceState::Running(_) = self {
+        if let ServiceState::Running { .. } = self {
             return true;
         }
         false
     }
     fn is_stopped(&self) -> bool {
-        if let ServiceState::Stopped = self {
+        if let ServiceState::Stopped(_) = self {
             return true;
         }
         false
@@ -264,18 +287,18 @@ impl Future for ServiceState {
     type Error = ();
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match self {
-            ServiceState::Running(_) => Ok(Async::NotReady),
-            ServiceState::Stopping(_, ref mut future) => future.poll().map(|f| f.map(|_| true)),
-            ServiceState::Stopped => Ok(Async::Ready(false)),
+            ServiceState::Running { .. } => Ok(Async::NotReady),
+            ServiceState::Stopping { ref mut future, .. } => future.poll().map(|f| f.map(|_| true)),
+            ServiceState::Stopped(_) => Ok(Async::Ready(false)),
         }
     }
 }
 impl fmt::Debug for ServiceState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let state = match self {
-            ServiceState::Running(_) => "Running",
-            ServiceState::Stopping(_, _) => "Stopping",
-            ServiceState::Stopped => "Stopped",
+            ServiceState::Running { .. } => "Running",
+            ServiceState::Stopping { .. } => "Stopping",
+            ServiceState::Stopped(_) => "Stopped",
         };
         write!(f, "{}", state)
     }
