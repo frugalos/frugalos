@@ -293,12 +293,12 @@ mod tests {
 
     use node::Request;
 
-    struct TestNode {
+    struct TestNodeForStop {
         node_id: NodeId,
         tx: mpsc::Sender<Request>,
         rx: mpsc::Receiver<Request>,
     }
-    impl TestNode {
+    impl TestNodeForStop {
         fn new(node_id: &str) -> Self {
             let node_id = NodeId::from_str(node_id).unwrap();
             let (tx, rx) = mpsc::channel();
@@ -308,7 +308,7 @@ mod tests {
             NodeHandle::new(self.tx.clone())
         }
     }
-    impl Future for TestNode {
+    impl Future for TestNodeForStop {
         type Item = ();
         type Error = Error;
         fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
@@ -323,7 +323,7 @@ mod tests {
 
     #[test]
     fn stop_works() -> TestResult {
-        let mut node = TestNode::new("1000a00.0@127.0.0.1:14278");
+        let mut node = TestNodeForStop::new("1000a00.0@127.0.0.1:14278");
         let (tracer, _) = rustracing_jaeger::Tracer::new(NullSampler);
         let tracer = ThreadLocalTracer::new(tracer);
         let logger = Logger::root(Discard, o!());
@@ -331,10 +331,9 @@ mod tests {
         let mut rpc_server_builder = RpcServerBuilder::new(addr);
         let mut service = track!(Service::new(logger, &mut rpc_server_builder, tracer))?;
         track!(service.handle().add_node(node.node_id, node.handle()))?;
+        service.stop();
         while track!(service.poll())?.is_not_ready() {
             track!(node.poll())?;
-            service.stop();
-            track!(service.handle().remove_node(node.node_id))?;
         }
         Ok(())
     }
