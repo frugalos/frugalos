@@ -161,15 +161,13 @@ impl Future for Service {
         if let Async::Ready(true) = self.state.poll().expect("Never fails") {
             self.exit();
             self.state = ServiceState::Stopped(self.logger.clone());
+            return Ok(Async::Ready(()));
         }
         loop {
             let polled = self.command_rx.poll().expect("Never fails");
             if let Async::Ready(command) = polled {
                 let command = command.expect("Unreachable");
                 self.handle_command(command);
-                if self.state.is_stopped() {
-                    return Ok(Async::Ready(()));
-                }
             } else {
                 return Ok(Async::NotReady);
             }
@@ -271,12 +269,6 @@ impl ServiceState {
     }
     fn is_running(&self) -> bool {
         if let ServiceState::Running { .. } = self {
-            return true;
-        }
-        false
-    }
-    fn is_stopped(&self) -> bool {
-        if let ServiceState::Stopped(_) = self {
             return true;
         }
         false
