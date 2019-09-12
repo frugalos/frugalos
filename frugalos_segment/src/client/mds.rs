@@ -434,7 +434,7 @@ impl MdsClient {
             return inner
                 .config
                 .members
-                .get(member % self.max_retry())
+                .get(member % inner.config.members.len())
                 .map(|m| m.node)
                 .unwrap_or_else(|| unreachable!());
         }
@@ -626,8 +626,6 @@ pub trait RequestOnce {
     fn kind(&self) -> &RequestKind;
 
     /// 実行したいリクエストと対象ノード群を返す。
-    ///
-    ///
     fn request_once(
         &mut self,
         client: &MdsClient,
@@ -834,10 +832,6 @@ where
     type Item = (Option<RemoteNodeId>, Option<V>);
     type Error = MdsError;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        // 以下の順で最終的な結果を決める:
-        // 1. オブジェクトの有無は多数決で決める。同数の場合は存在することとする。
-        // 2. オブジェクトが存在する場合は、取得できた中で最新のものを返す。
-        // 3. レスポンスが1つも取得できなかったためエラーとする。
         let mut i = 0;
         while i < self.futures.len() {
             match track!(self.futures[i].poll()) {
