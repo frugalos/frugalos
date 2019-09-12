@@ -796,9 +796,7 @@ impl ContainObjectVersion for (Option<RemoteNodeId>, ObjectVersion) {
 
 #[inline]
 fn select_latest<T: ContainObjectVersion>(values: Drain<T>) -> Option<T> {
-    values
-        .into_iter()
-        .max_by_key(ContainObjectVersion::object_version)
+    values.max_by_key(ContainObjectVersion::object_version)
 }
 
 /// 複数ノードに同時に参照リクエストを投げ、最新の `ObjectVersion` を返してきたレスポンスを採用する。
