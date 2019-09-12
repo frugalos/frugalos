@@ -434,7 +434,7 @@ impl MdsClient {
             return inner
                 .config
                 .members
-                .get(member)
+                .get(member % self.max_retry())
                 .map(|m| m.node)
                 .unwrap_or_else(|| unreachable!());
         }
