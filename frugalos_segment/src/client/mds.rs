@@ -551,6 +551,9 @@ where
         self.max_retry -= 1;
         let (peers, future) = track!(self.request.request_once(&self.client, &self.parent))?;
         self.peers = peers;
+        self.timeout = self
+            .client
+            .timeout(self.request.kind().clone(), self.max_retry);
         self.future = Some(future);
         Ok(())
     }
