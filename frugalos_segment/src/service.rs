@@ -433,8 +433,11 @@ impl SegmentNode {
     fn run_once(&mut self) -> Result<bool> {
         // Handle a command once at a time.
         if let Async::Ready(command) = self.segment_node_command_rx.poll().expect("Never fails") {
-            let command = command.expect("Always Some");
-            self.handle_command(command);
+            // TODO: command was expected to be always Some, but it isn't on `frugalos stop.`
+            // For now, if command == None let us just suppress it.
+            if let Some(command) = command {
+                self.handle_command(command);
+            }
         }
         while let Async::Ready(event) = track!(self.node.poll())? {
             if let Some(event) = event {
