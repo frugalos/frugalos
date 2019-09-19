@@ -17,11 +17,13 @@ use libfrugalos::entity::server::Server;
 use libfrugalos::time::Seconds;
 use sloggers::Build;
 use std::env;
-use std::net::ToSocketAddrs;
 use std::string::ToString;
 use std::time::Duration;
 use trackable::error::{ErrorKindExt, Failure};
 
+use frugalos::command::rpc_addr;
+use frugalos::command::set_repair_config::SetRepairConfigCommand;
+use frugalos::command::FrugalosSubcommand;
 use frugalos::FrugalosConfig;
 use frugalos::{Error, ErrorKind, Result};
 
@@ -37,6 +39,10 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 fn main() {
     let rpc_server_bind_addr = default_rpc_server_bind_addr();
     let long_version = track_try_unwrap!(make_long_version());
+
+    // Subcommand definitions
+    let set_repair_config_command = SetRepairConfigCommand;
+
     let matches = App::new("frugalos")
         .version(env!("CARGO_PKG_VERSION"))
         .long_version(long_version.as_str())
@@ -100,22 +106,9 @@ fn main() {
                 .arg(data_dir_arg())
                 .arg(put_content_timeout_arg()),
         )
-        .subcommand(
-            SubCommand::with_name("stop").arg(
-                Arg::with_name("RPC_ADDR")
-                    .long("rpc-addr")
-                    .takes_value(true)
-                    .default_value(&rpc_server_bind_addr),
-            ),
-        )
-        .subcommand(
-            SubCommand::with_name("take-snapshot").arg(
-                Arg::with_name("RPC_ADDR")
-                    .long("rpc-addr")
-                    .takes_value(true)
-                    .default_value(&rpc_server_bind_addr),
-            ),
-        )
+        .subcommand(SubCommand::with_name("stop").arg(rpc_addr::get_arg()))
+        .subcommand(SubCommand::with_name("take-snapshot").arg(rpc_addr::get_arg()))
+        .subcommand(set_repair_config_command.get_subcommand())
         .arg(
             Arg::with_name("LOGLEVEL")
                 .short("l")
@@ -290,11 +283,7 @@ fn main() {
         // STOP SERVER
         let mut logger = track_try_unwrap!(logger_builder.build());
         warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
-        let mut rpc_addrs = track_try_unwrap!(track_any_err!(matches
-            .value_of("RPC_ADDR")
-            .unwrap()
-            .to_socket_addrs()));
-        let rpc_addr = rpc_addrs.nth(0).expect("No available TCP address");
+        let rpc_addr = rpc_addr::from_matches(&matches);
         let logger = logger.new(o!("rpc_addr" => rpc_addr.to_string()));
         track_try_unwrap!(frugalos::daemon::stop(&logger, rpc_addr));
 
@@ -305,17 +294,15 @@ fn main() {
         // TAKE SNAPSHOT
         let mut logger = track_try_unwrap!(logger_builder.build());
         warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
-        let mut rpc_addrs = track_try_unwrap!(track_any_err!(matches
-            .value_of("RPC_ADDR")
-            .unwrap()
-            .to_socket_addrs()));
-        let rpc_addr = rpc_addrs.nth(0).expect("No available TCP address");
+        let rpc_addr = rpc_addr::from_matches(&matches);
         let logger = logger.new(o!("rpc_addr" => rpc_addr.to_string()));
         track_try_unwrap!(frugalos::daemon::take_snapshot(&logger, rpc_addr));
 
         // NOTE: ログ出力(非同期)用に少し待機
         std::thread::sleep(std::time::Duration::from_millis(100));
         debug!(logger, "config: {:?}", config);
+    } else if let Some(matches) = set_repair_config_command.check_matches(&matches) {
+        set_repair_config_command.handle_matches(logger_builder, matches, &unknown_fields);
     } else {
         println!("Usage: {}", matches.usage());
         std::process::exit(1);
@@ -370,7 +357,7 @@ fn put_content_timeout_arg<'a, 'b>() -> Arg<'a, 'b> {
 }
 
 fn default_rpc_server_bind_addr() -> String {
-    "127.0.0.1:14278".to_owned()
+    frugalos::command::rpc_addr::default_rpc_server_bind_addr().to_owned()
 }
 
 fn get_server_seqno(matches: &ArgMatches) -> Result<u32> {
@@ -475,12 +462,7 @@ fn set_segment_config(
 }
 
 fn warn_if_there_are_unknown_fields(logger: &mut slog::Logger, unknown_fields: &[String]) {
-    if !unknown_fields.is_empty() {
-        warn!(
-            logger,
-            "The following unknown fields were passed:\n{:?}", unknown_fields
-        );
-    }
+    frugalos::command::warn_if_there_are_unknown_fields(logger, unknown_fields);
 }
 
 fn make_long_version() -> Result<String> {

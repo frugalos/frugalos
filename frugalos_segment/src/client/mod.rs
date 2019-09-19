@@ -11,12 +11,16 @@ use slog::Logger;
 use std::mem;
 use std::ops::Range;
 
+use self::ec::ErasureCoder;
 use self::mds::MdsClient;
-use self::storage::{ErasureCoder, StorageClient};
+use self::storage::StorageClient;
 use config::ClientConfig;
 use {Error, ObjectValue, Result};
 
+mod dispersed_storage;
+pub mod ec; // to re-export in frugalos_segment/src/lib.rs
 mod mds;
+mod replicated_storage;
 pub mod storage; // TODO: private
 
 /// セグメントにアクセスるために使用するクライアント。

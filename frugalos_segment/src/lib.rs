@@ -32,7 +32,7 @@ extern crate slog;
 #[macro_use]
 extern crate trackable;
 
-pub use client::storage::{build_ec, ErasureCoder};
+pub use client::ec::{build_ec, ErasureCoder};
 pub use client::Client;
 pub use error::{Error, ErrorKind};
 pub use service::{Service, ServiceHandle};
@@ -43,6 +43,7 @@ mod client;
 mod error;
 mod full_sync;
 mod metrics;
+mod rpc_server;
 mod service;
 mod synchronizer;
 mod test_util;

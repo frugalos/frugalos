@@ -24,7 +24,7 @@ use trackable::error::ErrorKindExt;
 
 use super::metrics::make_histogram;
 use super::snapshot::SnapshotThreshold;
-use super::{Event, NodeHandle, Proposal, ProposalMetrics, Request, Seconds};
+use super::{Event, NodeHandle, Proposal, ProposalMetrics, Reply, Request, Seconds};
 use codec;
 use config::FrugalosMdsConfig;
 use machine::{Command, Machine};
@@ -158,6 +158,23 @@ impl LeaderWaiting {
     }
 }
 
+// 停止開始後に `Node` が異常終了した場合に終了処理が完了しなくなることを避けるため、
+// `Drop` 時にリプライすることで停止処理が完了することを保証する.
+#[derive(Debug)]
+struct Stopping(Option<Reply<()>>);
+impl Stopping {
+    fn new(reply: Reply<()>) -> Self {
+        Stopping(Some(reply))
+    }
+}
+impl Drop for Stopping {
+    fn drop(&mut self) {
+        if let Some(monitored) = self.0.take() {
+            monitored.exit(Ok(()));
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum Phase {
     Running,
@@ -195,6 +212,9 @@ pub struct Node {
     polling_timer: timer::Timeout,
     polling_timer_interval: Duration,
     phase: Phase,
+    // 停止中の状態を管理するための変数.
+    // `Request::Stop` を受け取り、かつ、スナップショットの取得を開始した時にだけ `Some` になる.
+    stopping: Option<Stopping>,
     rpc_service: RpcServiceHandle,
 
     // リーダが重い場合に再選出を行うための変数群
@@ -285,6 +305,7 @@ impl Node {
             polling_timer: timer::timeout(config.node_polling_interval),
             polling_timer_interval: config.node_polling_interval,
             phase: Phase::Running,
+            stopping: None,
             large_queue_rounds: 0,
             large_queue_threshold,
             reelection_threshold,
@@ -304,7 +325,8 @@ impl Node {
         // TODO: リースないしハートビートを使って、leaderであることを保証する (READ時)
         match request {
             Request::GetLeader(_, _)
-            | Request::Stop
+            | Request::Exit
+            | Request::Stop(_)
             | Request::TakeSnapshot
             | Request::StartElection => {}
             _ => {
@@ -470,21 +492,27 @@ impl Node {
                     }
                 }
             }
-            Request::Stop => {
+            Request::Stop(monitored) => {
                 if self.phase == Phase::Running {
                     info!(self.logger, "Starts stopping the node");
+                    // スナップショットを取得しない場合は停止準備を完了したことを即座に通知する.
                     match track!(self.take_snapshot()) {
                         Err(e) => {
                             error!(self.logger, "Cannot take snapshot: {}", e);
 
                             // スナップショットが取得できないなら即座に終了
                             self.phase = Phase::Stopped;
+                            monitored.exit(Ok(()));
                         }
                         Ok(false) => {
                             self.phase = Phase::Stopped;
+                            warn!(self.logger, "no take snapshot");
+                            monitored.exit(Ok(()));
                         }
                         Ok(true) => {
                             self.phase = Phase::Stopping;
+                            // NOTE: 次のスナップショット取得完了時に drop される.
+                            self.stopping = Some(Stopping::new(monitored));
                         }
                     }
                 }
@@ -492,6 +520,12 @@ impl Node {
             Request::TakeSnapshot => {
                 if let Err(e) = track!(self.take_snapshot()) {
                     error!(self.logger, "Cannot take snapshot: {}", e);
+                }
+            }
+            Request::Exit => {
+                if self.phase == Phase::Stopping {
+                    info!(self.logger, "Exit: node={:?}", self.node_id);
+                    self.phase = Phase::Stopped;
                 }
             }
         }
@@ -607,8 +641,10 @@ impl Node {
                     self.logger,
                     "New snapshot is installed: new_head={:?}, phase={:?}", new_head, self.phase
                 );
-                if self.phase == Phase::Stopping {
-                    self.phase = Phase::Stopped;
+                // ここでこのノードの停止準備が完了したことが `Service` に通知される.
+                if self.stopping.is_some() {
+                    info!(self.logger, "Drop stopping");
+                    self.stopping = None;
                 }
             }
         }
@@ -839,10 +875,12 @@ impl Stream for Node {
             Async::Ready(Some(result)) => {
                 let (new_head, machine, versions) = track!(result)?;
                 info!(self.logger, "Snapshot decoded: new_head={:?}", new_head);
+                // Synchronizer takes care of load control, so this setting is no longer necessary.
+                // The default value of delay is 0, which means no delay happens by this.
                 let delay = env::var("FRUGALOS_SNAPSHOT_REPAIR_DELAY")
                     .ok()
                     .and_then(|v| v.parse().ok())
-                    .unwrap_or(10);
+                    .unwrap_or(0);
                 self.events.reserve_exact(machine.len());
                 self.events
                     .extend(versions.into_iter().map(|version| Event::Putted {
@@ -910,6 +948,7 @@ impl Stream for Node {
             }
             return Ok(Async::Ready(Some(event)));
         }
+
         Ok(Async::NotReady)
     }
 }
