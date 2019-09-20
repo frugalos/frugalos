@@ -239,7 +239,7 @@ fn default_sampling_rate() -> f64 {
 }
 
 fn default_stop_waiting_time() -> Duration {
-    Duration::from_millis(10)
+    Duration::from_millis(5000)
 }
 
 fn default_http_server_bind_addr() -> SocketAddr {
