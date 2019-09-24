@@ -104,17 +104,17 @@ impl Client {
         let logger = self.logger.clone();
 
         let mds = self.mds.clone();
-        let future = match expect {
+        let expect_future = match expect {
             Expect::Any => {
                 let f = mds
-                    .head(object_id.clone(), parent.clone())
-                    .map(move |version| version.map_or(Expect::None, |v| Expect::IfMatch(vec![v])));
+                    .head(id.clone(), parent.clone())
+                    .map(|version| version.map_or(Expect::None, |v| Expect::IfMatch(vec![v])));
                 Either::A(f)
             }
             _ => Either::B(futures::future::ok(expect)),
         };
 
-        future.and_then(move |expect| {
+        expect_future.and_then(move |expect| {
             mds.put(id, metadata, expect, deadline, parent.clone())
                 .and_then(move |(version, created)| {
                     let mut tracking = PutFailureTracking::new(logger, object_id);
@@ -139,17 +139,16 @@ impl Client {
         // TODO: mdsにdeadlineを渡せるようにする
         // (lump削除タイミングの決定用)
         let mds = self.mds.clone();
-        let object_id = id.clone();
-        let future = match expect {
+        let expect_future = match expect {
             Expect::Any => {
                 let f = mds
-                    .head(object_id, parent.clone())
-                    .map(move |version| version.map_or(Expect::None, |v| Expect::IfMatch(vec![v])));
+                    .head(id.clone(), parent.clone())
+                    .map(|version| version.map_or(Expect::None, |v| Expect::IfMatch(vec![v])));
                 Either::A(f)
             }
             _ => Either::B(futures::future::ok(expect)),
         };
-        future.and_then(move |expect| mds.delete(id, expect, parent))
+        expect_future.and_then(move |expect| mds.delete(id, expect, parent))
     }
 
     /// バージョン指定でオブジェクトを削除する。
