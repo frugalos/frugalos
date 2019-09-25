@@ -387,29 +387,13 @@ impl Node {
             }
             Request::ObjectCount(monitored) => monitored.exit(Ok(self.machine.len() as u64)),
             Request::Get(object_id, expect, consistency, started_at, monitored) => {
-                let result = match consistency {
-                    ReadConsistency::Stale if self.is_staled_object_visible() => Ok(()),
-                    ReadConsistency::Stale => self.check_leader(),
-                    ReadConsistency::Quorum if self.is_staled_object_visible() => Ok(()),
-                    ReadConsistency::Quorum => self.check_leader(),
-                    ReadConsistency::Subset(_) if self.is_staled_object_visible() => Ok(()),
-                    ReadConsistency::Subset(_) => self.check_leader(),
-                    ReadConsistency::Consistent => self.check_leader(),
-                };
+                let result = self.check_leader_if_needed(&consistency);
                 let elapsed = prometrics::timestamp::duration_to_seconds(started_at.elapsed());
                 self.metrics.get_request_duration_seconds.observe(elapsed);
                 monitored.exit(result.and_then(|()| self.machine.get(&object_id, &expect)));
             }
             Request::Head(object_id, expect, consistency, monitored) => {
-                let result = match consistency {
-                    ReadConsistency::Stale if self.is_staled_object_visible() => Ok(()),
-                    ReadConsistency::Stale => self.check_leader(),
-                    ReadConsistency::Quorum if self.is_staled_object_visible() => Ok(()),
-                    ReadConsistency::Quorum => self.check_leader(),
-                    ReadConsistency::Subset(_) if self.is_staled_object_visible() => Ok(()),
-                    ReadConsistency::Subset(_) => self.check_leader(),
-                    ReadConsistency::Consistent => self.check_leader(),
-                };
+                let result = self.check_leader_if_needed(&consistency);
                 monitored.exit(result.and_then(|()| self.machine.head(&object_id, &expect)));
             }
             Request::Put(object_id, data, expect, put_content_timeout, started_at, monitored) => {
@@ -622,6 +606,18 @@ impl Node {
             ErrorKind::NotLeader
         );
         Ok(())
+    }
+    fn check_leader_if_needed(&self, consistency: &ReadConsistency) -> Result<()> {
+        match consistency {
+            ReadConsistency::Stale | ReadConsistency::Quorum | ReadConsistency::Subset(_) => {
+                if self.is_staled_object_visible() {
+                    Ok(())
+                } else {
+                    self.check_leader()
+                }
+            }
+            ReadConsistency::Consistent => self.check_leader(),
+        }
     }
     fn handle_raft_event(&mut self, event: RaftEvent) -> Result<()> {
         use raftlog::Event as E;
