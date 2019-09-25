@@ -11,7 +11,7 @@ use libfrugalos::time::Seconds;
 use std::ops::Range;
 use std::time::Instant;
 
-use super::Request;
+use super::{Reply, Request};
 use Error;
 
 macro_rules! future_try {
@@ -28,11 +28,14 @@ pub struct NodeHandle {
     request_tx: mpsc::Sender<Request>,
 }
 impl NodeHandle {
-    pub(super) fn new(request_tx: mpsc::Sender<Request>) -> Self {
+    pub(crate) fn new(request_tx: mpsc::Sender<Request>) -> Self {
         NodeHandle { request_tx }
     }
-    pub fn stop(&self) {
-        let _ = self.request_tx.send(Request::Stop);
+    pub fn stop(&self, reply: Reply<()>) {
+        let _ = self.request_tx.send(Request::Stop(reply));
+    }
+    pub fn exit(&self) {
+        let _ = self.request_tx.send(Request::Exit);
     }
     pub fn take_snapshot(&self) {
         let _ = self.request_tx.send(Request::TakeSnapshot);
@@ -233,7 +236,8 @@ mod tests {
                 .delete_by_prefix(ObjectPrefix("chunk".to_owned()))
                 .and_then(move |summary| {
                     assert_eq!(summary.total, 3);
-                    handle.stop();
+                    let (monitored, _) = oneshot::monitor();
+                    handle.stop(monitored);
                     Ok(())
                 })
                 .map_err(|e| {
@@ -248,7 +252,7 @@ mod tests {
                         assert_eq!(prefix, ObjectPrefix("chunk".to_owned()));
                         monitored.exit(Ok(DeleteObjectsByPrefixSummary { total: 3 }));
                     }
-                    Request::Stop => return Ok(()),
+                    Request::Stop(_) => return Ok(()),
                     _ => (),
                 }
                 thread::sleep(Duration::from_millis(1));

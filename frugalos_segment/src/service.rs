@@ -225,8 +225,11 @@ where
         }
 
         while let Async::Ready(command) = self.command_rx.poll().expect("Never fails") {
-            let command = command.expect("Never fails");
-            self.handle_command(command);
+            // If the channel becomes disconnected, it returns None. This is the case especially on `frugalos stop.`
+            // If that happens, it is suppressed.
+            if let Some(command) = command {
+                self.handle_command(command);
+            }
         }
         Ok(Async::NotReady)
     }
@@ -433,8 +436,11 @@ impl SegmentNode {
     fn run_once(&mut self) -> Result<bool> {
         // Handle a command once at a time.
         if let Async::Ready(command) = self.segment_node_command_rx.poll().expect("Never fails") {
-            let command = command.expect("Always Some");
-            self.handle_command(command);
+            // If the channel becomes disconnected, it returns None. This is the case especially on `frugalos stop.`
+            // If that happens, it is suppressed.
+            if let Some(command) = command {
+                self.handle_command(command);
+            }
         }
         while let Async::Ready(event) = track!(self.node.poll())? {
             if let Some(event) = event {

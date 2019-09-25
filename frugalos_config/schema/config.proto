@@ -101,6 +101,7 @@ enum SegmentAllocationPolicy {
   SCATTER = 1;
   NEUTRAL = 2;
   GATHER = 3;
+  AS_EVEN_AS_POSSIBLE = 4;
 }
 
 message MemoryDevice {

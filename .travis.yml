@@ -13,8 +13,8 @@ before_script:
   - cargo clippy --version
 
 script:
-  - cargo test --all
-  - cargo clippy --all --all-targets
+  - cargo test --all --locked
+  - cargo clippy --all --all-targets --locked
   - cargo fmt -- --check
 
 matrix:

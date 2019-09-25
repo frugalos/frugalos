@@ -1,6 +1,6 @@
 [package]
 name = "frugalos_config"
-version = "0.6.0"
+version = "0.6.1"
 authors = ["The FrugalOS Developers"]
 description = "Configuration Management Layer of Frugalos"
 homepage = "https://github.com/frugalos/frugalos"
