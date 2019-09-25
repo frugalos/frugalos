@@ -535,7 +535,7 @@ where
 {
     pub fn new(client: MdsClient, parent: SpanHandle, request: T) -> Self {
         let max_retry = client.max_retry();
-        let timeout = client.timeout(request.kind().clone(), max_retry);
+        let timeout = client.timeout(request.kind(), max_retry);
         Request {
             client,
             max_retry,
@@ -553,7 +553,7 @@ where
         self.peers = peers;
         self.timeout = self
             .client
-            .timeout(self.request.kind().clone(), self.max_retry);
+            .timeout(self.request.kind(), self.max_retry);
         self.future = Some(future);
         Ok(())
     }
@@ -623,7 +623,7 @@ pub trait RequestOnce {
     type Item;
 
     /// リクエストの種別を返す。
-    fn kind(&self) -> &RequestKind;
+    fn kind(&self) -> RequestKind;
 
     /// 実行したいリクエストと対象ノード群を返す。
     fn request_once(
@@ -644,7 +644,7 @@ where
     V: Send + 'static,
 {
     type Item = V;
-    fn kind(&self) -> &RequestKind {
+    fn kind(&self) -> RequestKind {
         match self {
             RequestOnce2::Single(r) => r.kind(),
             RequestOnce2::Parallel(r) => r.kind(),
@@ -695,8 +695,8 @@ where
     V: Send + 'static,
 {
     type Item = V;
-    fn kind(&self) -> &RequestKind {
-        &self.kind
+    fn kind(&self) -> RequestKind {
+        self.kind
     }
     fn request_once(
         &mut self,
@@ -745,8 +745,8 @@ where
     V: Send + 'static,
 {
     type Item = V;
-    fn kind(&self) -> &RequestKind {
-        &self.kind
+    fn kind(&self) -> RequestKind {
+        self.kind
     }
     fn request_once(
         &mut self,

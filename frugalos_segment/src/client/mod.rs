@@ -73,7 +73,7 @@ impl Client {
                         .map(Some);
                     Either::A(future)
                 } else {
-                    Either::B(futures::finished(None))
+                    Either::B(futures::future::ok(None))
                 }
             })
     }
