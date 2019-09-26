@@ -87,7 +87,6 @@ use std::collections::hash_set::HashSet;
 use std::fmt::Debug;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
-use std::vec::Drain;
 use trackable::error::ErrorKindExt;
 
 use config::{ClusterConfig, MdsClientConfig, MdsRequestPolicy};
@@ -551,9 +550,7 @@ where
         self.max_retry -= 1;
         let (peers, future) = track!(self.request.request_once(&self.client, &self.parent))?;
         self.peers = peers;
-        self.timeout = self
-            .client
-            .timeout(self.request.kind(), self.max_retry);
+        self.timeout = self.client.timeout(self.request.kind(), self.max_retry);
         self.future = Some(future);
         Ok(())
     }
@@ -793,7 +790,10 @@ impl ContainObjectVersion for (Option<RemoteNodeId>, ObjectVersion) {
 }
 
 #[inline]
-fn select_latest<T: ContainObjectVersion>(values: Drain<T>) -> Option<T> {
+fn select_latest<I: Iterator>(values: I) -> Option<I::Item>
+where
+    I::Item: ContainObjectVersion,
+{
     values.max_by_key(ContainObjectVersion::object_version)
 }
 
