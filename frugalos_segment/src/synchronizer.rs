@@ -11,6 +11,7 @@ use prometrics::metrics::{Counter, Gauge, Histogram, MetricBuilder};
 use slog::Logger;
 use std::cmp::{self, Reverse};
 use std::collections::{BTreeSet, BinaryHeap};
+use std::env;
 use std::time::{Duration, Instant, SystemTime};
 
 use client::storage::{GetFragment, MaybeFragment, StorageClient};
@@ -55,6 +56,8 @@ pub struct Synchronizer {
     // The idleness threshold for repair functionality.
     repair_idleness_threshold: RepairIdleness,
     last_not_idle: Instant,
+    // Ad-hoc fix for repairing.
+    repair_enabled: bool,
 }
 impl Synchronizer {
     pub fn new(
@@ -70,6 +73,9 @@ impl Synchronizer {
             .subsystem("synchronizer")
             .label("node", &node_id.to_string())
             .clone();
+        let repair_enabled = env::var("FRUGALOS_REPAIR_ENABLED")
+            .ok()
+            .map_or(false, |v| v == "1");
         Synchronizer {
             logger,
             node_id,
@@ -145,6 +151,7 @@ impl Synchronizer {
             full_sync_step,
             repair_idleness_threshold: RepairIdleness::Disabled, // No repairing happens
             last_not_idle: Instant::now(),
+            repair_enabled,
         }
     }
     pub fn handle_event(&mut self, event: &Event) {
@@ -160,8 +167,11 @@ impl Synchronizer {
         if !self.client.is_metadata() {
             match *event {
                 Event::Putted { version, .. } => {
-                    self.enqueued_repair.increment();
-                    self.repair_candidates.insert(version);
+                    // TODO: this is an ad-hoc fix. Needs rewriting completely.
+                    if self.repair_enabled {
+                        self.enqueued_repair.increment();
+                        self.repair_candidates.insert(version);
+                    }
                 }
                 Event::Deleted { version } => {
                     self.repair_candidates.remove(&version);
@@ -199,7 +209,10 @@ impl Synchronizer {
             }
             if let Event::FullSync { .. } = &event {
             } else if let Event::Putted { .. } = &event {
-                self.todo_repair.push(Reverse(TodoItem::new(&event)));
+                // TODO: this is an ad-hoc fix. Needs rewriting completely.
+                if self.repair_enabled {
+                    self.todo_repair.push(Reverse(TodoItem::new(&event)));
+                }
             } else {
                 self.todo_delete.push(Reverse(TodoItem::new(&event)));
             }
