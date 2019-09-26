@@ -112,7 +112,7 @@ impl Client {
         let expect_future = match expect {
             Expect::Any => {
                 let f = mds
-                    .head(id.clone(), parent.clone())
+                    .head(id.clone(), ReadConsistency::Consistent, parent.clone())
                     .map(|version| version.map_or(Expect::None, |v| Expect::IfMatch(vec![v])));
                 Either::A(f)
             }
@@ -147,7 +147,7 @@ impl Client {
         let expect_future = match expect {
             Expect::Any => {
                 let f = mds
-                    .head(id.clone(), parent.clone())
+                    .head(id.clone(), ReadConsistency::Consistent, parent.clone())
                     .map(|version| version.map_or(Expect::None, |v| Expect::IfMatch(vec![v])));
                 Either::A(f)
             }
