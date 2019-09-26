@@ -102,6 +102,7 @@ impl DispersedClient {
             &self.client_config,
             self.rpc_service,
             Span::inactive().handle(),
+            None,
         );
         ReconstructDispersedFragment {
             phase: Phase::A(future),
@@ -137,6 +138,7 @@ impl DispersedClient {
             &self.client_config,
             self.rpc_service,
             span.handle(),
+            Some(timer::timeout(self.client_config.get_timeout)),
         );
         Box::new(DispersedGet {
             phase: Phase::A(future),
@@ -359,6 +361,7 @@ impl CollectFragments {
         client_config: &DispersedClientConfig,
         rpc_service: RpcServiceHandle,
         parent: SpanHandle,
+        timeout: Option<timer::Timeout>,
     ) -> Self {
         // rand::thread_rng().shuffle(&mut candidates);
         let dummy: BoxFuture<_> = Box::new(futures::finished(None));
@@ -373,7 +376,7 @@ impl CollectFragments {
             cannyls_config: client_config.cannyls.clone(),
             rpc_service,
             parent,
-            timeout: None,
+            timeout,
             next_timeout_duration: client_config.get_timeout,
         }
     }
