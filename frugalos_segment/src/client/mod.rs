@@ -107,17 +107,30 @@ impl Client {
         };
         let object_id = id.clone();
         let logger = self.logger.clone();
-        self.mds
-            .put(id, metadata, expect, deadline, parent.clone())
-            .and_then(move |(version, created)| {
-                let mut tracking = PutFailureTracking::new(logger, object_id);
-                storage
-                    .put(version, content, deadline, parent)
-                    .map(move |()| {
-                        tracking.complete();
-                        (version, created)
-                    })
-            })
+
+        let mds = self.mds.clone();
+        let expect_future = match expect {
+            Expect::Any => {
+                let f = mds
+                    .head(id.clone(), parent.clone())
+                    .map(|version| version.map_or(Expect::None, |v| Expect::IfMatch(vec![v])));
+                Either::A(f)
+            }
+            _ => Either::B(futures::future::ok(expect)),
+        };
+
+        expect_future.and_then(move |expect| {
+            mds.put(id, metadata, expect, deadline, parent.clone())
+                .and_then(move |(version, created)| {
+                    let mut tracking = PutFailureTracking::new(logger, object_id);
+                    storage
+                        .put(version, content, deadline, parent)
+                        .map(move |()| {
+                            tracking.complete();
+                            (version, created)
+                        })
+                })
+        })
     }
 
     /// オブジェクトを削除する。
@@ -130,7 +143,17 @@ impl Client {
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
         // TODO: mdsにdeadlineを渡せるようにする
         // (lump削除タイミングの決定用)
-        self.mds.delete(id, expect, parent)
+        let mds = self.mds.clone();
+        let expect_future = match expect {
+            Expect::Any => {
+                let f = mds
+                    .head(id.clone(), parent.clone())
+                    .map(|version| version.map_or(Expect::None, |v| Expect::IfMatch(vec![v])));
+                Either::A(f)
+            }
+            _ => Either::B(futures::future::ok(expect)),
+        };
+        expect_future.and_then(move |expect| mds.delete(id, expect, parent))
     }
 
     /// バージョン指定でオブジェクトを削除する。
