@@ -219,6 +219,7 @@ pub struct Node {
     rpc_service: RpcServiceHandle,
 
     // 整合性保証のレベルを変更するための変数群
+    // リーダーが決定した場合に `rounds` はリセットされる。
     staled_object_threshold: usize,
     staled_object_rounds: usize,
 
@@ -808,6 +809,10 @@ impl Node {
             "New cluster configuration at {:?}: {:?}", commit, config
         );
     }
+    /// あるリクエストに対してオブジェクトが可視な場合に true を返す。
+    ///
+    /// リーダーが不在になって一定時間が経過した場合に、古くなっている可能性が高い
+    /// データを返さないようにするための対応。
     fn is_staled_object_visible(&self) -> bool {
         self.leader.is_some() || self.staled_object_rounds <= self.staled_object_threshold
     }
