@@ -776,16 +776,19 @@ where
 trait ContainObjectVersion {
     fn object_version(&self) -> ObjectVersion;
 }
-
-impl ContainObjectVersion for (Option<RemoteNodeId>, ObjectValue) {
+impl ContainObjectVersion for ObjectVersion {
     fn object_version(&self) -> ObjectVersion {
-        (self.1).version
+        *self
     }
 }
-
-impl ContainObjectVersion for (Option<RemoteNodeId>, ObjectVersion) {
+impl ContainObjectVersion for ObjectValue {
     fn object_version(&self) -> ObjectVersion {
-        self.1
+        self.version
+    }
+}
+impl<A, B: ContainObjectVersion> ContainObjectVersion for (A, B) {
+    fn object_version(&self) -> ObjectVersion {
+        self.1.object_version()
     }
 }
 
@@ -826,8 +829,7 @@ impl<V> GetLatestObject<V> {
 }
 impl<V> Future for GetLatestObject<V>
 where
-    V: Debug,
-    (Option<RemoteNodeId>, V): ContainObjectVersion,
+    V: Debug + ContainObjectVersion,
 {
     type Item = (Option<RemoteNodeId>, Option<V>);
     type Error = MdsError;
