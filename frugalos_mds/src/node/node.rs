@@ -7,6 +7,7 @@ use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use fibers_tasque::{self, AsyncCall, TaskQueueExt};
 use frugalos_raft::{NodeId, RaftIo};
 use futures::{Async, Future, Poll, Stream};
+use libfrugalos::consistency::ReadConsistency;
 use libfrugalos::entity::object::{Metadata, ObjectVersion};
 use prometrics::metrics::{
     Counter, CounterBuilder, Gauge, GaugeBuilder, Histogram, HistogramBuilder, MetricBuilder,
@@ -217,6 +218,11 @@ pub struct Node {
     stopping: Option<Stopping>,
     rpc_service: RpcServiceHandle,
 
+    // 整合性保証のレベルを変更するための変数群
+    // リーダーが決定した場合に `rounds` はリセットされる。
+    staled_object_threshold: usize,
+    staled_object_rounds: usize,
+
     // リーダが重い場合に再選出を行うための変数群
     large_queue_rounds: usize,
     large_queue_threshold: LargeProposalQueueThreshold,
@@ -271,12 +277,13 @@ impl Node {
             LeaderWaitingTimeout::new(config.leader_waiting_timeout_threshold);
         info!(
             logger,
-            "Thresholds: snapshot={}, reelection={}, queue={}, commit_timeout={}, leader_waiting={}",
+            "Thresholds: snapshot={}, reelection={}, queue={}, commit_timeout={}, leader_waiting={}, staled_object={}",
             snapshot_threshold,
             reelection_threshold.0,
             large_queue_threshold.0,
             config.commit_timeout_threshold,
             large_leader_waiting_queue_threshold.0,
+            config.staled_object_threshold,
         );
 
         let metrics = track!(Metrics::new(&node_id))?;
@@ -312,6 +319,8 @@ impl Node {
             commit_timeout: None,
             commit_timeout_threshold: config.commit_timeout_threshold,
             rpc_service,
+            staled_object_rounds: 0,
+            staled_object_threshold: config.staled_object_threshold,
         })
     }
 
@@ -320,11 +329,15 @@ impl Node {
         self.next_commit
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn handle_request(&mut self, request: Request) {
-        // NOTE: 整合性を保証したいので、要求を処理できるのはリーダのみとする.
+        // NOTE: 整合性を保証したいので、更新系の要求を処理できるのはリーダのみとする.
+        //       Get と Head はクライアントが指定した整合性に従う.
         // TODO: リースないしハートビートを使って、leaderであることを保証する (READ時)
         match request {
             Request::GetLeader(_, _)
+            | Request::Get(_, _, _, _, _)
+            | Request::Head(_, _, _, _)
             | Request::Exit
             | Request::Stop(_)
             | Request::TakeSnapshot
@@ -374,19 +387,15 @@ impl Node {
                 monitored.exit(Ok(latest));
             }
             Request::ObjectCount(monitored) => monitored.exit(Ok(self.machine.len() as u64)),
-            Request::Get(object_id, expect, started_at, monitored) => {
-                let result = self
-                    .check_leader()
-                    .and_then(|()| self.machine.get(&object_id, &expect));
+            Request::Get(object_id, expect, consistency, started_at, monitored) => {
+                let result = self.check_leader_if_needed(&consistency);
                 let elapsed = prometrics::timestamp::duration_to_seconds(started_at.elapsed());
                 self.metrics.get_request_duration_seconds.observe(elapsed);
-                monitored.exit(result);
+                monitored.exit(result.and_then(|()| self.machine.get(&object_id, &expect)));
             }
-            Request::Head(object_id, expect, monitored) => {
-                let result = self
-                    .check_leader()
-                    .and_then(|()| self.machine.head(&object_id, &expect));
-                monitored.exit(result);
+            Request::Head(object_id, expect, consistency, monitored) => {
+                let result = self.check_leader_if_needed(&consistency);
+                monitored.exit(result.and_then(|()| self.machine.head(&object_id, &expect)));
             }
             Request::Put(object_id, data, expect, put_content_timeout, started_at, monitored) => {
                 let command = Command::Put {
@@ -599,6 +608,18 @@ impl Node {
         );
         Ok(())
     }
+    fn check_leader_if_needed(&self, consistency: &ReadConsistency) -> Result<()> {
+        match consistency {
+            ReadConsistency::Stale | ReadConsistency::Quorum | ReadConsistency::Subset(_) => {
+                if self.is_staled_object_visible() {
+                    Ok(())
+                } else {
+                    self.check_leader()
+                }
+            }
+            ReadConsistency::Consistent => self.check_leader(),
+        }
+    }
     fn handle_raft_event(&mut self, event: RaftEvent) -> Result<()> {
         use raftlog::Event as E;
         trace!(self.logger, "New raft event: {:?}", event);
@@ -788,6 +809,13 @@ impl Node {
             "New cluster configuration at {:?}: {:?}", commit, config
         );
     }
+    /// あるリクエストに対してオブジェクトが可視な場合に true を返す。
+    ///
+    /// リーダーが不在になって一定時間が経過した場合に、古くなっている可能性が高い
+    /// データを返さないようにするための対応。
+    fn is_staled_object_visible(&self) -> bool {
+        self.leader.is_some() || self.staled_object_rounds <= self.staled_object_threshold
+    }
     fn start_reelection(&mut self) {
         let members = self.rlog.cluster_config().primary_members();
         let local = self.rlog.local_node();
@@ -866,6 +894,13 @@ impl Stream for Node {
             if self.leader_waiting_timeout.is_expired() && !self.leader_waitings.is_empty() {
                 warn!(self.logger, "Leader waiting timeout (cleared)");
                 self.clear_leader_waitings();
+            }
+
+            // 可視性チェック
+            if self.leader.is_some() {
+                self.staled_object_rounds = 0;
+            } else {
+                self.staled_object_rounds += 1;
             }
         }
 

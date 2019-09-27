@@ -53,6 +53,12 @@ pub struct FrugalosMdsConfig {
     /// スナップショットを取る際の閾値の上限(この値を含む).
     #[serde(default = "default_snapshot_threshold_max")]
     pub snapshot_threshold_max: usize,
+
+    /// リーダー不在状況でオブジェクトが古くなりすぎているか否かを決める閾値の上限(この値を含む).
+    ///
+    /// この設定値の1単位は `node_polling_interval` である点に注意。
+    #[serde(default = "default_staled_object_threshold")]
+    pub staled_object_threshold: usize,
 }
 
 impl FrugalosMdsConfig {
@@ -78,6 +84,7 @@ impl Default for FrugalosMdsConfig {
             reelection_threshold: default_reelection_threshold(),
             snapshot_threshold_min: default_snapshot_threshold_min(),
             snapshot_threshold_max: default_snapshot_threshold_max(),
+            staled_object_threshold: default_staled_object_threshold(),
         }
     }
 }
@@ -112,4 +119,8 @@ fn default_snapshot_threshold_min() -> usize {
 
 fn default_snapshot_threshold_max() -> usize {
     10_500
+}
+
+fn default_staled_object_threshold() -> usize {
+    50
 }

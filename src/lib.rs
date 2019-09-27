@@ -299,6 +299,7 @@ frugalos:
     reelection_threshold: 48
     snapshot_threshold_min: 100
     snapshot_threshold_max: 200
+    staled_object_threshold: 5000
   segment:
     dispersed_client:
       get_timeout_millis: 4000
@@ -341,6 +342,7 @@ frugalos:
         expected.mds.reelection_threshold = 48;
         expected.mds.snapshot_threshold_min = 100;
         expected.mds.snapshot_threshold_max = 200;
+        expected.mds.staled_object_threshold = 5000;
         expected.segment.dispersed_client.get_timeout = Duration::from_secs(4);
         expected
             .segment
