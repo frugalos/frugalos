@@ -3,6 +3,9 @@
 ##
 FROM ringo/scientific:7.2
 
+## https://bugzilla.redhat.com/show_bug.cgi?id=210945#c8
+RUN echo %_netsharedpath /home >>/etc/rpm/macros
+
 ##
 ## yumパッケージ群をインストール
 ##
