@@ -159,9 +159,8 @@ impl Machine {
             .iter()
             .max_by_key(|(_, version)| version.0)
             .map(|(id, &version)| ObjectSummary {
-                id: String::from_utf8(id).expect(
-                    "Stringから作ったVec<u8>を復元するので失敗しないはず",
-                ),
+                id: String::from_utf8(id)
+                    .expect("Stringから作ったVec<u8>を復元するので失敗しないはず"),
                 version,
             })
     }

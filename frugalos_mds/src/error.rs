@@ -31,9 +31,8 @@ pub enum ErrorKind {
 impl TrackableErrorKind for ErrorKind {}
 
 /// クレート固有の`Error`型.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, TrackableError)]
 pub struct Error(TrackableError<ErrorKind>);
-derive_traits_for_trackable_error_newtype!(Error, ErrorKind);
 impl From<libfrugalos::Error> for Error {
     fn from(f: libfrugalos::Error) -> Self {
         let kind = match *f.kind() {
