@@ -1,6 +1,6 @@
 [package]
 name = "frugalos_mds"
-version = "0.10.0"
+version = "0.11.0"
 authors = ["The FrugalOS Developers"]
 description = "Metadata Store for Frugalos"
 homepage = "https://github.com/frugalos/frugalos"
@@ -20,7 +20,7 @@ fibers = "0.1"
 fibers_rpc = "0.2"
 fibers_tasque = "0.1"
 frugalos_core = { version = "0.1", path = "../frugalos_core" }
-frugalos_raft = { version = "0.8", path = "../frugalos_raft/" }
+frugalos_raft = { version = "0.9", path = "../frugalos_raft/" }
 futures = "0.1"
 libfrugalos = "0.4.0"
 patricia_tree = { version = "0.1.8", features = ["binary-format"] }
