@@ -115,6 +115,11 @@ impl From<std::num::ParseIntError> for Error {
         ErrorKind::InvalidInput.cause(f).into()
     }
 }
+impl From<std::str::ParseBoolError> for Error {
+    fn from(f: std::str::ParseBoolError) -> Self {
+        ErrorKind::InvalidInput.cause(f).into()
+    }
+}
 impl From<std::sync::mpsc::RecvError> for Error {
     fn from(f: std::sync::mpsc::RecvError) -> Self {
         ErrorKind::Other.cause(f).into()

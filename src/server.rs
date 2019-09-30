@@ -296,43 +296,53 @@ impl HandleRequest for HeadObject {
         let expect = try_badarg!(get_expect(&req.header()));
         let deadline = try_badarg!(get_deadline(&req.url()));
         let consistency = try_badarg!(get_consistency(&req.url()));
-        let future = self
-            .0
-            .client
-            .request(bucket_id)
-            .deadline(deadline)
-            .expect(expect)
-            .span(&span)
-            .head(object_id, consistency)
-            .then(move |result| {
-                let response = match track!(result) {
-                    Ok(None) => {
-                        span.set_tag(|| StdTag::http_status_code(404));
-                        make_object_response(Status::NotFound, None, Err(not_found()))
-                    }
-                    Ok(Some(version)) => {
-                        span.set_tag(|| Tag::new("object.version", version.0 as i64));
-                        span.set_tag(|| StdTag::http_status_code(200));
-                        make_object_response(Status::Ok, Some(version), Ok(Vec::new()))
-                    }
-                    // Err(ref e) if *e.kind() == frugalos::ErrorKind::NotFound => {
-                    //     span.set_tag(|| StdTag::http_status_code(404));
-                    //     make_object_response(Status::NotFound, None, Err(not_found()))
-                    // }
-                    Err(e) => {
-                        warn!(
-                            logger,
-                            "Cannot get object (bucket={:?}, object={:?}): {}",
-                            get_bucket_id(req.url()),
-                            get_object_id(req.url()),
-                            e
-                        );
-                        span.set_tag(|| StdTag::http_status_code(500));
-                        make_object_response(Status::InternalServerError, None, Err(e))
-                    }
-                };
-                Ok(response)
-            });
+        let check_storage = try_badarg!(get_check_storage(&req.url()));
+        let future = if check_storage {
+            self.0
+                .client
+                .request(bucket_id)
+                .deadline(deadline)
+                .expect(expect)
+                .span(&span)
+                .head_storage(object_id, consistency)
+        } else {
+            self.0
+                .client
+                .request(bucket_id)
+                .deadline(deadline)
+                .expect(expect)
+                .span(&span)
+                .head(object_id, consistency)
+        };
+        let future = future.then(move |result| {
+            let response = match track!(result) {
+                Ok(None) => {
+                    span.set_tag(|| StdTag::http_status_code(404));
+                    make_object_response(Status::NotFound, None, Err(not_found()))
+                }
+                Ok(Some(version)) => {
+                    span.set_tag(|| Tag::new("object.version", version.0 as i64));
+                    span.set_tag(|| StdTag::http_status_code(200));
+                    make_object_response(Status::Ok, Some(version), Ok(Vec::new()))
+                }
+                // Err(ref e) if *e.kind() == frugalos::ErrorKind::NotFound => {
+                //     span.set_tag(|| StdTag::http_status_code(404));
+                //     make_object_response(Status::NotFound, None, Err(not_found()))
+                // }
+                Err(e) => {
+                    warn!(
+                        logger,
+                        "Cannot get object (bucket={:?}, object={:?}): {}",
+                        get_bucket_id(req.url()),
+                        get_object_id(req.url()),
+                        e
+                    );
+                    span.set_tag(|| StdTag::http_status_code(500));
+                    make_object_response(Status::InternalServerError, None, Err(e))
+                }
+            };
+            Ok(response)
+        });
         Box::new(future)
     }
 }
@@ -757,6 +767,16 @@ fn get_consistency(url: &Url) -> Result<ReadConsistency> {
         }
     }
     Ok(Default::default())
+}
+
+fn get_check_storage(url: &Url) -> Result<bool> {
+    for (k, v) in url.query_pairs() {
+        if k == "check_storage" {
+            let b: bool = track!(v.parse().map_err(Error::from))?;
+            return Ok(b);
+        }
+    }
+    Ok(false)
 }
 
 #[cfg(test)]

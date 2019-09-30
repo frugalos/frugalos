@@ -91,6 +91,18 @@ impl StorageClient {
             StorageClient::Dispersed(c) => c.get(object.version, deadline, parent),
         }
     }
+    pub fn head(
+        self,
+        version: ObjectVersion,
+        deadline: Deadline,
+        parent: SpanHandle,
+    ) -> BoxFuture<()> {
+        match self {
+            StorageClient::Metadata => Box::new(future::ok(())),
+            StorageClient::Replicated(_) => Box::new(future::ok(())),
+            StorageClient::Dispersed(c) => c.head(version, deadline, parent),
+        }
+    }
     pub fn put(
         self,
         version: ObjectVersion,
