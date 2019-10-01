@@ -758,3 +758,44 @@ fn get_consistency(url: &Url) -> Result<ReadConsistency> {
     }
     Ok(Default::default())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+    use trackable::result::TestResult;
+
+    #[test]
+    fn get_subset_works() -> TestResult {
+        let url = Url::from_str("http://example.com/").unwrap();
+        let subset = track!(get_subset(&url))?;
+        assert_eq!(1, subset);
+        let url = Url::from_str("http://example.com/?subset=2").unwrap();
+        let subset = track!(get_subset(&url))?;
+        assert_eq!(2, subset);
+        let url = Url::from_str("http://example.com/?subset=-1").unwrap();
+        let subset = get_subset(&url);
+        assert!(subset.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn get_consistency_works() -> TestResult {
+        let url = Url::from_str("http://example.com/?consistency=consistent").unwrap();
+        let consistency = track!(get_consistency(&url))?;
+        assert_eq!(ReadConsistency::Consistent, consistency);
+        let url = Url::from_str("http://example.com/?consistency=stale").unwrap();
+        let consistency = track!(get_consistency(&url))?;
+        assert_eq!(ReadConsistency::Stale, consistency);
+        let url = Url::from_str("http://example.com/?consistency=subset").unwrap();
+        let consistency = track!(get_consistency(&url))?;
+        assert_eq!(ReadConsistency::Subset(1), consistency);
+        let url = Url::from_str("http://example.com/?consistency=quorum").unwrap();
+        let consistency = track!(get_consistency(&url))?;
+        assert_eq!(ReadConsistency::Quorum, consistency);
+        let url = Url::from_str("http://example.com/").unwrap();
+        let consistency = track!(get_consistency(&url))?;
+        assert_eq!(ReadConsistency::Consistent, consistency);
+        Ok(())
+    }
+}
