@@ -70,6 +70,7 @@ use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_core::tracer::SpanExt;
 use frugalos_mds::{Error as MdsError, ErrorKind as MdsErrorKind};
 use frugalos_raft::{LocalNodeId, NodeId};
+use futures::future::Either;
 use futures::{Async, Future, Poll};
 use libfrugalos::client::mds::Client as RaftMdsClient;
 use libfrugalos::consistency::ReadConsistency;
@@ -141,6 +142,10 @@ impl MdsClient {
         parent: SpanHandle,
     ) -> impl Future<Item = Option<ObjectValue>, Error = Error> {
         debug!(self.logger, "Starts GET: id={:?}", id);
+        let member_size = self.member_size();
+        if let Err(e) = validate_consistency(consistency.clone(), member_size) {
+            return Either::A(futures::future::err(track!(e)));
+        }
         let concurrency = match consistency {
             ReadConsistency::Quorum => Some(self.majority_size()),
             ReadConsistency::Subset(n) => Some(n),
@@ -178,7 +183,7 @@ impl MdsClient {
                 Box::new(future)
             }))
         };
-        Request::new(self.clone(), parent, request)
+        Either::B(Request::new(self.clone(), parent, request))
     }
 
     pub fn head(
@@ -188,6 +193,10 @@ impl MdsClient {
         parent: SpanHandle,
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
         debug!(self.logger, "Starts HEAD: id={:?}", id);
+        let member_size = self.member_size();
+        if let Err(e) = validate_consistency(consistency.clone(), member_size) {
+            return Either::A(futures::future::err(track!(e)));
+        }
         let concurrency = match consistency {
             ReadConsistency::Quorum => Some(self.majority_size()),
             ReadConsistency::Subset(n) => Some(n),
@@ -224,7 +233,7 @@ impl MdsClient {
                 )
             }))
         };
-        Request::new(self.clone(), parent, request)
+        Either::B(Request::new(self.clone(), parent, request))
     }
 
     pub fn delete(
@@ -339,7 +348,7 @@ impl MdsClient {
             // for backward compatibility
             MdsRequestPolicy::Conservative => RequestTimeout::Never,
             MdsRequestPolicy::Speculative { timeout, .. } => {
-                let factor = 2u32.pow((self.max_retry().saturating_sub(max_retry)) as u32);
+                let factor = 2u32.pow((self.member_size().saturating_sub(max_retry)) as u32);
                 RequestTimeout::Speculative {
                     timer: timer::timeout(*timeout * factor),
                 }
@@ -354,9 +363,9 @@ impl MdsClient {
         }
     }
     fn majority_size(&self) -> usize {
-        ((self.max_retry() as f64 / 2.0).ceil()) as usize
+        ((self.member_size() as f64 / 2.0).ceil()) as usize
     }
-    fn max_retry(&self) -> usize {
+    fn member_size(&self) -> usize {
         self.inner
             .lock()
             .unwrap_or_else(|e| panic!("{}", e))
@@ -456,6 +465,26 @@ fn to_object_value(
     )
 }
 
+fn validate_consistency(consistency: ReadConsistency, member_size: usize) -> Result<()> {
+    if member_size == 0 {
+        return track!(Err(ErrorKind::Invalid
+            .cause("The size of cluster member must be bigger than 0")
+            .into()));
+    }
+    match consistency {
+        ReadConsistency::Subset(n) => {
+            if n == 0 || member_size < n {
+                track!(Err(ErrorKind::Invalid
+                    .cause(format!("subset must be 0 < n <= {}", member_size))
+                    .into()))
+            } else {
+                Ok(())
+            }
+        }
+        ReadConsistency::Quorum | ReadConsistency::Stale | ReadConsistency::Consistent => Ok(()),
+    }
+}
+
 fn make_request_span(parent: &SpanHandle, peer: &NodeId) -> Span {
     parent.child("mds_request", |span| {
         span.tag(StdTag::component(module_path!()))
@@ -533,7 +562,7 @@ where
     T::Item: Send + 'static,
 {
     pub fn new(client: MdsClient, parent: SpanHandle, request: T) -> Self {
-        let max_retry = client.max_retry();
+        let max_retry = client.member_size();
         let timeout = client.timeout(request.kind(), max_retry);
         Request {
             client,
@@ -866,5 +895,24 @@ where
             return track!(Err(e.into()));
         }
         Ok(Async::NotReady)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_consistency_works() {
+        assert!(validate_consistency(ReadConsistency::Consistent, 3).is_ok());
+        assert!(validate_consistency(ReadConsistency::Consistent, 0).is_err());
+        assert!(validate_consistency(ReadConsistency::Stale, 2).is_ok());
+        assert!(validate_consistency(ReadConsistency::Stale, 0).is_err());
+        assert!(validate_consistency(ReadConsistency::Quorum, 1).is_ok());
+        assert!(validate_consistency(ReadConsistency::Quorum, 0).is_err());
+        assert!(validate_consistency(ReadConsistency::Subset(4), 12).is_ok());
+        assert!(validate_consistency(ReadConsistency::Subset(2), 2).is_ok());
+        assert!(validate_consistency(ReadConsistency::Subset(2), 1).is_err());
+        assert!(validate_consistency(ReadConsistency::Subset(0), 1).is_err());
     }
 }
