@@ -18,6 +18,8 @@ pub(crate) struct RepairMetrics {
     pub(crate) repairs_success_total: Counter,
     pub(crate) repairs_failure_total: Counter,
     pub(crate) repairs_unnecessary_total: Counter,
+    pub(crate) repairs_durations_seconds_step_1: Histogram,
+    pub(crate) repairs_durations_seconds_step_2: Histogram,
     pub(crate) repairs_durations_seconds: Histogram,
 }
 
@@ -36,6 +38,34 @@ impl RepairMetrics {
                 .expect("metric should be well-formed"),
             repairs_unnecessary_total: metric_builder
                 .counter("repairs_unnecessary_total")
+                .label("type", "repair")
+                .finish()
+                .expect("metric should be well-formed"),
+            repairs_durations_seconds_step_1: metric_builder
+                .histogram("repairs_durations_seconds_step_1")
+                .bucket(0.001)
+                .bucket(0.005)
+                .bucket(0.01)
+                .bucket(0.05)
+                .bucket(0.1)
+                .bucket(0.5)
+                .bucket(1.0)
+                .bucket(5.0)
+                .bucket(10.0)
+                .label("type", "repair")
+                .finish()
+                .expect("metric should be well-formed"),
+            repairs_durations_seconds_step_2: metric_builder
+                .histogram("repairs_durations_seconds_step_2")
+                .bucket(0.001)
+                .bucket(0.005)
+                .bucket(0.01)
+                .bucket(0.05)
+                .bucket(0.1)
+                .bucket(0.5)
+                .bucket(1.0)
+                .bucket(5.0)
+                .bucket(10.0)
                 .label("type", "repair")
                 .finish()
                 .expect("metric should be well-formed"),
@@ -126,6 +156,12 @@ impl Future for RepairContent {
                         "The object {:?} does not exist (try repairing)", self.version
                     );
 
+                    let elapsed =
+                        prometrics::timestamp::duration_to_seconds(self.started_at.elapsed());
+                    self.repair_metrics
+                        .repairs_durations_seconds_step_1
+                        .observe(elapsed);
+
                     let future = self.client.clone().get_fragment(self.node_id, self.version);
                     Phase3::B(future)
                 }
@@ -150,6 +186,11 @@ impl Future for RepairContent {
                         lump_id,
                         content.len()
                     );
+                    let elapsed =
+                        prometrics::timestamp::duration_to_seconds(self.started_at.elapsed());
+                    self.repair_metrics
+                        .repairs_durations_seconds_step_2
+                        .observe(elapsed);
 
                     let data = track!(self.device.allocate_lump_data_with_bytes(&content))
                         .expect("TODO: error handling");
