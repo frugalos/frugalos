@@ -40,10 +40,12 @@ pub use service::{Service, ServiceHandle};
 pub mod config;
 
 mod client;
+mod delete;
 mod error;
-mod full_sync;
 mod metrics;
+mod repair;
 mod rpc_server;
+mod segment_gc;
 mod service;
 mod synchronizer;
 mod test_util;
