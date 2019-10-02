@@ -69,6 +69,9 @@ impl ReplicatedClient {
         };
         Box::new(future)
     }
+    pub fn head(self, _version: ObjectVersion, _deadline: Deadline) -> BoxFuture<()> {
+        Box::new(futures::future::ok(()))
+    }
     pub fn put(
         self,
         version: ObjectVersion,

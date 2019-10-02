@@ -99,7 +99,7 @@ impl StorageClient {
     ) -> BoxFuture<()> {
         match self {
             StorageClient::Metadata => Box::new(future::ok(())),
-            StorageClient::Replicated(_) => Box::new(future::ok(())),
+            StorageClient::Replicated(c) => c.head(version, deadline),
             StorageClient::Dispersed(c) => c.head(version, deadline, parent),
         }
     }

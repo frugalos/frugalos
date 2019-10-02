@@ -173,7 +173,7 @@ impl DispersedClient {
             self.rpc_service,
             &self.client_config,
             span.handle(),
-            Some(timer::timeout(self.client_config.get_timeout)),
+            Some(timer::timeout(self.client_config.head_timeout)),
         ))
     }
     pub fn put(
