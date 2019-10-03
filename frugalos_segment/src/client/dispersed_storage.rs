@@ -645,12 +645,12 @@ impl Future for DispersedHead {
                                 self.exists,
                                 self.data_fragments
             );
-            return Err(Error::from(ErrorKind::Corrupted.cause(cause)));
+            return Err(track!(Error::from(ErrorKind::Corrupted.cause(cause))));
         }
         self.future = futures::future::select_all(remainings);
         if let Ok(Async::Ready(Some(()))) = self.timeout.poll() {
             let cause = "DispersedHead: timeout expired";
-            return Err(Error::from(ErrorKind::Busy.cause(cause)));
+            return Err(track!(Error::from(ErrorKind::Busy.cause(cause))));
         }
         Ok(Async::NotReady)
     }
