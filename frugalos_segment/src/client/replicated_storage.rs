@@ -69,6 +69,7 @@ impl ReplicatedClient {
         };
         Box::new(future)
     }
+    /// TODO 実装
     pub fn head(self, _version: ObjectVersion, _deadline: Deadline) -> BoxFuture<()> {
         Box::new(futures::future::ok(()))
     }
