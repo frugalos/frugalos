@@ -111,6 +111,18 @@ impl<'a> Request<'a> {
         let future = segment.head(object_id, consistency, self.parent.clone());
         Box::new(future.map_err(|e| track!(Error::from(e))))
     }
+    pub fn head_storage(
+        &self,
+        object_id: ObjectId,
+        consistency: ReadConsistency,
+    ) -> BoxFuture<Option<ObjectVersion>> {
+        let buckets = self.client.buckets.load();
+        let bucket = try_get_bucket!(buckets, self.bucket_id);
+        let segment = bucket.get_segment(&object_id);
+        let future =
+            segment.head_storage(object_id, self.deadline, consistency, self.parent.clone());
+        Box::new(future.map_err(|e| track!(Error::from(e))))
+    }
     pub fn put(&self, object_id: ObjectId, content: Vec<u8>) -> BoxFuture<(ObjectVersion, bool)> {
         let buckets = self.client.buckets.load();
         let bucket = try_get_bucket!(buckets, self.bucket_id);
