@@ -15,7 +15,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use client::storage::StorageClient;
 use delete::DeleteContent;
-use repair::{RepairContent, RepairMetrics};
+use repair::{RepairContent, RepairMetrics, RepairPrepContent};
 use segment_gc::{SegmentGc, SegmentGcMetrics};
 use service::{RepairLock, ServiceHandle};
 use Error;
@@ -353,7 +353,7 @@ enum Task {
     Wait(Timeout),
     Delete(DeleteContent),
     Repair(RepairContent, RepairLock),
-    RepairPrep(RepairContent),
+    RepairPrep(RepairPrepContent),
 }
 impl Task {
     fn is_sleeping(&self) -> bool {
@@ -373,7 +373,7 @@ impl Future for Task {
             Task::Wait(ref mut f) => track!(f.poll().map_err(Error::from)),
             Task::Delete(ref mut f) => track!(f.poll()),
             Task::Repair(ref mut f, _) => track!(f.poll()),
-            Task::RepairPrep(ref mut f) => track!(f.poll()),
+            Task::RepairPrep(ref mut f) => track!(f.poll().map(|async| async.map(|_| ()))),
         }
     }
 }
@@ -480,7 +480,7 @@ impl<'a> Future for GeneralQueue<'a> {
                     }
                     TodoItem::RepairContent { version, .. } => {
                         self.task =
-                            Task::RepairPrep(RepairContent::new(&self.synchronizer, version));
+                            Task::RepairPrep(RepairPrepContent::new(&self.synchronizer, version));
                     }
                 }
             } else if let Task::Idle = self.task {
