@@ -273,7 +273,12 @@ impl Future for Synchronizer {
                 match item {
                     TodoItem::DeleteContent { versions } => {
                         self.dequeued_delete.increment();
-                        self.task = Task::Delete(DeleteContent::new(self, versions));
+                        self.task = Task::Delete(DeleteContent::new(
+                            &self.logger,
+                            &self.device,
+                            self.node_id,
+                            versions,
+                        ));
                         self.last_not_idle = Instant::now();
                     }
                     TodoItem::RepairContent { version, .. } => {
@@ -392,24 +397,28 @@ impl Future for Task {
 }
 
 /// RepairPrep, Delete タスクの管理と、その処理を行う。
-struct GeneralQueue<'a> {
+struct GeneralQueue {
     logger: Logger,
+    node_id: NodeId,
+    device: DeviceHandle,
+    client: StorageClient,
     repair_prep_queue: RepairPrepQueue,
     delete_queue: DeleteQueue,
     task: Task,
     repair_candidates: BTreeSet<ObjectVersion>,
-    synchronizer: &'a Synchronizer,
 }
 
-impl<'a> GeneralQueue<'a> {
-    fn new(synchronizer: &'a Synchronizer) -> Self {
+impl GeneralQueue {
+    fn new(synchronizer: &Synchronizer) -> Self {
         Self {
             logger: synchronizer.logger.clone(),
+            node_id: synchronizer.node_id,
+            device: synchronizer.device.clone(),
+            client: synchronizer.client.clone(),
             repair_prep_queue: RepairPrepQueue::new(&synchronizer),
             delete_queue: DeleteQueue::new(&synchronizer),
             task: Task::Idle,
             repair_candidates: BTreeSet::new(),
-            synchronizer,
         }
     }
     fn push(&mut self, event: &Event) {
@@ -476,7 +485,7 @@ impl<'a> GeneralQueue<'a> {
     }
 }
 
-impl<'a> Stream for GeneralQueue<'a> {
+impl Stream for GeneralQueue {
     type Item = ObjectVersion;
     type Error = Error;
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
@@ -492,11 +501,20 @@ impl<'a> Stream for GeneralQueue<'a> {
             if let Some(item) = self.pop() {
                 match item {
                     TodoItem::DeleteContent { versions } => {
-                        self.task = Task::Delete(DeleteContent::new(&self.synchronizer, versions));
+                        self.task = Task::Delete(DeleteContent::new(
+                            &self.logger,
+                            &self.device,
+                            self.node_id,
+                            versions,
+                        ));
                     }
                     TodoItem::RepairContent { version, .. } => {
-                        self.task =
-                            Task::RepairPrep(RepairPrepContent::new(&self.synchronizer, version));
+                        self.task = Task::RepairPrep(RepairPrepContent::new(
+                            &self.logger,
+                            &self.device,
+                            self.node_id,
+                            version,
+                        ));
                     }
                 }
             } else if let Task::Idle = self.task {

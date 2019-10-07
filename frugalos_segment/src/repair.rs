@@ -64,10 +64,14 @@ pub(crate) struct RepairPrepContent {
     future: BoxFuture<Option<ObjectVersion>>,
 }
 impl RepairPrepContent {
-    pub fn new(synchronizer: &Synchronizer, version: ObjectVersion) -> Self {
-        let logger = synchronizer.logger.clone();
-        let device = synchronizer.device.clone();
-        let node_id = synchronizer.node_id;
+    pub fn new(
+        logger: &Logger,
+        device: &DeviceHandle,
+        node_id: NodeId,
+        version: ObjectVersion,
+    ) -> Self {
+        let logger = logger.clone();
+        let device = device.clone();
         let lump_id = config::make_lump_id(&node_id, version);
         let started_at = Instant::now();
         debug!(
