@@ -47,6 +47,9 @@ pub struct Synchronizer {
     last_not_idle: Instant,
     // Ad-hoc fix for repairing.
     repair_enabled: bool,
+
+    // general-purpose queue.
+    general_queue: GeneralQueue,
 }
 impl Synchronizer {
     pub fn new(
@@ -65,6 +68,38 @@ impl Synchronizer {
         let repair_enabled = env::var("FRUGALOS_REPAIR_ENABLED")
             .ok()
             .map_or(false, |v| v == "1");
+        // Metrics related to queue length
+        let enqueued_repair = metric_builder
+            .counter("enqueued_items")
+            .label("type", "repair")
+            .finish()
+            .expect("metric should be well-formed");
+        let enqueued_delete = metric_builder
+            .counter("enqueued_items")
+            .label("type", "delete")
+            .finish()
+            .expect("metric should be well-formed");
+        let dequeued_repair = metric_builder
+            .counter("dequeued_items")
+            .label("type", "repair")
+            .finish()
+            .expect("metric should be well-formed");
+        let dequeued_delete = metric_builder
+            .counter("dequeued_items")
+            .label("type", "delete")
+            .finish()
+            .expect("metric should be well-formed");
+
+        let general_queue = GeneralQueue::new(
+            &logger,
+            node_id,
+            &device,
+            &client,
+            &enqueued_repair,
+            &enqueued_delete,
+            &dequeued_repair,
+            &dequeued_delete,
+        );
         Synchronizer {
             logger,
             node_id,
@@ -75,26 +110,10 @@ impl Synchronizer {
             todo_delete: BinaryHeap::new(),
             todo_repair: BinaryHeap::new(),
             repair_candidates: BTreeSet::new(),
-            enqueued_repair: metric_builder
-                .counter("enqueued_items")
-                .label("type", "repair")
-                .finish()
-                .expect("metric should be well-formed"),
-            enqueued_delete: metric_builder
-                .counter("enqueued_items")
-                .label("type", "delete")
-                .finish()
-                .expect("metric should be well-formed"),
-            dequeued_repair: metric_builder
-                .counter("dequeued_items")
-                .label("type", "repair")
-                .finish()
-                .expect("metric should be well-formed"),
-            dequeued_delete: metric_builder
-                .counter("dequeued_items")
-                .label("type", "delete")
-                .finish()
-                .expect("metric should be well-formed"),
+            enqueued_repair,
+            enqueued_delete,
+            dequeued_repair,
+            dequeued_delete,
             repair_metrics: RepairMetrics::new(&metric_builder),
             segment_gc_metrics: SegmentGcMetrics::new(&metric_builder),
             segment_gc: None,
@@ -102,6 +121,8 @@ impl Synchronizer {
             repair_idleness_threshold: RepairIdleness::Disabled, // No repairing happens
             last_not_idle: Instant::now(),
             repair_enabled,
+
+            general_queue,
         }
     }
     pub fn handle_event(&mut self, event: &Event) {
