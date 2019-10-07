@@ -409,14 +409,23 @@ struct GeneralQueue {
 }
 
 impl GeneralQueue {
-    fn new(synchronizer: &Synchronizer) -> Self {
+    fn new(
+        logger: &Logger,
+        node_id: NodeId,
+        device: &DeviceHandle,
+        client: &StorageClient,
+        enqueued_repair: &Counter,
+        enqueued_delete: &Counter,
+        dequeued_repair: &Counter,
+        dequeued_delete: &Counter,
+    ) -> Self {
         Self {
-            logger: synchronizer.logger.clone(),
-            node_id: synchronizer.node_id,
-            device: synchronizer.device.clone(),
-            client: synchronizer.client.clone(),
-            repair_prep_queue: RepairPrepQueue::new(&synchronizer),
-            delete_queue: DeleteQueue::new(&synchronizer),
+            logger: logger.clone(),
+            node_id,
+            device: device.clone(),
+            client: client.clone(),
+            repair_prep_queue: RepairPrepQueue::new(enqueued_repair, dequeued_repair),
+            delete_queue: DeleteQueue::new(enqueued_delete, dequeued_delete),
             task: Task::Idle,
             repair_candidates: BTreeSet::new(),
         }
@@ -537,11 +546,11 @@ struct RepairPrepQueue {
     dequeued: Counter,
 }
 impl RepairPrepQueue {
-    fn new(synchronizer: &Synchronizer) -> Self {
+    fn new(enqueued_repair: &Counter, dequeued_repair: &Counter) -> Self {
         Self {
             queue: BinaryHeap::new(),
-            enqueued: synchronizer.enqueued_repair.clone(),
-            dequeued: synchronizer.dequeued_repair.clone(),
+            enqueued: enqueued_repair.clone(),
+            dequeued: dequeued_repair.clone(),
         }
     }
 }
@@ -569,11 +578,11 @@ struct DeleteQueue {
     dequeued: Counter,
 }
 impl DeleteQueue {
-    fn new(synchronizer: &Synchronizer) -> Self {
+    fn new(enqueued_delete: &Counter, dequeued_delete: &Counter) -> Self {
         Self {
             deque: VecDeque::new(),
-            enqueued: synchronizer.enqueued_delete.clone(),
-            dequeued: synchronizer.dequeued_delete.clone(),
+            enqueued: enqueued_delete.clone(),
+            dequeued: dequeued_delete.clone(),
         }
     }
 }
