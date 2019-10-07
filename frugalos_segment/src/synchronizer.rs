@@ -2,14 +2,13 @@ use cannyls::device::DeviceHandle;
 use fibers::time::timer::{self, Timeout};
 use frugalos_mds::Event;
 use frugalos_raft::NodeId;
-use futures::{Async, Future, Poll};
+use futures::{Async, Future, Poll, Stream};
 use libfrugalos::entity::object::ObjectVersion;
 use libfrugalos::repair::RepairIdleness;
 use prometrics::metrics::{Counter, MetricBuilder};
 use slog::Logger;
 use std::cmp::{self, Reverse};
 use std::collections::{BTreeSet, BinaryHeap, VecDeque};
-use std::convert::Infallible;
 use std::env;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -259,11 +258,16 @@ impl Future for Synchronizer {
             debug!(self.logger, "last_not_idle = {:?}", self.last_not_idle);
         }
 
-        while let Async::Ready(()) = self.task.poll().unwrap_or_else(|e| {
-            // 同期処理のエラーは致命的ではないので、ログを出すだけに留める
-            warn!(self.logger, "Task failure: {}", e);
-            Async::Ready(())
-        }) {
+        while let Async::Ready(()) = self
+            .task
+            .poll()
+            .map(|async| async.map(|_| ()))
+            .unwrap_or_else(|e| {
+                // 同期処理のエラーは致命的ではないので、ログを出すだけに留める
+                warn!(self.logger, "Task failure: {}", e);
+                Async::Ready(())
+            })
+        {
             self.task = Task::Idle;
             if let Some(item) = self.next_todo_item() {
                 match item {
@@ -365,15 +369,24 @@ impl Task {
     }
 }
 impl Future for Task {
-    type Item = ();
+    type Item = Option<ObjectVersion>;
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match *self {
-            Task::Idle => Ok(Async::Ready(())),
-            Task::Wait(ref mut f) => track!(f.poll().map_err(Error::from)),
-            Task::Delete(ref mut f) => track!(f.poll()),
-            Task::Repair(ref mut f, _) => track!(f.poll()),
-            Task::RepairPrep(ref mut f) => track!(f.poll().map(|async| async.map(|_| ()))),
+            Task::Idle => Ok(Async::Ready(None)),
+            Task::Wait(ref mut f) => track!(f
+                .poll()
+                .map_err(Error::from)
+                .map(|async| async.map(|()| None))),
+            Task::Delete(ref mut f) => track!(f
+                .poll()
+                .map_err(Error::from)
+                .map(|async| async.map(|()| None))),
+            Task::Repair(ref mut f, _) => track!(f
+                .poll()
+                .map_err(Error::from)
+                .map(|async| async.map(|()| None))),
+            Task::RepairPrep(ref mut f) => track!(f.poll()),
         }
     }
 }
@@ -463,15 +476,18 @@ impl<'a> GeneralQueue<'a> {
     }
 }
 
-impl<'a> Future for GeneralQueue<'a> {
-    type Item = Infallible;
+impl<'a> Stream for GeneralQueue<'a> {
+    type Item = ObjectVersion;
     type Error = Error;
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        while let Async::Ready(()) = self.task.poll().unwrap_or_else(|e| {
+    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+        while let Async::Ready(result) = self.task.poll().unwrap_or_else(|e| {
             // 同期処理のエラーは致命的ではないので、ログを出すだけに留める
             warn!(self.logger, "Task failure: {}", e);
-            Async::Ready(())
+            Async::Ready(None)
         }) {
+            if let Some(version) = result {
+                return Ok(Async::Ready(Some(version)));
+            }
             self.task = Task::Idle;
             if let Some(item) = self.pop() {
                 match item {
