@@ -94,7 +94,6 @@ impl Synchronizer {
             &logger,
             node_id,
             &device,
-            &client,
             &enqueued_repair,
             &enqueued_delete,
             &dequeued_repair,
@@ -422,7 +421,6 @@ struct GeneralQueue {
     logger: Logger,
     node_id: NodeId,
     device: DeviceHandle,
-    client: StorageClient,
     repair_prep_queue: RepairPrepQueue,
     delete_queue: DeleteQueue,
     task: Task,
@@ -434,7 +432,6 @@ impl GeneralQueue {
         logger: &Logger,
         node_id: NodeId,
         device: &DeviceHandle,
-        client: &StorageClient,
         enqueued_repair: &Counter,
         enqueued_delete: &Counter,
         dequeued_repair: &Counter,
@@ -444,7 +441,6 @@ impl GeneralQueue {
             logger: logger.clone(),
             node_id,
             device: device.clone(),
-            client: client.clone(),
             repair_prep_queue: RepairPrepQueue::new(enqueued_repair, dequeued_repair),
             delete_queue: DeleteQueue::new(enqueued_delete, dequeued_delete),
             task: Task::Idle,
@@ -465,9 +461,6 @@ impl GeneralQueue {
                 unreachable!();
             }
         }
-    }
-    fn push_todo_item(&mut self, todo_item: TodoItem) {
-        panic!()
     }
     fn pop(&mut self) -> Option<TodoItem> {
         // assert!(self.task == Task::Idle);
