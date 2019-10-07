@@ -494,10 +494,10 @@ impl Stream for GeneralQueue {
             warn!(self.logger, "Task failure: {}", e);
             Async::Ready(None)
         }) {
+            self.task = Task::Idle;
             if let Some(version) = result {
                 return Ok(Async::Ready(Some(version)));
             }
-            self.task = Task::Idle;
             if let Some(item) = self.pop() {
                 match item {
                     TodoItem::DeleteContent { versions } => {
