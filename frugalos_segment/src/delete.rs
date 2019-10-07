@@ -5,7 +5,6 @@ use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
 use slog::Logger;
 
-use synchronizer::Synchronizer;
 use util::{into_box_future, BoxFuture};
 use {config, Error};
 

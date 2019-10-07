@@ -73,7 +73,6 @@ impl RepairPrepContent {
         let logger = logger.clone();
         let device = device.clone();
         let lump_id = config::make_lump_id(&node_id, version);
-        let started_at = Instant::now();
         debug!(
             logger,
             "Starts checking content: version={:?}, lump_id={:?}", version, lump_id
