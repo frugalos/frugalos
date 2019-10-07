@@ -57,6 +57,41 @@ impl RepairMetrics {
     }
 }
 
+// 以下の処理を行う:
+// 1. `version`に対応するオブジェクトの中身が存在するかチェック
+// 存在すれば false (リペアの必要なし) を、存在しなければ true (リペアの必要あり) を返す。
+pub(crate) struct RepairPrepContent {
+    future: BoxFuture<bool>,
+}
+impl RepairPrepContent {
+    pub fn new(synchronizer: &Synchronizer, version: ObjectVersion) -> Self {
+        let logger = synchronizer.logger.clone();
+        let device = synchronizer.device.clone();
+        let node_id = synchronizer.node_id;
+        let lump_id = config::make_lump_id(&node_id, version);
+        let started_at = Instant::now();
+        debug!(
+            logger,
+            "Starts checking content: version={:?}, lump_id={:?}", version, lump_id
+        );
+        let future = into_box_future(
+            device
+                .request()
+                .deadline(Deadline::Infinity)
+                .head(lump_id)
+                .map(|result| result.map_or(true, |_| false)),
+        );
+        RepairPrepContent { future }
+    }
+}
+impl Future for RepairPrepContent {
+    type Item = bool;
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        self.future.poll()
+    }
+}
+
 // NOTE
 // ====
 //
