@@ -59,9 +59,9 @@ impl RepairMetrics {
 
 // 以下の処理を行う:
 // 1. `version`に対応するオブジェクトの中身が存在するかチェック
-// 存在すれば false (リペアの必要なし) を、存在しなければ true (リペアの必要あり) を返す。
+// 存在すれば None (リペアの必要なし) を、存在しなければ Some(version) (リペアの必要ありで、 ObjectVersion は version) を返す。
 pub(crate) struct RepairPrepContent {
-    future: BoxFuture<bool>,
+    future: BoxFuture<Option<ObjectVersion>>,
 }
 impl RepairPrepContent {
     pub fn new(synchronizer: &Synchronizer, version: ObjectVersion) -> Self {
@@ -79,13 +79,13 @@ impl RepairPrepContent {
                 .request()
                 .deadline(Deadline::Infinity)
                 .head(lump_id)
-                .map(|result| result.map_or(true, |_| false)),
+                .map(move |result| result.map_or(Some(version), |_| None)),
         );
         RepairPrepContent { future }
     }
 }
 impl Future for RepairPrepContent {
-    type Item = bool;
+    type Item = Option<ObjectVersion>;
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         self.future.poll()
