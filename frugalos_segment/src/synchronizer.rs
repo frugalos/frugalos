@@ -116,7 +116,10 @@ impl Synchronizer {
         );
         if !self.client.is_metadata() {
             match *event {
-                Event::Putted { version, .. } => {
+                Event::Putted { .. } => {
+                    // do nothing
+                }
+                Event::PuttedInit { version, .. } => {
                     // TODO: this is an ad-hoc fix. Needs rewriting completely.
                     if self.repair_enabled {
                         self.enqueued_repair.increment();
@@ -322,7 +325,8 @@ impl TodoItem {
             Event::Deleted { version } => TodoItem::DeleteContent {
                 versions: vec![version],
             },
-            Event::Putted {
+            Event::Putted { .. } => unreachable!(),
+            Event::PuttedInit {
                 version,
                 put_content_timeout,
             } => {

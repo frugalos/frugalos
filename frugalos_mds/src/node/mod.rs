@@ -244,6 +244,10 @@ pub enum Event {
         version: ObjectVersion,
         put_content_timeout: Seconds,
     },
+    PuttedInit {
+        version: ObjectVersion,
+        put_content_timeout: Seconds,
+    },
 
     /// メタデータオブジェクトが削除された.
     Deleted { version: ObjectVersion },

@@ -918,7 +918,7 @@ impl Stream for Node {
                     .unwrap_or(0);
                 self.events.reserve_exact(machine.len());
                 self.events
-                    .extend(versions.into_iter().map(|version| Event::Putted {
+                    .extend(versions.into_iter().map(|version| Event::PuttedInit {
                         version,
                         put_content_timeout: Seconds(delay),
                     }));
