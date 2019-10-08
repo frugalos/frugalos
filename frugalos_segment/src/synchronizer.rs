@@ -33,7 +33,7 @@ pub struct Synchronizer {
     segment_gc_step: u64,
 
     // general-purpose queue.
-    general_queue: GeneralQueue,
+    general_queue: GeneralQueueExecutor,
     // repair-only queue.
     repair_queue: RepairQueueExecutor,
 }
@@ -73,7 +73,7 @@ impl Synchronizer {
             .finish()
             .expect("metric should be well-formed");
 
-        let general_queue = GeneralQueue::new(
+        let general_queue = GeneralQueueExecutor::new(
             &logger,
             node_id,
             &device,
@@ -255,7 +255,7 @@ impl Future for Task {
 }
 
 /// RepairPrep, Delete タスクの管理と、その処理を行う。
-struct GeneralQueue {
+struct GeneralQueueExecutor {
     logger: Logger,
     node_id: NodeId,
     device: DeviceHandle,
@@ -265,7 +265,7 @@ struct GeneralQueue {
     repair_candidates: BTreeSet<ObjectVersion>,
 }
 
-impl GeneralQueue {
+impl GeneralQueueExecutor {
     fn new(
         logger: &Logger,
         node_id: NodeId,
@@ -346,7 +346,7 @@ impl GeneralQueue {
     }
 }
 
-impl Stream for GeneralQueue {
+impl Stream for GeneralQueueExecutor {
     type Item = ObjectVersion;
     type Error = Infallible;
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
