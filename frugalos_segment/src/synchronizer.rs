@@ -17,6 +17,7 @@ use delete::DeleteContent;
 use repair::{RepairContent, RepairMetrics, RepairPrepContent};
 use segment_gc::{SegmentGc, SegmentGcMetrics};
 use service::{RepairLock, ServiceHandle};
+use std::convert::Infallible;
 use Error;
 
 const MAX_TIMEOUT_SECONDS: u64 = 60;
@@ -315,7 +316,14 @@ impl Future for Synchronizer {
                                 if let Some(repair_lock) = repair_lock {
                                     self.dequeued_repair.increment();
                                     self.task = Task::Repair(
-                                        RepairContent::new(self, version),
+                                        RepairContent::new(
+                                            &self.logger,
+                                            &self.device,
+                                            self.node_id,
+                                            &self.client,
+                                            &self.repair_metrics,
+                                            version,
+                                        ),
                                         repair_lock,
                                     );
                                     self.last_not_idle = Instant::now();
@@ -542,6 +550,105 @@ impl Stream for GeneralQueue {
                 }
             } else if let Task::Idle = self.task {
                 break;
+            }
+        }
+        Ok(Async::NotReady)
+    }
+}
+
+/// 若い番号のオブジェクトから順番にリペアするためのキュー。
+struct RepairQueueExecutor {
+    logger: Logger,
+    node_id: NodeId,
+    device: DeviceHandle,
+    client: StorageClient,
+    service_handle: ServiceHandle,
+    task: Task,
+    queue: BinaryHeap<Reverse<ObjectVersion>>,
+    // The idleness threshold for repair functionality.
+    repair_idleness_threshold: RepairIdleness,
+    last_not_idle: Instant,
+    repair_metrics: RepairMetrics,
+}
+impl RepairQueueExecutor {
+    fn new(
+        logger: &Logger,
+        node_id: NodeId,
+        device: &DeviceHandle,
+        client: &StorageClient,
+        service_handle: &ServiceHandle,
+        metric_builder: &MetricBuilder,
+    ) -> Self {
+        RepairQueueExecutor {
+            logger: logger.clone(),
+            node_id,
+            device: device.clone(),
+            client: client.clone(),
+            service_handle: service_handle.clone(),
+            task: Task::Idle,
+            queue: BinaryHeap::new(),
+            repair_idleness_threshold: RepairIdleness::Disabled,
+            last_not_idle: Instant::now(),
+            repair_metrics: RepairMetrics::new(metric_builder),
+        }
+    }
+    fn push(&mut self, version: ObjectVersion) {
+        self.queue.push(Reverse(version));
+    }
+    fn pop(&mut self) -> Option<ObjectVersion> {
+        let result = self.queue.pop();
+        // Shrink if necessary
+        if self.queue.capacity() > 32 && self.queue.len() < self.queue.capacity() / 2 {
+            self.queue.shrink_to_fit();
+        }
+        result.map(|version| version.0)
+    }
+}
+impl Future for RepairQueueExecutor {
+    type Item = Infallible; // This executor will never finish normally.
+    type Error = Infallible;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        if !self.task.is_sleeping() {
+            self.last_not_idle = Instant::now();
+            debug!(self.logger, "last_not_idle = {:?}", self.last_not_idle);
+        }
+
+        while let Async::Ready(_result) = self.task.poll().unwrap_or_else(|e| {
+            // 同期処理のエラーは致命的ではないので、ログを出すだけに留める
+            warn!(self.logger, "Task failure in RepairQueueExecutor: {}", e);
+            Async::Ready(None)
+        }) {
+            self.task = Task::Idle;
+            self.last_not_idle = Instant::now();
+            if let RepairIdleness::Threshold(repair_idleness_threshold_duration) =
+                self.repair_idleness_threshold
+            {
+                if let Some(version) = self.pop() {
+                    let elapsed = self.last_not_idle.elapsed();
+                    if elapsed < repair_idleness_threshold_duration {
+                        self.push(version);
+                        break;
+                    } else {
+                        let repair_lock = self.service_handle.acquire_repair_lock();
+                        if let Some(repair_lock) = repair_lock {
+                            self.task = Task::Repair(
+                                RepairContent::new(
+                                    &self.logger,
+                                    &self.device,
+                                    self.node_id,
+                                    &self.client,
+                                    &self.repair_metrics,
+                                    version,
+                                ),
+                                repair_lock,
+                            );
+                            self.last_not_idle = Instant::now();
+                        } else {
+                            self.push(version);
+                            break;
+                        }
+                    }
+                }
             }
         }
         Ok(Async::NotReady)

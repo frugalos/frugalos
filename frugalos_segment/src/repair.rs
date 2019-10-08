@@ -9,7 +9,6 @@ use prometrics::metrics::{Counter, Histogram, MetricBuilder};
 use slog::Logger;
 use std::time::Instant;
 
-use synchronizer::Synchronizer;
 use util::{into_box_future, BoxFuture, Phase3};
 use {config, Error};
 
@@ -119,10 +118,16 @@ pub(crate) struct RepairContent {
     phase: Phase3<BoxFuture<Option<LumpHeader>>, GetFragment, BoxFuture<bool>>,
 }
 impl RepairContent {
-    pub fn new(synchronizer: &Synchronizer, version: ObjectVersion) -> Self {
-        let logger = synchronizer.logger.clone();
-        let device = synchronizer.device.clone();
-        let node_id = synchronizer.node_id;
+    pub fn new(
+        logger: &Logger,
+        device: &DeviceHandle,
+        node_id: NodeId,
+        client: &StorageClient,
+        repair_metrics: &RepairMetrics,
+        version: ObjectVersion,
+    ) -> Self {
+        let logger = logger.clone();
+        let device = device.clone();
         let lump_id = config::make_lump_id(&node_id, version);
         let started_at = Instant::now();
         debug!(
@@ -136,10 +141,10 @@ impl RepairContent {
             logger,
             node_id,
             version,
-            client: synchronizer.client.clone(),
+            client: client.clone(),
             device,
             started_at,
-            repair_metrics: synchronizer.repair_metrics.clone(),
+            repair_metrics: repair_metrics.clone(),
             phase,
         }
     }
