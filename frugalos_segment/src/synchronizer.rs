@@ -456,7 +456,6 @@ impl Future for RepairQueueExecutor {
             Async::Ready(None)
         }) {
             self.task = Task::Idle;
-            self.last_not_idle = Instant::now();
             if let RepairIdleness::Threshold(repair_idleness_threshold_duration) =
                 self.repair_idleness_threshold
             {
@@ -486,6 +485,9 @@ impl Future for RepairQueueExecutor {
                         }
                     }
                 }
+            }
+            if let Task::Idle = self.task {
+                break;
             }
         }
         Ok(Async::NotReady)
