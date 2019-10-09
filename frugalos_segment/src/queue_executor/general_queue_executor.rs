@@ -6,7 +6,7 @@ use futures::{Async, Future, Poll, Stream};
 use libfrugalos::entity::object::ObjectVersion;
 use prometrics::metrics::Counter;
 use slog::Logger;
-use std::cmp::{self, Reverse};
+use std::cmp::{self, min, Reverse};
 use std::collections::{BTreeSet, BinaryHeap, VecDeque};
 use std::convert::Infallible;
 use std::time::{Duration, SystemTime};
@@ -254,6 +254,7 @@ impl Queue<TodoItem, TodoItem> for RepairPrepQueue {
     }
 }
 
+/// Delete 用のキュー。FIFO キューであり、効率のため DELETE_CONCURRENCY 個単位でまとめて pop できる。
 struct DeleteQueue {
     deque: VecDeque<ObjectVersion>,
     enqueued: Counter,
@@ -274,15 +275,46 @@ impl Queue<ObjectVersion, TodoItem> for DeleteQueue {
         self.enqueued.increment();
     }
     fn pop(&mut self) -> Option<TodoItem> {
-        let result = self.deque.pop_front();
-        if let Some(_) = result {
-            self.dequeued.increment();
+        // How many elements do we pick this time?
+        let length = min(self.deque.len(), DELETE_CONCURRENCY);
+        if length == 0 {
+            return None;
         }
+
+        let versions: Vec<ObjectVersion> = self.deque.drain(..length).collect();
+        self.dequeued.add_u64(length as u64);
         if self.deque.capacity() > 32 && self.deque.len() < self.deque.capacity() / 2 {
             self.deque.shrink_to_fit();
         }
-        result.map(|version| TodoItem::DeleteContent {
-            versions: vec![version],
-        })
+        Some(TodoItem::DeleteContent { versions })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use libfrugalos::entity::object::ObjectVersion;
+    use prometrics::metrics::MetricBuilder;
+
+    #[test]
+    fn delete_queue_works() {
+        // 乱雑な順番のリスト
+        let versions: Vec<ObjectVersion> = (0..30).rev().chain(30..65).map(ObjectVersion).collect();
+        let metric_builder = MetricBuilder::new();
+        let enqueued = metric_builder.counter("enqueued").finish().unwrap();
+        let dequeued = metric_builder.counter("dequeued").finish().unwrap();
+        let mut queue = DeleteQueue::new(&enqueued, &dequeued);
+        for &version in &versions {
+            queue.push(version);
+        }
+        let mut popped = vec![];
+        while let Some(TodoItem::DeleteContent { mut versions }) = queue.pop() {
+            popped.append(&mut versions);
+        }
+        // 突っ込んだ順番に処理される
+        assert_eq!(popped, versions);
+        // キューに突っ込んだ個数とキューから出した個数が等しい
+        assert_eq!(enqueued.value() as usize, versions.len());
+        assert_eq!(dequeued.value() as usize, versions.len());
     }
 }
