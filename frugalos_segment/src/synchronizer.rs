@@ -57,6 +57,11 @@ impl Synchronizer {
             .label("type", "repair")
             .finish()
             .expect("metric should be well-formed");
+        let enqueued_repair_prep = metric_builder
+            .counter("enqueued_items")
+            .label("type", "repair_prep")
+            .finish()
+            .expect("metric should be well-formed");
         let enqueued_delete = metric_builder
             .counter("enqueued_items")
             .label("type", "delete")
@@ -65,6 +70,11 @@ impl Synchronizer {
         let dequeued_repair = metric_builder
             .counter("dequeued_items")
             .label("type", "repair")
+            .finish()
+            .expect("metric should be well-formed");
+        let dequeued_repair_prep = metric_builder
+            .counter("dequeued_items")
+            .label("type", "repair_prep")
             .finish()
             .expect("metric should be well-formed");
         let dequeued_delete = metric_builder
@@ -77,9 +87,9 @@ impl Synchronizer {
             &logger,
             node_id,
             &device,
-            &enqueued_repair,
+            &enqueued_repair_prep,
             &enqueued_delete,
-            &dequeued_repair,
+            &dequeued_repair_prep,
             &dequeued_delete,
         );
         let repair_queue = RepairQueueExecutor::new(
@@ -89,6 +99,8 @@ impl Synchronizer {
             &client,
             &service_handle,
             &metric_builder,
+            &enqueued_repair,
+            &dequeued_repair,
         );
         Synchronizer {
             logger,
@@ -270,16 +282,16 @@ impl GeneralQueueExecutor {
         logger: &Logger,
         node_id: NodeId,
         device: &DeviceHandle,
-        enqueued_repair: &Counter,
+        enqueued_repair_prep: &Counter,
         enqueued_delete: &Counter,
-        dequeued_repair: &Counter,
+        dequeued_repair_prep: &Counter,
         dequeued_delete: &Counter,
     ) -> Self {
         Self {
             logger: logger.clone(),
             node_id,
             device: device.clone(),
-            repair_prep_queue: RepairPrepQueue::new(enqueued_repair, dequeued_repair),
+            repair_prep_queue: RepairPrepQueue::new(enqueued_repair_prep, dequeued_repair_prep),
             delete_queue: DeleteQueue::new(enqueued_delete, dequeued_delete),
             task: Task::Idle,
             repair_candidates: BTreeSet::new(),
@@ -399,6 +411,8 @@ struct RepairQueueExecutor {
     repair_idleness_threshold: RepairIdleness,
     last_not_idle: Instant,
     repair_metrics: RepairMetrics,
+    enqueued_repair: Counter,
+    dequeued_repair: Counter,
 }
 impl RepairQueueExecutor {
     fn new(
@@ -408,6 +422,8 @@ impl RepairQueueExecutor {
         client: &StorageClient,
         service_handle: &ServiceHandle,
         metric_builder: &MetricBuilder,
+        enqueued_repair: &Counter,
+        dequeued_repair: &Counter,
     ) -> Self {
         RepairQueueExecutor {
             logger: logger.clone(),
@@ -420,16 +436,22 @@ impl RepairQueueExecutor {
             repair_idleness_threshold: RepairIdleness::Disabled,
             last_not_idle: Instant::now(),
             repair_metrics: RepairMetrics::new(metric_builder),
+            enqueued_repair: enqueued_repair.clone(),
+            dequeued_repair: dequeued_repair.clone(),
         }
     }
     fn push(&mut self, version: ObjectVersion) {
         self.queue.push(Reverse(version));
+        self.enqueued_repair.increment();
     }
     fn pop(&mut self) -> Option<ObjectVersion> {
         let result = self.queue.pop();
         // Shrink if necessary
         if self.queue.capacity() > 32 && self.queue.len() < self.queue.capacity() / 2 {
             self.queue.shrink_to_fit();
+        }
+        if result.is_some() {
+            self.dequeued_repair.increment();
         }
         result.map(|version| version.0)
     }
@@ -506,11 +528,11 @@ struct RepairPrepQueue {
     dequeued: Counter,
 }
 impl RepairPrepQueue {
-    fn new(enqueued_repair: &Counter, dequeued_repair: &Counter) -> Self {
+    fn new(enqueued_repair_prep: &Counter, dequeued_repair_prep: &Counter) -> Self {
         Self {
             queue: BinaryHeap::new(),
-            enqueued: enqueued_repair.clone(),
-            dequeued: dequeued_repair.clone(),
+            enqueued: enqueued_repair_prep.clone(),
+            dequeued: dequeued_repair_prep.clone(),
         }
     }
 }
