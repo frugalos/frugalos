@@ -1,5 +1,4 @@
 use cannyls::device::DeviceHandle;
-use fibers::time::timer::Timeout;
 use frugalos_raft::NodeId;
 use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
@@ -12,47 +11,30 @@ use std::convert::Infallible;
 use std::time::Instant;
 
 use client::storage::StorageClient;
-use delete::DeleteContent;
-use repair::{RepairContent, RepairMetrics, RepairPrepContent};
+use repair::{RepairContent, RepairMetrics};
 use service::{RepairLock, ServiceHandle};
 use Error;
 
 #[allow(clippy::large_enum_variant)]
 enum Task {
     Idle,
-    Wait(Timeout),
-    Delete(DeleteContent),
     Repair(RepairContent, RepairLock),
-    RepairPrep(RepairPrepContent),
 }
 impl Task {
     fn is_sleeping(&self) -> bool {
         match self {
             Task::Idle => true,
-            Task::Wait(_) => true,
-            _ => false,
+            Task::Repair(_, _) => false,
         }
     }
 }
 impl Future for Task {
-    type Item = Option<ObjectVersion>;
+    type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         match *self {
-            Task::Idle => Ok(Async::Ready(None)),
-            Task::Wait(ref mut f) => track!(f
-                .poll()
-                .map_err(Error::from)
-                .map(|async| async.map(|()| None))),
-            Task::Delete(ref mut f) => track!(f
-                .poll()
-                .map_err(Error::from)
-                .map(|async| async.map(|()| None))),
-            Task::Repair(ref mut f, _) => track!(f
-                .poll()
-                .map_err(Error::from)
-                .map(|async| async.map(|()| None))),
-            Task::RepairPrep(ref mut f) => track!(f.poll()),
+            Task::Idle => Ok(Async::Ready(())),
+            Task::Repair(ref mut f, _) => track!(f.poll().map_err(Error::from)),
         }
     }
 }
@@ -134,10 +116,10 @@ impl Future for RepairQueueExecutor {
             debug!(self.logger, "last_not_idle = {:?}", self.last_not_idle);
         }
 
-        while let Async::Ready(_result) = self.task.poll().unwrap_or_else(|e| {
+        while let Async::Ready(()) = self.task.poll().unwrap_or_else(|e| {
             // 同期処理のエラーは致命的ではないので、ログを出すだけに留める
             warn!(self.logger, "Task failure in RepairQueueExecutor: {}", e);
-            Async::Ready(None)
+            Async::Ready(())
         }) {
             self.task = Task::Idle;
             if let RepairIdleness::Threshold(repair_idleness_threshold_duration) =

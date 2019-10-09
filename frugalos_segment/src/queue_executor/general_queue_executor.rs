@@ -12,8 +12,7 @@ use std::convert::Infallible;
 use std::time::{Duration, SystemTime};
 
 use delete::DeleteContent;
-use repair::{RepairContent, RepairPrepContent};
-use service::RepairLock;
+use repair::RepairPrepContent;
 use Error;
 
 const MAX_TIMEOUT_SECONDS: u64 = 60;
@@ -64,17 +63,7 @@ enum Task {
     Idle,
     Wait(Timeout),
     Delete(DeleteContent),
-    Repair(RepairContent, RepairLock),
     RepairPrep(RepairPrepContent),
-}
-impl Task {
-    fn is_sleeping(&self) -> bool {
-        match self {
-            Task::Idle => true,
-            Task::Wait(_) => true,
-            _ => false,
-        }
-    }
 }
 impl Future for Task {
     type Item = Option<ObjectVersion>;
@@ -87,10 +76,6 @@ impl Future for Task {
                 .map_err(Error::from)
                 .map(|async| async.map(|()| None))),
             Task::Delete(ref mut f) => track!(f
-                .poll()
-                .map_err(Error::from)
-                .map(|async| async.map(|()| None))),
-            Task::Repair(ref mut f, _) => track!(f
                 .poll()
                 .map_err(Error::from)
                 .map(|async| async.map(|()| None))),
