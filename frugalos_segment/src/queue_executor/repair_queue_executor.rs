@@ -5,8 +5,7 @@ use libfrugalos::entity::object::ObjectVersion;
 use libfrugalos::repair::RepairIdleness;
 use prometrics::metrics::{Counter, MetricBuilder};
 use slog::Logger;
-use std::cmp::Reverse;
-use std::collections::BinaryHeap;
+use std::collections::BTreeSet;
 use std::convert::Infallible;
 use std::time::Instant;
 
@@ -47,7 +46,7 @@ pub(crate) struct RepairQueueExecutor {
     client: StorageClient,
     service_handle: ServiceHandle,
     task: Task,
-    queue: BinaryHeap<Reverse<ObjectVersion>>,
+    queue: BTreeSet<ObjectVersion>,
     // The idleness threshold for repair functionality.
     repair_idleness_threshold: RepairIdleness,
     last_not_idle: Instant,
@@ -73,7 +72,7 @@ impl RepairQueueExecutor {
             client: client.clone(),
             service_handle: service_handle.clone(),
             task: Task::Idle,
-            queue: BinaryHeap::new(),
+            queue: BTreeSet::new(),
             repair_idleness_threshold: RepairIdleness::Disabled,
             last_not_idle: Instant::now(),
             repair_metrics: RepairMetrics::new(metric_builder),
@@ -81,20 +80,21 @@ impl RepairQueueExecutor {
             dequeued_repair: dequeued_repair.clone(),
         }
     }
+    /// Pushes an element into this queue.
     pub(crate) fn push(&mut self, version: ObjectVersion) {
-        self.queue.push(Reverse(version));
-        self.enqueued_repair.increment();
+        // Insert version. Also, increment enqueued_repair if version was absent before insertion.
+        if self.queue.insert(version) {
+            self.enqueued_repair.increment();
+        }
     }
     fn pop(&mut self) -> Option<ObjectVersion> {
-        let result = self.queue.pop();
-        // Shrink if necessary
-        if self.queue.capacity() > 32 && self.queue.len() < self.queue.capacity() / 2 {
-            self.queue.shrink_to_fit();
-        }
-        if result.is_some() {
+        // Pick the minimum element, if queue is not empty.
+        let result = self.queue.iter().next().copied();
+        if let Some(version) = result {
+            self.queue.remove(&version);
             self.dequeued_repair.increment();
         }
-        result.map(|version| version.0)
+        result
     }
     pub(crate) fn set_repair_idleness_threshold(
         &mut self,
