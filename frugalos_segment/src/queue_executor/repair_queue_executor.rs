@@ -1,0 +1,179 @@
+use cannyls::device::DeviceHandle;
+use fibers::time::timer::Timeout;
+use frugalos_raft::NodeId;
+use futures::{Async, Future, Poll};
+use libfrugalos::entity::object::ObjectVersion;
+use libfrugalos::repair::RepairIdleness;
+use prometrics::metrics::{Counter, MetricBuilder};
+use slog::Logger;
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
+use std::convert::Infallible;
+use std::time::Instant;
+
+use client::storage::StorageClient;
+use delete::DeleteContent;
+use repair::{RepairContent, RepairMetrics, RepairPrepContent};
+use service::{RepairLock, ServiceHandle};
+use Error;
+
+#[allow(clippy::large_enum_variant)]
+enum Task {
+    Idle,
+    Wait(Timeout),
+    Delete(DeleteContent),
+    Repair(RepairContent, RepairLock),
+    RepairPrep(RepairPrepContent),
+}
+impl Task {
+    fn is_sleeping(&self) -> bool {
+        match self {
+            Task::Idle => true,
+            Task::Wait(_) => true,
+            _ => false,
+        }
+    }
+}
+impl Future for Task {
+    type Item = Option<ObjectVersion>;
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        match *self {
+            Task::Idle => Ok(Async::Ready(None)),
+            Task::Wait(ref mut f) => track!(f
+                .poll()
+                .map_err(Error::from)
+                .map(|async| async.map(|()| None))),
+            Task::Delete(ref mut f) => track!(f
+                .poll()
+                .map_err(Error::from)
+                .map(|async| async.map(|()| None))),
+            Task::Repair(ref mut f, _) => track!(f
+                .poll()
+                .map_err(Error::from)
+                .map(|async| async.map(|()| None))),
+            Task::RepairPrep(ref mut f) => track!(f.poll()),
+        }
+    }
+}
+
+/// 若い番号のオブジェクトから順番にリペアするためのキュー。
+pub(crate) struct RepairQueueExecutor {
+    logger: Logger,
+    node_id: NodeId,
+    device: DeviceHandle,
+    client: StorageClient,
+    service_handle: ServiceHandle,
+    task: Task,
+    queue: BinaryHeap<Reverse<ObjectVersion>>,
+    // The idleness threshold for repair functionality.
+    repair_idleness_threshold: RepairIdleness,
+    last_not_idle: Instant,
+    repair_metrics: RepairMetrics,
+    enqueued_repair: Counter,
+    dequeued_repair: Counter,
+}
+impl RepairQueueExecutor {
+    pub(crate) fn new(
+        logger: &Logger,
+        node_id: NodeId,
+        device: &DeviceHandle,
+        client: &StorageClient,
+        service_handle: &ServiceHandle,
+        metric_builder: &MetricBuilder,
+        enqueued_repair: &Counter,
+        dequeued_repair: &Counter,
+    ) -> Self {
+        RepairQueueExecutor {
+            logger: logger.clone(),
+            node_id,
+            device: device.clone(),
+            client: client.clone(),
+            service_handle: service_handle.clone(),
+            task: Task::Idle,
+            queue: BinaryHeap::new(),
+            repair_idleness_threshold: RepairIdleness::Disabled,
+            last_not_idle: Instant::now(),
+            repair_metrics: RepairMetrics::new(metric_builder),
+            enqueued_repair: enqueued_repair.clone(),
+            dequeued_repair: dequeued_repair.clone(),
+        }
+    }
+    pub(crate) fn push(&mut self, version: ObjectVersion) {
+        self.queue.push(Reverse(version));
+        self.enqueued_repair.increment();
+    }
+    fn pop(&mut self) -> Option<ObjectVersion> {
+        let result = self.queue.pop();
+        // Shrink if necessary
+        if self.queue.capacity() > 32 && self.queue.len() < self.queue.capacity() / 2 {
+            self.queue.shrink_to_fit();
+        }
+        if result.is_some() {
+            self.dequeued_repair.increment();
+        }
+        result.map(|version| version.0)
+    }
+    pub(crate) fn set_repair_idleness_threshold(
+        &mut self,
+        repair_idleness_threshold: RepairIdleness,
+    ) {
+        info!(
+            self.logger,
+            "repair_idleness_threshold set to {:?}", repair_idleness_threshold,
+        );
+        self.repair_idleness_threshold = repair_idleness_threshold;
+    }
+}
+impl Future for RepairQueueExecutor {
+    type Item = Infallible; // This executor will never finish normally.
+    type Error = Infallible;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        if !self.task.is_sleeping() {
+            self.last_not_idle = Instant::now();
+            debug!(self.logger, "last_not_idle = {:?}", self.last_not_idle);
+        }
+
+        while let Async::Ready(_result) = self.task.poll().unwrap_or_else(|e| {
+            // 同期処理のエラーは致命的ではないので、ログを出すだけに留める
+            warn!(self.logger, "Task failure in RepairQueueExecutor: {}", e);
+            Async::Ready(None)
+        }) {
+            self.task = Task::Idle;
+            if let RepairIdleness::Threshold(repair_idleness_threshold_duration) =
+                self.repair_idleness_threshold
+            {
+                if let Some(version) = self.pop() {
+                    let elapsed = self.last_not_idle.elapsed();
+                    if elapsed < repair_idleness_threshold_duration {
+                        self.push(version);
+                        break;
+                    } else {
+                        let repair_lock = self.service_handle.acquire_repair_lock();
+                        if let Some(repair_lock) = repair_lock {
+                            self.task = Task::Repair(
+                                RepairContent::new(
+                                    &self.logger,
+                                    &self.device,
+                                    self.node_id,
+                                    &self.client,
+                                    &self.repair_metrics,
+                                    version,
+                                ),
+                                repair_lock,
+                            );
+                            self.last_not_idle = Instant::now();
+                        } else {
+                            self.push(version);
+                            break;
+                        }
+                    }
+                }
+            }
+            if let Task::Idle = self.task {
+                break;
+            }
+        }
+        Ok(Async::NotReady)
+    }
+}
