@@ -243,7 +243,7 @@ impl Queue<TodoItem, TodoItem> for RepairPrepQueue {
     }
     fn pop(&mut self) -> Option<TodoItem> {
         let result = self.queue.pop();
-        if let Some(_) = result {
+        if result.is_some() {
             self.dequeued.increment();
         }
         // Shrink if necessary

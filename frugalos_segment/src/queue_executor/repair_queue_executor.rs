@@ -55,6 +55,7 @@ pub(crate) struct RepairQueueExecutor {
     dequeued_repair: Counter,
 }
 impl RepairQueueExecutor {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         logger: &Logger,
         node_id: NodeId,
