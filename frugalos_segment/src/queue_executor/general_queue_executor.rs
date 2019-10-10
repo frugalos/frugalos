@@ -169,7 +169,8 @@ impl GeneralQueueExecutor {
             //
             // 仮に`put_content_timeout`が極端に長いイベントが発生したとしても、
             // `MAX_TIMEOUT_SECONDS`以上に後続のTODOの処理が(Waitによって)遅延することはない.
-            None
+            // リペアのタスクをキューに戻した場合、何もしないよりは Delete を処理した方がいいので、Delete があれば処理する。
+            self.delete_queue.pop()
         } else {
             Some(item)
         }
