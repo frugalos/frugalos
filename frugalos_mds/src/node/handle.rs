@@ -1,6 +1,7 @@
 use fibers::sync::{mpsc, oneshot};
 use futures::future::Either;
 use futures::{self, Future};
+use libfrugalos::consistency::ReadConsistency;
 use libfrugalos::entity::node::RemoteNodeId;
 use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, Metadata, ObjectId, ObjectPrefix, ObjectSummary, ObjectVersion,
@@ -84,10 +85,11 @@ impl NodeHandle {
         &self,
         object_id: ObjectId,
         expect: Expect,
+        consistency: ReadConsistency,
         started_at: Instant,
     ) -> impl Future<Item = Option<Metadata>, Error = Error> {
         let (monitored, monitor) = oneshot::monitor();
-        let request = Request::Get(object_id, expect, started_at, monitored);
+        let request = Request::Get(object_id, expect, consistency, started_at, monitored);
         future_try!(self.request_tx.send(request));
         let future = monitor.map_err(|e| track!(Error::from(e)));
         Either::A(future)
@@ -97,9 +99,10 @@ impl NodeHandle {
         &self,
         object_id: ObjectId,
         expect: Expect,
+        consistency: ReadConsistency,
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
         let (monitored, monitor) = oneshot::monitor();
-        let request = Request::Head(object_id, expect, monitored);
+        let request = Request::Head(object_id, expect, consistency, monitored);
         future_try!(self.request_tx.send(request));
         let future = monitor.map_err(|e| track!(Error::from(e)));
         Either::A(future)

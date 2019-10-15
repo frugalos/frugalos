@@ -4,6 +4,7 @@ use atomic_immut::AtomicImmut;
 use cannyls::deadline::Deadline;
 use frugalos_segment::ObjectValue;
 use futures::{self, Future};
+use libfrugalos::consistency::ReadConsistency;
 use libfrugalos::entity::bucket::BucketId;
 use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, ObjectId, ObjectPrefix, ObjectSummary, ObjectVersion,
@@ -88,18 +89,26 @@ impl<'a> Request<'a> {
         self.parent = span.handle();
         self
     }
-    pub fn get(&self, object_id: ObjectId) -> BoxFuture<Option<ObjectValue>> {
+    pub fn get(
+        &self,
+        object_id: ObjectId,
+        consistency: ReadConsistency,
+    ) -> BoxFuture<Option<ObjectValue>> {
         let buckets = self.client.buckets.load();
         let bucket = try_get_bucket!(buckets, self.bucket_id);
         let segment = bucket.get_segment(&object_id);
-        let future = segment.get(object_id, self.deadline, self.parent.clone());
+        let future = segment.get(object_id, self.deadline, consistency, self.parent.clone());
         Box::new(future.map_err(|e| track!(Error::from(e))))
     }
-    pub fn head(&self, object_id: ObjectId) -> BoxFuture<Option<ObjectVersion>> {
+    pub fn head(
+        &self,
+        object_id: ObjectId,
+        consistency: ReadConsistency,
+    ) -> BoxFuture<Option<ObjectVersion>> {
         let buckets = self.client.buckets.load();
         let bucket = try_get_bucket!(buckets, self.bucket_id);
         let segment = bucket.get_segment(&object_id);
-        let future = segment.head(object_id, self.parent.clone());
+        let future = segment.head(object_id, consistency, self.parent.clone());
         Box::new(future.map_err(|e| track!(Error::from(e))))
     }
     pub fn put(&self, object_id: ObjectId, content: Vec<u8>) -> BoxFuture<(ObjectVersion, bool)> {

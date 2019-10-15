@@ -138,9 +138,14 @@ impl HandleCall<rpc::GetObjectRpc> for Server {
         let node_id = rpc_try!(request.node_id.parse().map_err(Error::from));
         let node = rpc_try!(self.get_node(node_id));
         Reply::future(
-            node.get_object(request.object_id, request.expect, Instant::now())
-                .map_err(to_rpc_error)
-                .then(Ok),
+            node.get_object(
+                request.object_id,
+                request.expect,
+                request.consistency.unwrap_or_default(),
+                Instant::now(),
+            )
+            .map_err(to_rpc_error)
+            .then(Ok),
         )
     }
 }
@@ -149,9 +154,13 @@ impl HandleCall<rpc::HeadObjectRpc> for Server {
         let node_id = rpc_try!(request.node_id.parse().map_err(Error::from));
         let node = rpc_try!(self.get_node(node_id));
         Reply::future(
-            node.head_object(request.object_id, request.expect)
-                .map_err(to_rpc_error)
-                .then(Ok),
+            node.head_object(
+                request.object_id,
+                request.expect,
+                request.consistency.unwrap_or_default(),
+            )
+            .map_err(to_rpc_error)
+            .then(Ok),
         )
     }
 }

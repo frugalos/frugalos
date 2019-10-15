@@ -258,18 +258,15 @@ impl Service {
         }
     }
     fn handle_put_device(&mut self, proposal_id: ProposalId, mut device: Device) {
-        // NOTE: 更新可能なのは仮想デバイスのみ
-        if let Some(d) = self.devices.get(device.id()).cloned() {
-            // TODO: clonedは止める
-            if !d.is_virtual() || !device.is_virtual() {
-                warn!(
-                    self.logger,
-                    "Cannot update physical device: {}",
-                    dump!(proposal_id, device, d)
-                );
-                let _ = self.pop_committed_proposal(proposal_id); // TODO: ちゃんとハンドリング
-                return;
-            }
+        // https://github.com/frugalos/frugalos/issues/208 で発覚したバグのため、仮想デバイスであっても更新はできないようにする。
+        if let Some(d) = self.devices.get(device.id()) {
+            warn!(
+                self.logger,
+                "Updating device is not allowed: see issue #208 (https://github.com/frugalos/frugalos/issues/208): {}",
+                dump!(proposal_id, device, d),
+            );
+            let _ = self.pop_committed_proposal(proposal_id); // TODO: ちゃんとハンドリング
+            return;
         }
 
         if device.server().map(|s| !self.servers.contains_key(s)) == Some(true) {
@@ -300,15 +297,13 @@ impl Service {
         // TODO: その他のバリデーション (e.g., 更新によってセグメントマッピングが失敗しないか)
         //       e.g., 循環参照禁止, DAG禁止(木のみに制限)
 
-        if let Some(old) = self.devices.remove(device.id()) {
-            device.set_seqno(old.seqno());
-            info!(self.logger, "Device is updated: {}", dump!(old, device));
-        } else {
-            device.set_seqno(self.next_seqno.device);
-            self.next_seqno.device += 1;
-            info!(self.logger, "New device is added: {:?}", device);
-        }
+        // デバイスの更新を有効にするときは、ここを変更する。
+        assert!(!self.devices.contains_key(device.id()));
+        device.set_seqno(self.next_seqno.device);
+        self.next_seqno.device += 1;
+        info!(self.logger, "New device is added: {:?}", device);
 
+        // TODO: 更新時にしか走らない処理があるので、消すか望ましい更新処理を実装する。
         let mut affected_buckets = Vec::new();
         for b in self.buckets.values() {
             let root = &self.devices[b.device()];
@@ -337,8 +332,8 @@ impl Service {
             if self.is_device_referred(&id) {
                 warn!(
                     self.logger,
-                    "Cannot DELETE this device (it is referred by some devices): {}",
-                    dump!(id, device)
+                    "Cannot DELETE this device (it is referred to by some devices): {}",
+                    dump!(id, device),
                 );
                 self.devices.insert(id, device);
                 None

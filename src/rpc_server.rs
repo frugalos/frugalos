@@ -129,7 +129,7 @@ impl HandleCall<rpc::GetObjectRpc> for RpcServer {
             .deadline(into_cannyls_deadline(request.deadline))
             .expect(request.expect)
             .span(&span)
-            .get(request.object_id);
+            .get(request.object_id, request.consistency.unwrap_or_default());
         Reply::future(
             future
                 .then(move |result| {
@@ -158,7 +158,7 @@ impl HandleCall<rpc::HeadObjectRpc> for RpcServer {
             .request(request.bucket_id)
             .deadline(into_cannyls_deadline(request.deadline))
             .expect(request.expect)
-            .head(request.object_id);
+            .head(request.object_id, request.consistency.unwrap_or_default());
         Reply::future(future.map_err(into_rpc_error).then(Ok))
     }
 }

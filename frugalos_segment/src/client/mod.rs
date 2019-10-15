@@ -2,6 +2,7 @@ use cannyls::deadline::Deadline;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use futures::future::Either;
 use futures::{self, Future};
+use libfrugalos::consistency::ReadConsistency;
 use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, ObjectId, ObjectPrefix, ObjectSummary, ObjectVersion,
 };
@@ -57,30 +58,34 @@ impl Client {
         &self,
         id: ObjectId,
         deadline: Deadline,
+        consistency: ReadConsistency,
         parent: SpanHandle,
     ) -> impl Future<Item = Option<ObjectValue>, Error = Error> {
         let storage = self.storage.clone();
-        self.mds.get(id, parent.clone()).and_then(move |object| {
-            if let Some(object) = object {
-                let version = object.version;
-                let future = storage
-                    .get(object, deadline, parent)
-                    .map(move |content| ObjectValue { version, content })
-                    .map(Some);
-                Either::A(future)
-            } else {
-                Either::B(futures::finished(None))
-            }
-        })
+        self.mds
+            .get(id, consistency, parent.clone())
+            .and_then(move |object| {
+                if let Some(object) = object {
+                    let version = object.version;
+                    let future = storage
+                        .get(object, deadline, parent)
+                        .map(move |content| ObjectValue { version, content })
+                        .map(Some);
+                    Either::A(future)
+                } else {
+                    Either::B(futures::future::ok(None))
+                }
+            })
     }
 
     /// オブジェクトの存在確認を行う。
     pub fn head(
         &self,
         id: ObjectId,
+        consistency: ReadConsistency,
         parent: SpanHandle,
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
-        self.mds.head(id, parent)
+        self.mds.head(id, consistency, parent)
     }
 
     /// オブジェクトを保存する。
@@ -102,17 +107,30 @@ impl Client {
         };
         let object_id = id.clone();
         let logger = self.logger.clone();
-        self.mds
-            .put(id, metadata, expect, deadline, parent.clone())
-            .and_then(move |(version, created)| {
-                let mut tracking = PutFailureTracking::new(logger, object_id);
-                storage
-                    .put(version, content, deadline, parent)
-                    .map(move |()| {
-                        tracking.complete();
-                        (version, created)
-                    })
-            })
+
+        let mds = self.mds.clone();
+        let expect_future = match expect {
+            Expect::Any => {
+                let f = mds
+                    .head(id.clone(), ReadConsistency::Consistent, parent.clone())
+                    .map(|version| version.map_or(Expect::None, |v| Expect::IfMatch(vec![v])));
+                Either::A(f)
+            }
+            _ => Either::B(futures::future::ok(expect)),
+        };
+
+        expect_future.and_then(move |expect| {
+            mds.put(id, metadata, expect, deadline, parent.clone())
+                .and_then(move |(version, created)| {
+                    let mut tracking = PutFailureTracking::new(logger, object_id);
+                    storage
+                        .put(version, content, deadline, parent)
+                        .map(move |()| {
+                            tracking.complete();
+                            (version, created)
+                        })
+                })
+        })
     }
 
     /// オブジェクトを削除する。
@@ -125,7 +143,17 @@ impl Client {
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
         // TODO: mdsにdeadlineを渡せるようにする
         // (lump削除タイミングの決定用)
-        self.mds.delete(id, expect, parent)
+        let mds = self.mds.clone();
+        let expect_future = match expect {
+            Expect::Any => {
+                let f = mds
+                    .head(id.clone(), ReadConsistency::Consistent, parent.clone())
+                    .map(|version| version.map_or(Expect::None, |v| Expect::IfMatch(vec![v])));
+                Either::A(f)
+            }
+            _ => Either::B(futures::future::ok(expect)),
+        };
+        expect_future.and_then(move |expect| mds.delete(id, expect, parent))
     }
 
     /// バージョン指定でオブジェクトを削除する。
@@ -273,13 +301,18 @@ mod tests {
         // Heads return `object_version`
         // since it only looks for the <ObjectId, ObjectVersion>-table in the MDS
         // and does not visit the dispersed device.
-        let result = wait(client.head(object_id.to_owned(), Span::inactive().handle()))?;
+        let result = wait(client.head(
+            object_id.to_owned(),
+            ReadConsistency::Consistent,
+            Span::inactive().handle(),
+        ))?;
         assert_eq!(result, Some(object_version));
 
         // Gets failed since there are no fragments in the dispersed device.
         let result = wait(client.get(
             object_id.to_owned(),
             Deadline::Infinity,
+            ReadConsistency::Consistent,
             Span::inactive().handle(),
         ));
 
@@ -319,6 +352,7 @@ mod tests {
         let data = wait(client.get(
             object_id.clone(),
             Deadline::Infinity,
+            ReadConsistency::Consistent,
             Span::inactive().handle(),
         ))?;
 
@@ -334,6 +368,7 @@ mod tests {
         let data = wait(client.get(
             object_id.clone(),
             Deadline::Infinity,
+            ReadConsistency::Consistent,
             Span::inactive().handle(),
         ))?;
 
