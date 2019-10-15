@@ -271,7 +271,7 @@ dependencies = [
 
 [[package]]
 name = "frugalos"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "atomic_immut 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytecodec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -282,11 +282,11 @@ dependencies = [
  "fibers_http_server 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_rpc 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_tasque 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "frugalos_config 0.6.1",
+ "frugalos_config 0.7.0",
  "frugalos_core 0.1.1",
- "frugalos_mds 0.10.0",
- "frugalos_raft 0.8.1",
- "frugalos_segment 0.10.0",
+ "frugalos_mds 0.11.0",
+ "frugalos_raft 0.9.0",
+ "frugalos_segment 0.11.0",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "hostname 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "httpcodec 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -312,7 +312,7 @@ dependencies = [
 
 [[package]]
 name = "frugalos_config"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "bytecodec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -320,7 +320,7 @@ dependencies = [
  "fibers 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_rpc 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_tasque 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "frugalos_raft 0.8.1",
+ "frugalos_raft 0.9.0",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "libfrugalos 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "prometrics 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -345,7 +345,7 @@ dependencies = [
 
 [[package]]
 name = "frugalos_mds"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "atomic_immut 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytecodec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -356,7 +356,7 @@ dependencies = [
  "fibers_rpc 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_tasque 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "frugalos_core 0.1.1",
- "frugalos_raft 0.8.1",
+ "frugalos_raft 0.9.0",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "libfrugalos 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "patricia_tree 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -374,7 +374,7 @@ dependencies = [
 
 [[package]]
 name = "frugalos_raft"
-version = "0.8.1"
+version = "0.9.0"
 dependencies = [
  "adler32 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "atomic_immut 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -398,7 +398,7 @@ dependencies = [
 
 [[package]]
 name = "frugalos_segment"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "adler32 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -410,8 +410,8 @@ dependencies = [
  "fibers_rpc 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_tasque 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "frugalos_core 0.1.1",
- "frugalos_mds 0.10.0",
- "frugalos_raft 0.8.1",
+ "frugalos_mds 0.11.0",
+ "frugalos_raft 0.9.0",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "libfrugalos 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "prometrics 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
