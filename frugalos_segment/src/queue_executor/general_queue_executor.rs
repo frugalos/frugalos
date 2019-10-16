@@ -130,6 +130,13 @@ impl GeneralQueueExecutor {
             }
         }
     }
+    /// pop を呼ぶ際には、self.Task は Task::Idle でなければならない。
+    /// この関数を呼び出した場合、以下の条件に応じて挙動が変わる。
+    /// 1. 待たなければいけない場合: 戻り値は None であり、self.task には Task::Wait がセットされる。
+    /// 2. 待つ必要がない場合: 戻り値に次やるべきタスクか、タスクがなければ None が入る。
+    /// self.task の中身は、戻り値が Some の場合は未規定で、戻り値が None の場合は Task::Idle のままである。
+    /// 戻り値が Some の場合は、呼び出し側で適切な task を作り、self.task にセットする必要がある。
+    /// 1. と 2. の区別は、戻り値が Some かどうかで行うこと。
     fn pop(&mut self) -> Option<TodoItem> {
         // assert!(self.task == Task::Idle);
         if let Task::Idle = self.task {
@@ -255,7 +262,7 @@ impl Queue<TodoItem, TodoItem> for RepairPrepQueue {
     }
 }
 
-/// Delete 用のキュー。FIFO キューであり、効率のため DELETE_CONCURRENCY 個単位でまとめて pop できる。
+/// Delete 用のキュー。FIFO キューであり、効率のため、最大 DELETE_CONCURRENCY 個単位でまとめて pop できる。
 struct DeleteQueue {
     deque: VecDeque<ObjectVersion>,
     enqueued: Counter,
@@ -275,6 +282,8 @@ impl Queue<ObjectVersion, TodoItem> for DeleteQueue {
         self.deque.push_back(element);
         self.enqueued.increment();
     }
+    /// Delete すべきオブジェクトがない場合は None を、ある場合は数個まとめた TodoItem を返す。
+    /// 返される順番は push した順番と同一である。
     fn pop(&mut self) -> Option<TodoItem> {
         // How many elements do we pick this time?
         let length = min(self.deque.len(), DELETE_CONCURRENCY);
