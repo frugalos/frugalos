@@ -1,5 +1,5 @@
 # STAGE-1: Build frugalos binary
-FROM rust:1.33.0-slim
+FROM rust:1.38.0-slim
 
 ARG FRUGALOS_VERSION
 
