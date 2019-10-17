@@ -9,7 +9,6 @@ use prometrics::metrics::{Counter, Histogram, MetricBuilder};
 use slog::Logger;
 use std::time::Instant;
 
-use synchronizer::Synchronizer;
 use util::{into_box_future, BoxFuture, Phase3};
 use {config, Error};
 
@@ -57,6 +56,44 @@ impl RepairMetrics {
     }
 }
 
+// 以下の処理を行う:
+// 1. `version`に対応するオブジェクトの中身が存在するかチェック
+// 存在すれば None (リペアの必要なし) を、存在しなければ Some(version) (リペアの必要ありで、 ObjectVersion は version) を返す。
+pub(crate) struct RepairPrepContent {
+    future: BoxFuture<Option<ObjectVersion>>,
+}
+impl RepairPrepContent {
+    pub fn new(
+        logger: &Logger,
+        device: &DeviceHandle,
+        node_id: NodeId,
+        version: ObjectVersion,
+    ) -> Self {
+        let logger = logger.clone();
+        let device = device.clone();
+        let lump_id = config::make_lump_id(&node_id, version);
+        debug!(
+            logger,
+            "Starts checking content: version={:?}, lump_id={:?}", version, lump_id
+        );
+        let future = into_box_future(
+            device
+                .request()
+                .deadline(Deadline::Infinity)
+                .head(lump_id)
+                .map(move |result| result.map_or(Some(version), |_| None)),
+        );
+        RepairPrepContent { future }
+    }
+}
+impl Future for RepairPrepContent {
+    type Item = Option<ObjectVersion>;
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        self.future.poll()
+    }
+}
+
 // NOTE
 // ====
 //
@@ -81,10 +118,16 @@ pub(crate) struct RepairContent {
     phase: Phase3<BoxFuture<Option<LumpHeader>>, GetFragment, BoxFuture<bool>>,
 }
 impl RepairContent {
-    pub fn new(synchronizer: &Synchronizer, version: ObjectVersion) -> Self {
-        let logger = synchronizer.logger.clone();
-        let device = synchronizer.device.clone();
-        let node_id = synchronizer.node_id;
+    pub fn new(
+        logger: &Logger,
+        device: &DeviceHandle,
+        node_id: NodeId,
+        client: &StorageClient,
+        repair_metrics: &RepairMetrics,
+        version: ObjectVersion,
+    ) -> Self {
+        let logger = logger.clone();
+        let device = device.clone();
         let lump_id = config::make_lump_id(&node_id, version);
         let started_at = Instant::now();
         debug!(
@@ -98,10 +141,10 @@ impl RepairContent {
             logger,
             node_id,
             version,
-            client: synchronizer.client.clone(),
+            client: client.clone(),
             device,
             started_at,
-            repair_metrics: synchronizer.repair_metrics.clone(),
+            repair_metrics: repair_metrics.clone(),
             phase,
         }
     }

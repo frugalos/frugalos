@@ -43,6 +43,7 @@ mod client;
 mod delete;
 mod error;
 mod metrics;
+mod queue_executor;
 mod repair;
 mod rpc_server;
 mod segment_gc;

@@ -1,8 +1,10 @@
 use cannyls::deadline::Deadline;
+use cannyls::device::DeviceHandle;
+use frugalos_raft::NodeId;
 use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
+use slog::Logger;
 
-use synchronizer::Synchronizer;
 use util::{into_box_future, BoxFuture};
 use {config, Error};
 
@@ -11,18 +13,19 @@ pub(crate) struct DeleteContent {
     futures: Vec<BoxFuture<bool>>,
 }
 impl DeleteContent {
-    pub fn new(synchronizer: &Synchronizer, versions: Vec<ObjectVersion>) -> Self {
-        debug!(
-            synchronizer.logger,
-            "Starts deleting contents: versions={:?}", versions
-        );
+    pub fn new(
+        logger: &Logger,
+        device: &DeviceHandle,
+        node_id: NodeId,
+        versions: Vec<ObjectVersion>,
+    ) -> Self {
+        debug!(logger, "Starts deleting contents: versions={:?}", versions);
 
         let futures = versions
             .into_iter()
             .map(move |v| {
-                let lump_id = config::make_lump_id(&synchronizer.node_id, v);
-                let future = synchronizer
-                    .device
+                let lump_id = config::make_lump_id(&node_id, v);
+                let future = device
                     .request()
                     .deadline(Deadline::Infinity)
                     .delete(lump_id);
