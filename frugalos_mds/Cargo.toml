@@ -1,6 +1,6 @@
 [package]
 name = "frugalos_mds"
-version = "0.11.0"
+version = "0.12.0"
 authors = ["The FrugalOS Developers"]
 description = "Metadata Store for Frugalos"
 homepage = "https://github.com/frugalos/frugalos"
