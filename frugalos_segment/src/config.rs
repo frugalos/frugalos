@@ -179,6 +179,14 @@ pub struct DispersedClientConfig {
     )]
     pub get_timeout: Duration,
 
+    /// How long to wait before aborting a head operation.
+    #[serde(
+        rename = "head_timeout_millis",
+        default = "default_dispersed_client_head_timeout",
+        with = "frugalos_core::serde_ext::duration_millis"
+    )]
+    pub head_timeout: Duration,
+
     /// Configuration for `CannyLsClient`.
     #[serde(flatten)]
     pub cannyls: CannyLsClientConfig,
@@ -188,12 +196,17 @@ impl Default for DispersedClientConfig {
     fn default() -> Self {
         DispersedClientConfig {
             get_timeout: default_dispersed_client_get_timeout(),
+            head_timeout: default_dispersed_client_head_timeout(),
             cannyls: Default::default(),
         }
     }
 }
 
 fn default_dispersed_client_get_timeout() -> Duration {
+    Duration::from_secs(2)
+}
+
+fn default_dispersed_client_head_timeout() -> Duration {
     Duration::from_secs(2)
 }
 

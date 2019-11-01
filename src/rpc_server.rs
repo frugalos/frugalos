@@ -152,14 +152,24 @@ impl HandleCall<rpc::GetObjectRpc> for RpcServer {
     }
 }
 impl HandleCall<rpc::HeadObjectRpc> for RpcServer {
-    fn handle_call(&self, request: rpc::ObjectRequest) -> Reply<rpc::HeadObjectRpc> {
-        let future = self
-            .client
-            .request(request.bucket_id)
-            .deadline(into_cannyls_deadline(request.deadline))
-            .expect(request.expect)
-            .head(request.object_id, request.consistency.unwrap_or_default());
-        Reply::future(future.map_err(into_rpc_error).then(Ok))
+    fn handle_call(&self, request: rpc::HeadObjectRequest) -> Reply<rpc::HeadObjectRpc> {
+        if request.check_storage {
+            let future = self
+                .client
+                .request(request.bucket_id)
+                .deadline(into_cannyls_deadline(request.deadline))
+                .expect(request.expect)
+                .head_storage(request.object_id, request.consistency);
+            Reply::future(future.map_err(into_rpc_error).then(Ok))
+        } else {
+            let future = self
+                .client
+                .request(request.bucket_id)
+                .deadline(into_cannyls_deadline(request.deadline))
+                .expect(request.expect)
+                .head(request.object_id, request.consistency);
+            Reply::future(future.map_err(into_rpc_error).then(Ok))
+        }
     }
 }
 impl HandleCall<rpc::PutObjectRpc> for RpcServer {

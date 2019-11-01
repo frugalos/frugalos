@@ -253,5 +253,9 @@ pub mod tests {
                 fragments: self.fragments(),
             })
         }
+
+        pub fn rpc_service_handle(&self) -> ClientServiceHandle {
+            self.rpc_service_handle.clone()
+        }
     }
 }

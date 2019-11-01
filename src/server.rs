@@ -296,43 +296,53 @@ impl HandleRequest for HeadObject {
         let expect = try_badarg!(get_expect(&req.header()));
         let deadline = try_badarg!(get_deadline(&req.url()));
         let consistency = try_badarg!(get_consistency(&req.url()));
-        let future = self
-            .0
-            .client
-            .request(bucket_id)
-            .deadline(deadline)
-            .expect(expect)
-            .span(&span)
-            .head(object_id, consistency)
-            .then(move |result| {
-                let response = match track!(result) {
-                    Ok(None) => {
-                        span.set_tag(|| StdTag::http_status_code(404));
-                        make_object_response(Status::NotFound, None, Err(not_found()))
-                    }
-                    Ok(Some(version)) => {
-                        span.set_tag(|| Tag::new("object.version", version.0 as i64));
-                        span.set_tag(|| StdTag::http_status_code(200));
-                        make_object_response(Status::Ok, Some(version), Ok(Vec::new()))
-                    }
-                    // Err(ref e) if *e.kind() == frugalos::ErrorKind::NotFound => {
-                    //     span.set_tag(|| StdTag::http_status_code(404));
-                    //     make_object_response(Status::NotFound, None, Err(not_found()))
-                    // }
-                    Err(e) => {
-                        warn!(
-                            logger,
-                            "Cannot get object (bucket={:?}, object={:?}): {}",
-                            get_bucket_id(req.url()),
-                            get_object_id(req.url()),
-                            e
-                        );
-                        span.set_tag(|| StdTag::http_status_code(500));
-                        make_object_response(Status::InternalServerError, None, Err(e))
-                    }
-                };
-                Ok(response)
-            });
+        let check_storage = try_badarg!(get_check_storage(&req.url()));
+        let future = if check_storage {
+            self.0
+                .client
+                .request(bucket_id)
+                .deadline(deadline)
+                .expect(expect)
+                .span(&span)
+                .head_storage(object_id, consistency)
+        } else {
+            self.0
+                .client
+                .request(bucket_id)
+                .deadline(deadline)
+                .expect(expect)
+                .span(&span)
+                .head(object_id, consistency)
+        };
+        let future = future.then(move |result| {
+            let response = match track!(result) {
+                Ok(None) => {
+                    span.set_tag(|| StdTag::http_status_code(404));
+                    make_object_response(Status::NotFound, None, Err(not_found()))
+                }
+                Ok(Some(version)) => {
+                    span.set_tag(|| Tag::new("object.version", version.0 as i64));
+                    span.set_tag(|| StdTag::http_status_code(200));
+                    make_object_response(Status::Ok, Some(version), Ok(Vec::new()))
+                }
+                // Err(ref e) if *e.kind() == frugalos::ErrorKind::NotFound => {
+                //     span.set_tag(|| StdTag::http_status_code(404));
+                //     make_object_response(Status::NotFound, None, Err(not_found()))
+                // }
+                Err(e) => {
+                    warn!(
+                        logger,
+                        "Cannot get object (bucket={:?}, object={:?}): {}",
+                        get_bucket_id(req.url()),
+                        get_object_id(req.url()),
+                        e
+                    );
+                    span.set_tag(|| StdTag::http_status_code(500));
+                    make_object_response(Status::InternalServerError, None, Err(e))
+                }
+            };
+            Ok(response)
+        });
         Box::new(future)
     }
 }
@@ -757,4 +767,55 @@ fn get_consistency(url: &Url) -> Result<ReadConsistency> {
         }
     }
     Ok(Default::default())
+}
+
+fn get_check_storage(url: &Url) -> Result<bool> {
+    for (k, v) in url.query_pairs() {
+        if k == "check_storage" {
+            let b: bool = track!(v.parse().map_err(Error::from))?;
+            return Ok(b);
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+    use trackable::result::TestResult;
+
+    #[test]
+    fn get_subset_works() -> TestResult {
+        let url = Url::from_str("http://example.com/").unwrap();
+        let subset = track!(get_subset(&url))?;
+        assert_eq!(1, subset);
+        let url = Url::from_str("http://example.com/?subset=2").unwrap();
+        let subset = track!(get_subset(&url))?;
+        assert_eq!(2, subset);
+        let url = Url::from_str("http://example.com/?subset=-1").unwrap();
+        let subset = get_subset(&url);
+        assert!(subset.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn get_consistency_works() -> TestResult {
+        let url = Url::from_str("http://example.com/?consistency=consistent").unwrap();
+        let consistency = track!(get_consistency(&url))?;
+        assert_eq!(ReadConsistency::Consistent, consistency);
+        let url = Url::from_str("http://example.com/?consistency=stale").unwrap();
+        let consistency = track!(get_consistency(&url))?;
+        assert_eq!(ReadConsistency::Stale, consistency);
+        let url = Url::from_str("http://example.com/?consistency=subset").unwrap();
+        let consistency = track!(get_consistency(&url))?;
+        assert_eq!(ReadConsistency::Subset(1), consistency);
+        let url = Url::from_str("http://example.com/?consistency=quorum").unwrap();
+        let consistency = track!(get_consistency(&url))?;
+        assert_eq!(ReadConsistency::Quorum, consistency);
+        let url = Url::from_str("http://example.com/").unwrap();
+        let consistency = track!(get_consistency(&url))?;
+        assert_eq!(ReadConsistency::Consistent, consistency);
+        Ok(())
+    }
 }

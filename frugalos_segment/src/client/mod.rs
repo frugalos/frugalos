@@ -88,6 +88,29 @@ impl Client {
         self.mds.head(id, consistency, parent)
     }
 
+    /// オブジェクトの存在確認をストレージ側に問い合わせる。
+    pub fn head_storage(
+        &self,
+        id: ObjectId,
+        deadline: Deadline,
+        consistency: ReadConsistency,
+        parent: SpanHandle,
+    ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
+        let storage = self.storage.clone();
+        self.mds
+            .head(id, consistency, parent.clone())
+            .and_then(move |version| {
+                if let Some(version) = version {
+                    let future = storage
+                        .head(version, deadline, parent)
+                        .map(move |()| Some(version));
+                    Either::A(future)
+                } else {
+                    Either::B(futures::future::ok(None))
+                }
+            })
+    }
+
     /// オブジェクトを保存する。
     pub fn put(
         &self,
@@ -238,6 +261,8 @@ impl Drop for PutFailureTracking {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cannyls_rpc::DeviceId;
+    use config::ClusterMember;
     use fibers::executor::Executor;
     use rustracing_jaeger::span::Span;
     use std::{thread, time};
@@ -373,6 +398,81 @@ mod tests {
         ))?;
 
         assert!(data.is_none());
+
+        Ok(())
+    }
+
+    #[test]
+    fn head_storage_work() -> TestResult {
+        let data_fragments = 2;
+        let parity_fragments = 1;
+        let cluster_size = 3;
+        let mut system = System::new(data_fragments, parity_fragments)?;
+        let (members, client) = setup_system(&mut system, cluster_size)?;
+        let rpc_service_handle = system.rpc_service_handle();
+
+        thread::spawn(move || loop {
+            system.executor.run_once().unwrap();
+            thread::sleep(time::Duration::from_micros(100));
+        });
+
+        let expected = vec![0x03];
+        let object_id = "test_data".to_owned();
+
+        // wait until the segment becomes stable; for example, there is a raft leader.
+        // However, 5-secs is an ungrounded value.
+        thread::sleep(time::Duration::from_secs(5));
+
+        let (object_version, _) = wait(client.put(
+            object_id.clone(),
+            expected.clone(),
+            Deadline::Infinity,
+            Expect::Any,
+            Span::inactive().handle(),
+        ))?;
+
+        let result = wait(client.head_storage(
+            object_id.to_owned(),
+            Deadline::Infinity,
+            ReadConsistency::Consistent,
+            Span::inactive().handle(),
+        ))?;
+        assert_eq!(result, Some(object_version));
+        // delete (num of data_fragments) lumps
+        let mut i = 0;
+        for (node_id, device_id, _) in members {
+            let client = cannyls_rpc::Client::new(node_id.addr, rpc_service_handle.clone());
+            let cluster_member = ClusterMember {
+                node: node_id,
+                device: device_id.clone(),
+            };
+            let lump_id = cluster_member.make_lump_id(object_version);
+            let request = client.request();
+            let future = request
+                .delete_lump(DeviceId::new(device_id.clone()), lump_id)
+                .map_err(|e| e.into());
+            let result = wait(future)?;
+            assert_eq!(result, true);
+            i += 1;
+            if i >= data_fragments {
+                break;
+            }
+        }
+
+        // head_storage request will be failed
+        let result = wait(client.head(
+            object_id.to_owned(),
+            ReadConsistency::Consistent,
+            Span::inactive().handle(),
+        ))?;
+        assert_eq!(result, Some(object_version));
+        let result = wait(client.head_storage(
+            object_id.to_owned(),
+            Deadline::Infinity,
+            ReadConsistency::Consistent,
+            Span::inactive().handle(),
+        ));
+        assert!(result.is_err());
 
         Ok(())
     }
