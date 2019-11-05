@@ -17,6 +17,7 @@ use Error;
 
 const MAX_TIMEOUT_SECONDS: u64 = 60;
 const DELETE_CONCURRENCY: usize = 16;
+const CONTINUOUS_COUNT_LIMIT: usize = 1000;
 
 #[derive(Debug, PartialOrd, Ord, PartialEq, Eq)]
 enum TodoItem {
@@ -188,11 +189,16 @@ impl Stream for GeneralQueueExecutor {
     type Item = ObjectVersion;
     type Error = Infallible;
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+        let mut continuous_count: usize = 0;
         while let Async::Ready(result) = self.task.poll().unwrap_or_else(|e| {
             // 同期処理のエラーは致命的ではないので、ログを出すだけに留める
             warn!(self.logger, "Task failure: {}", e);
             Async::Ready(None)
         }) {
+            continuous_count += 1;
+            if continuous_count >= CONTINUOUS_COUNT_LIMIT {
+                return Ok(Async::NotReady);
+            }
             self.task = Task::Idle;
             if let Some(version) = result {
                 return Ok(Async::Ready(Some(version)));
