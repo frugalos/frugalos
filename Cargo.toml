@@ -58,3 +58,6 @@ trackable = "^0.2.21"
 
 [workspace]
 members = ["frugalos_core", "frugalos_config", "frugalos_mds", "frugalos_raft", "frugalos_segment"]
+
+[patch.crates-io]
+fibers = { git = "https://github.com/dwango/fibers-rs", branch = "assert_some_stops_formatting" }
