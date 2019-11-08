@@ -195,13 +195,13 @@ impl Stream for GeneralQueueExecutor {
             warn!(self.logger, "Task failure: {}", e);
             Async::Ready(None)
         }) {
-            continuous_count += 1;
-            if continuous_count >= CONTINUOUS_COUNT_LIMIT {
-                return Ok(Async::NotReady);
-            }
             self.task = Task::Idle;
             if let Some(version) = result {
                 return Ok(Async::Ready(Some(version)));
+            }
+            continuous_count += 1;
+            if continuous_count >= CONTINUOUS_COUNT_LIMIT {
+                return Ok(Async::NotReady);
             }
             if let Some(item) = self.pop() {
                 match item {
