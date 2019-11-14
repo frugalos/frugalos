@@ -606,7 +606,7 @@ impl HandleRequest for PutObject {
 struct PutManyObject(Server);
 impl HandleRequest for PutManyObject {
     const METHOD: &'static str = "PUT";
-    const PATH: &'static str = "/v1/buckets/*/many_objects/*/*";
+    const PATH: &'static str = "/v1/buckets/*/many_objects/*/*/*";
 
     type ReqBody = Vec<u8>;
     type ResBody = HttpResult<Vec<u8>>;
@@ -642,6 +642,7 @@ impl HandleRequest for PutManyObject {
     fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
         let bucket_id = get_bucket_id(req.url());
         let object_id_prefix = get_object_id(req.url());
+        let object_start_index = try_badarg!(get_object_start_index(req.url()));
         let object_count = try_badarg!(get_object_count(req.url()));
         let (req, content) = req.take_body();
         if content.len() > MAX_PUT_OBJECT_SIZE {
@@ -677,6 +678,7 @@ impl HandleRequest for PutManyObject {
             self.0.logger.clone(),
             bucket_id,
             object_id_prefix,
+            object_start_index,
             object_count,
             content,
         );
@@ -749,11 +751,22 @@ fn get_bucket_id(url: &Url) -> String {
         .to_string()
 }
 
-fn get_object_count(url: &Url) -> Result<usize> {
+fn get_object_start_index(url: &Url) -> Result<usize> {
     let n = url
         .path_segments()
         .expect("Never fails")
         .nth(5)
+        .expect("Never fails")
+        .parse()
+        .map_err(Error::from)?;
+    Ok(n)
+}
+
+fn get_object_count(url: &Url) -> Result<usize> {
+    let n = url
+        .path_segments()
+        .expect("Never fails")
+        .nth(6)
         .expect("Never fails")
         .parse()
         .map_err(Error::from)?;
