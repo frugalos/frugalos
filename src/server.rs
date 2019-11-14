@@ -51,6 +51,21 @@ macro_rules! try_badarg {
     };
 }
 
+macro_rules! try_badarg_option {
+    ($e:expr) => {
+        match $e {
+            None => {
+                let error = ErrorKind::InvalidInput.cause("not designated");
+                return Box::new(futures::finished(Res::new(
+                    Status::BadRequest,
+                    HttpResult::Err(error.into()),
+                )));
+            }
+            Some(v) => v,
+        }
+    };
+}
+
 #[derive(Clone)]
 pub struct Server {
     logger: Logger,
@@ -606,7 +621,7 @@ impl HandleRequest for PutObject {
 struct PutManyObject(Server);
 impl HandleRequest for PutManyObject {
     const METHOD: &'static str = "PUT";
-    const PATH: &'static str = "/v1/buckets/*/many_objects/*/*/*";
+    const PATH: &'static str = "/v1/buckets/*/many_objects/*";
 
     type ReqBody = Vec<u8>;
     type ResBody = HttpResult<Vec<u8>>;
@@ -642,8 +657,9 @@ impl HandleRequest for PutManyObject {
     fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
         let bucket_id = get_bucket_id(req.url());
         let object_id_prefix = get_object_id(req.url());
-        let object_start_index = try_badarg!(get_object_start_index(req.url()));
-        let object_count = try_badarg!(get_object_count(req.url()));
+        let object_start_index =
+            try_badarg_option!(try_badarg!(get_usize_option(req.url(), "start")));
+        let object_count = try_badarg_option!(try_badarg!(get_usize_option(req.url(), "count")));
         let (req, content) = req.take_body();
         if content.len() > MAX_PUT_OBJECT_SIZE {
             warn!(
@@ -749,28 +765,6 @@ fn get_bucket_id(url: &Url) -> String {
         .nth(2)
         .expect("Never fails")
         .to_string()
-}
-
-fn get_object_start_index(url: &Url) -> Result<usize> {
-    let n = url
-        .path_segments()
-        .expect("Never fails")
-        .nth(5)
-        .expect("Never fails")
-        .parse()
-        .map_err(Error::from)?;
-    Ok(n)
-}
-
-fn get_object_count(url: &Url) -> Result<usize> {
-    let n = url
-        .path_segments()
-        .expect("Never fails")
-        .nth(6)
-        .expect("Never fails")
-        .parse()
-        .map_err(Error::from)?;
-    Ok(n)
 }
 
 fn get_object_id(url: &Url) -> String {
@@ -887,6 +881,15 @@ fn get_check_storage(url: &Url) -> Result<bool> {
         }
     }
     Ok(false)
+}
+
+fn get_usize_option(url: &Url, option_name: &str) -> Result<Option<usize>> {
+    for (k, v) in url.query_pairs() {
+        if k == option_name {
+            return track!(v.parse::<usize>().map_err(Error::from).map(Some));
+        }
+    }
+    Ok(None)
 }
 
 #[cfg(test)]
