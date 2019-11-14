@@ -5,6 +5,7 @@ use client::FrugalosClient;
 use slog::Logger;
 use std::cmp::min;
 
+#[allow(clippy::too_many_arguments)]
 pub fn put_many_objects<E>(
     client: FrugalosClient,
     logger: Logger,
@@ -42,18 +43,15 @@ pub fn put_many_objects<E>(
                     .request(bucket_id.clone())
                     .put(object_id.clone(), content.clone())
                     .then(move |result| {
-                        match track!(result.clone()) {
-                            Err(e) => {
-                                warn!(
-                                    logger,
-                                    "Cannot put object (bucket={:?}, object={:?}): {}",
-                                    bucket_id,
-                                    object_id,
-                                    e,
-                                );
-                            }
-                            _ => (),
-                        };
+                        if let Err(e) = track!(result.clone()) {
+                            warn!(
+                                logger,
+                                "Cannot put object (bucket={:?}, object={:?}): {}",
+                                bucket_id,
+                                object_id,
+                                e,
+                            );
+                        }
                         ok(())
                     });
                 futures.push(future);
