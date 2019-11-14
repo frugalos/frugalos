@@ -63,6 +63,7 @@ mod codec;
 mod config_server;
 mod error;
 mod http;
+mod many_objects;
 mod recovery;
 mod rpc_server;
 mod server;
