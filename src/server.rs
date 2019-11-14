@@ -660,6 +660,7 @@ impl HandleRequest for PutManyObject {
         let object_start_index =
             try_badarg_option!(try_badarg!(get_usize_option(req.url(), "start")));
         let object_count = try_badarg_option!(try_badarg!(get_usize_option(req.url(), "count")));
+        let concurrency = try_badarg!(get_usize_option(req.url(), "concurrency")).unwrap_or(10);
         let (req, content) = req.take_body();
         if content.len() > MAX_PUT_OBJECT_SIZE {
             warn!(
@@ -696,6 +697,7 @@ impl HandleRequest for PutManyObject {
             object_id_prefix,
             object_start_index,
             object_count,
+            concurrency,
             content,
         );
         let response =
