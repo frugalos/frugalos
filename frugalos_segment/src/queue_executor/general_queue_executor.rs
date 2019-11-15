@@ -17,6 +17,7 @@ use Error;
 
 const MAX_TIMEOUT_SECONDS: u64 = 60;
 const DELETE_CONCURRENCY: usize = 16;
+const REPAIR_PREP_CONCURRENCY: usize = 32;
 
 #[derive(Debug, PartialOrd, Ord, PartialEq, Eq)]
 enum TodoItem {
@@ -185,9 +186,10 @@ impl GeneralQueueExecutor {
 }
 
 impl Stream for GeneralQueueExecutor {
-    type Item = ObjectVersion;
+    type Item = Vec<ObjectVersion>;
     type Error = Infallible;
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+        let mut popped_versions = vec![];
         while let Async::Ready(result) = self.task.poll().unwrap_or_else(|e| {
             // 同期処理のエラーは致命的ではないので、ログを出すだけに留める
             warn!(self.logger, "Task failure: {}", e);
@@ -195,7 +197,11 @@ impl Stream for GeneralQueueExecutor {
         }) {
             self.task = Task::Idle;
             if let Some(version) = result {
-                return Ok(Async::Ready(Some(version)));
+                popped_versions.push(version);
+            }
+            // REPAIR_PREP_CONCURRENCY 個ごとに repair キューに送信する
+            if popped_versions.len() >= REPAIR_PREP_CONCURRENCY {
+                return Ok(Async::Ready(Some(popped_versions)));
             }
             if let Some(item) = self.pop() {
                 match item {
@@ -220,7 +226,12 @@ impl Stream for GeneralQueueExecutor {
                 break;
             }
         }
-        Ok(Async::NotReady)
+        // REPAIR_PREP_CONCURRENCY 個以下であっても、制御を返す際には popped_version を返す
+        if !popped_versions.is_empty() {
+            Ok(Async::Ready(Some(popped_versions)))
+        } else {
+            Ok(Async::NotReady)
+        }
     }
 }
 
