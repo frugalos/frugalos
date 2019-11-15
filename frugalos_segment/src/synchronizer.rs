@@ -41,7 +41,6 @@ impl Synchronizer {
         let metric_builder = MetricBuilder::new()
             .namespace("frugalos")
             .subsystem("synchronizer")
-            .label("node", &node_id.to_string())
             .clone();
         // Metrics related to queue length
         let enqueued_repair = metric_builder

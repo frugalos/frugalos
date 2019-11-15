@@ -95,19 +95,16 @@ impl Metrics {
         let proposal_queue_len = track!(GaugeBuilder::new("proposal_queue_len")
             .namespace("frugalos")
             .subsystem("mds")
-            .label("node", &node)
             .default_registry()
             .finish())?;
         let snapshots_total = track!(CounterBuilder::new("snapshots_total")
             .namespace("frugalos")
             .subsystem("mds")
-            .label("node", &node)
             .default_registry()
             .finish())?;
         let snapshot_bytes_total = track!(CounterBuilder::new("snapshot_bytes_total")
             .namespace("frugalos")
             .subsystem("mds")
-            .label("node", &node)
             .default_registry()
             .finish())?;
         let snapshot_encoding_duration_seconds = track!(make_histogram(
