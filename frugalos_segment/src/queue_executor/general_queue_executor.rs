@@ -9,6 +9,7 @@ use slog::Logger;
 use std::cmp::{self, min, Reverse};
 use std::collections::{BTreeSet, BinaryHeap, VecDeque};
 use std::convert::Infallible;
+use std::env;
 use std::time::{Duration, SystemTime};
 
 use delete::DeleteContent;
@@ -17,7 +18,7 @@ use Error;
 
 const MAX_TIMEOUT_SECONDS: u64 = 60;
 const DELETE_CONCURRENCY: usize = 16;
-const REPAIR_PREP_CONCURRENCY: usize = 32;
+const REPAIR_PREP_CONCURRENCY: usize = 100;
 
 #[derive(Debug, PartialOrd, Ord, PartialEq, Eq)]
 enum TodoItem {
@@ -94,6 +95,7 @@ pub(crate) struct GeneralQueueExecutor {
     delete_queue: DeleteQueue,
     task: Task,
     repair_candidates: BTreeSet<ObjectVersion>,
+    repair_prep_concurrency: usize,
 }
 
 impl GeneralQueueExecutor {
@@ -106,6 +108,12 @@ impl GeneralQueueExecutor {
         dequeued_repair_prep: &Counter,
         dequeued_delete: &Counter,
     ) -> Self {
+        // TODO: 正式に conf ファイルで指定できるようにする
+        let repair_prep_concurrency = env::var("FRUGALOS_REPAIR_PREP_CONCURRENCY")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(REPAIR_PREP_CONCURRENCY);
+
         Self {
             logger: logger.clone(),
             node_id,
@@ -114,6 +122,7 @@ impl GeneralQueueExecutor {
             delete_queue: DeleteQueue::new(enqueued_delete, dequeued_delete),
             task: Task::Idle,
             repair_candidates: BTreeSet::new(),
+            repair_prep_concurrency,
         }
     }
     pub(crate) fn push(&mut self, event: &Event) {
@@ -200,7 +209,7 @@ impl Stream for GeneralQueueExecutor {
                 popped_versions.push(version);
             }
             // REPAIR_PREP_CONCURRENCY 個ごとに repair キューに送信する
-            if popped_versions.len() >= REPAIR_PREP_CONCURRENCY {
+            if popped_versions.len() >= self.repair_prep_concurrency {
                 return Ok(Async::Ready(Some(popped_versions)));
             }
             if let Some(item) = self.pop() {
