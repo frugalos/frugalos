@@ -1,6 +1,7 @@
 use cannyls::device::DeviceHandle;
+use fibers::sync::mpsc;
 use frugalos_raft::NodeId;
-use futures::{Async, Future, Poll};
+use futures::{Async, Future, Poll, Stream};
 use libfrugalos::entity::object::ObjectVersion;
 use libfrugalos::repair::RepairIdleness;
 use prometrics::metrics::{Counter, MetricBuilder};
@@ -53,6 +54,7 @@ pub(crate) struct RepairQueueExecutor {
     repair_metrics: RepairMetrics,
     enqueued_repair: Counter,
     dequeued_repair: Counter,
+    objects_rx: mpsc::Receiver<ObjectVersion>,
 }
 impl RepairQueueExecutor {
     #[allow(clippy::too_many_arguments)]
@@ -65,6 +67,7 @@ impl RepairQueueExecutor {
         metric_builder: &MetricBuilder,
         enqueued_repair: &Counter,
         dequeued_repair: &Counter,
+        objects_rx: mpsc::Receiver<ObjectVersion>,
     ) -> Self {
         RepairQueueExecutor {
             logger: logger.clone(),
@@ -79,6 +82,7 @@ impl RepairQueueExecutor {
             repair_metrics: RepairMetrics::new(metric_builder),
             enqueued_repair: enqueued_repair.clone(),
             dequeued_repair: dequeued_repair.clone(),
+            objects_rx,
         }
     }
     /// Pushes an element into this queue.
@@ -112,6 +116,15 @@ impl Future for RepairQueueExecutor {
     type Item = Infallible; // This executor will never finish normally.
     type Error = Infallible;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        let count = 100;
+        let mut index = 0;
+        while let Ok(Async::Ready(Some(version))) = self.objects_rx.poll() {
+            self.push(version);
+            index += 1;
+            if index >= count {
+                break;
+            }
+        }
         if !self.task.is_sleeping() {
             self.last_not_idle = Instant::now();
             debug!(self.logger, "last_not_idle = {:?}", self.last_not_idle);

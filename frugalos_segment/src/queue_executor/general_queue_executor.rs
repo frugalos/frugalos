@@ -1,8 +1,9 @@
 use cannyls::device::DeviceHandle;
+use fibers::sync::mpsc;
 use fibers::time::timer::{self, Timeout};
 use frugalos_mds::Event;
 use frugalos_raft::NodeId;
-use futures::{Async, Future, Poll, Stream};
+use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
 use prometrics::metrics::Counter;
 use slog::Logger;
@@ -93,9 +94,11 @@ pub(crate) struct GeneralQueueExecutor {
     delete_queue: DeleteQueue,
     task: Task,
     repair_candidates: BTreeSet<ObjectVersion>,
+    objects_tx: mpsc::Sender<ObjectVersion>,
 }
 
 impl GeneralQueueExecutor {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         logger: &Logger,
         node_id: NodeId,
@@ -104,6 +107,7 @@ impl GeneralQueueExecutor {
         enqueued_delete: &Counter,
         dequeued_repair_prep: &Counter,
         dequeued_delete: &Counter,
+        objects_tx: mpsc::Sender<ObjectVersion>,
     ) -> Self {
         Self {
             logger: logger.clone(),
@@ -113,6 +117,7 @@ impl GeneralQueueExecutor {
             delete_queue: DeleteQueue::new(enqueued_delete, dequeued_delete),
             task: Task::Idle,
             repair_candidates: BTreeSet::new(),
+            objects_tx,
         }
     }
     pub(crate) fn push(&mut self, event: &Event) {
@@ -184,10 +189,10 @@ impl GeneralQueueExecutor {
     }
 }
 
-impl Stream for GeneralQueueExecutor {
-    type Item = ObjectVersion;
+impl Future for GeneralQueueExecutor {
+    type Item = Infallible;
     type Error = Infallible;
-    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         while let Async::Ready(result) = self.task.poll().unwrap_or_else(|e| {
             // 同期処理のエラーは致命的ではないので、ログを出すだけに留める
             warn!(self.logger, "Task failure: {}", e);
@@ -195,7 +200,7 @@ impl Stream for GeneralQueueExecutor {
         }) {
             self.task = Task::Idle;
             if let Some(version) = result {
-                return Ok(Async::Ready(Some(version)));
+                let _ = self.objects_tx.send(version);
             }
             if let Some(item) = self.pop() {
                 match item {

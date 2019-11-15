@@ -1,7 +1,8 @@
 use cannyls::device::DeviceHandle;
+use fibers::sync::mpsc;
 use frugalos_mds::Event;
 use frugalos_raft::NodeId;
-use futures::{Async, Future, Poll, Stream};
+use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
 use libfrugalos::repair::RepairIdleness;
 use prometrics::metrics::MetricBuilder;
@@ -74,6 +75,8 @@ impl Synchronizer {
             .finish()
             .expect("metric should be well-formed");
 
+        let (objects_tx, objects_rx) = mpsc::channel();
+
         let general_queue = GeneralQueueExecutor::new(
             &logger,
             node_id,
@@ -82,6 +85,7 @@ impl Synchronizer {
             &enqueued_delete,
             &dequeued_repair_prep,
             &dequeued_delete,
+            objects_tx,
         );
         let repair_queue = RepairQueueExecutor::new(
             &logger,
@@ -92,6 +96,7 @@ impl Synchronizer {
             &metric_builder,
             &enqueued_repair,
             &dequeued_repair,
+            objects_rx,
         );
         Synchronizer {
             logger,
@@ -164,12 +169,8 @@ impl Future for Synchronizer {
             self.segment_gc_metrics.reset();
         }
 
-        if let Async::Ready(Some(version)) = self.general_queue.poll().unwrap_or_else(|e| {
-            warn!(self.logger, "Task failure in general_queue: {}", e);
-            Async::Ready(None)
-        }) {
-            self.repair_queue.push(version);
-        }
+        // Never stops, never fails.
+        self.general_queue.poll().unwrap_or_else(Into::into);
 
         // Never stops, never fails.
         self.repair_queue.poll().unwrap_or_else(Into::into);
