@@ -28,7 +28,9 @@ use url::Url;
 
 use client::FrugalosClient;
 use codec::{AsyncEncoder, ObjectResultEncoder};
-use http::{make_json_response, make_object_response, not_found, BucketStatistics, HttpResult, TraceHeader};
+use http::{
+    make_json_response, make_object_response, not_found, BucketStatistics, HttpResult, TraceHeader,
+};
 use many_objects::put_many_objects;
 use {Error, ErrorKind, FrugalosConfig, Result};
 
