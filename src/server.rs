@@ -634,21 +634,12 @@ impl HandleRequest for PutManyObject {
         let n: Option<Option<usize>> = req.header().parse_field("content-length").ok();
         if let Some(Some(n)) = n {
             if n > MAX_PUT_OBJECT_SIZE {
-                let count = self.0.large_object_count.fetch_add(1, Ordering::SeqCst);
                 warn!(
                     self.0.logger,
                     "Too large body size ({} bytes): {}",
                     n,
                     req.url()
                 );
-                if count != 0 {
-                    // 最初だけはオブジェクトをダンプしたいので即座にエラーにはしない
-                    return Some(make_object_response(
-                        Status::BadRequest,
-                        None,
-                        Err(track!(ErrorKind::InvalidInput.cause("Too large body size")).into()),
-                    ));
-                }
             }
         }
         None
