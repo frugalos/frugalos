@@ -28,9 +28,7 @@ use url::Url;
 
 use client::FrugalosClient;
 use codec::{AsyncEncoder, ObjectResultEncoder};
-use http::{
-    make_json_response, make_object_response, not_found, BucketStatistics, HttpResult, TraceHeader,
-};
+use http::{make_json_response, make_object_response, not_found, BucketStatistics, HttpResult, TraceHeader};
 use many_objects::put_many_objects;
 use {Error, ErrorKind, FrugalosConfig, Result};
 
@@ -693,8 +691,9 @@ impl HandleRequest for PutManyObject {
             concurrency,
             content,
         );
-        let response =
-            make_object_response(Status::Created, Some(ObjectVersion(0)), Ok(Vec::new()));
+        // Errors are suppressed. Always return 201 Created.
+        let response = Res::new(Status::Created, HttpResult::Ok(Vec::new()));
+
         let future = future.map(|_| response);
         Box::new(future)
     }
