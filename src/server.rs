@@ -673,16 +673,18 @@ impl HandleRequest for PutManyObject {
         let mut span = self
             .0
             .tracer
-            .span(|t| t.span("put_object").child_of(&client_span).start());
+            .span(|t| t.span("put_many_objects").child_of(&client_span).start());
         span.set_tag(|| StdTag::http_method("PUT"));
         span.set_tag(|| Tag::new("bucket.id", bucket_id.clone()));
         span.set_tag(|| Tag::new("object.id_prefix", object_id_prefix.clone()));
         span.set_tag(|| Tag::new("object.size", content.len().to_string()));
-        span.set_tag(|| Tag::new("object.count", format!("{}", object_count)));
+        span.set_tag(|| Tag::new("object.start", object_start_index as i64));
+        span.set_tag(|| Tag::new("object.count", object_count as i64));
 
         // TODO: deadline and expect
         let future = put_many_objects(
             self.0.client.clone(),
+            span,
             self.0.logger.clone(),
             bucket_id,
             object_id_prefix,
