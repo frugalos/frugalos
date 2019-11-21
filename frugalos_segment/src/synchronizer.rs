@@ -164,11 +164,13 @@ impl Future for Synchronizer {
             self.segment_gc_metrics.reset();
         }
 
-        if let Async::Ready(Some(version)) = self.general_queue.poll().unwrap_or_else(|e| {
+        if let Async::Ready(Some(versions)) = self.general_queue.poll().unwrap_or_else(|e| {
             warn!(self.logger, "Task failure in general_queue: {}", e);
             Async::Ready(None)
         }) {
-            self.repair_queue.push(version);
+            for version in versions {
+                self.repair_queue.push(version);
+            }
         }
 
         // Never stops, never fails.
