@@ -179,6 +179,36 @@ impl Future for PutAll {
     }
 }
 
+/// ストレージへのフラグメント保存に失敗した可能性を追跡する。
+pub struct PutFragmentFailureTracking {
+    metrics: PutAllMetrics,
+    /// 操作が完了したら true になる。
+    is_completed: bool,
+}
+
+impl PutFragmentFailureTracking {
+    /// インタンスを生成する。
+    pub fn new(metrics: PutAllMetrics) -> Self {
+        Self {
+            metrics,
+            is_completed: false,
+        }
+    }
+    /// トラッキングを終了する。
+    pub fn complete(&mut self) {
+        self.is_completed = true;
+    }
+}
+
+impl Drop for PutFragmentFailureTracking {
+    fn drop(&mut self) {
+        if !self.is_completed {
+            // ログが溢れるため具体的に何の保存に失敗したかをログには出さない。
+            self.metrics.dangling_fragments_total.increment();
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 /// This enum represents the result of `GetFragment`.
 pub enum MaybeFragment {

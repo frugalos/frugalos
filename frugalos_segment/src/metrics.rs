@@ -8,6 +8,7 @@ use Result;
 pub struct PutAllMetrics {
     pub(crate) failures_total: Counter,
     pub(crate) lost_fragments_total: Counter,
+    pub(crate) dangling_fragments_total: Counter,
 }
 
 impl PutAllMetrics {
@@ -22,13 +23,22 @@ impl PutAllMetrics {
         let lost_fragments_total = track!(CounterBuilder::new("put_all_lost_fragments_total")
             .namespace("frugalos")
             .subsystem("segment")
-            .help("Number of lost fragments")
+            .help("Number of surely lost fragments")
             .label("client", client_name)
             .default_registry()
             .finish())?;
+        let dangling_fragments_total =
+            track!(CounterBuilder::new("put_all_dangling_fragments_total")
+                .namespace("frugalos")
+                .subsystem("segment")
+                .help("Number of dangling fragments")
+                .label("client", client_name)
+                .default_registry()
+                .finish())?;
         Ok(PutAllMetrics {
             failures_total,
             lost_fragments_total,
+            dangling_fragments_total,
         })
     }
 }

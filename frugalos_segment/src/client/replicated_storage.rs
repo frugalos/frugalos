@@ -9,7 +9,9 @@ use libfrugalos::entity::object::ObjectVersion;
 use std::sync::Arc;
 use trackable::error::ErrorKindExt;
 
-use client::storage::{append_checksum, verify_and_remove_checksum, PutAll};
+use client::storage::{
+    append_checksum, verify_and_remove_checksum, PutAll, PutFragmentFailureTracking,
+};
 use config::{
     CannyLsClientConfig, ClusterConfig, ClusterMember, ReplicatedClientConfig, ReplicatedConfig,
 };
@@ -88,6 +90,7 @@ impl ReplicatedClient {
             Err(error) => return Box::new(futures::failed(Error::from(error))),
         };
         let cannyls_config = self.client_config.cannyls.clone();
+        let metrics = self.metrics.put_all.clone();
 
         let futures = self
             .cluster
@@ -100,13 +103,18 @@ impl ReplicatedClient {
 
                 let device_id = DeviceId::new(m.device.clone());
                 let lump_id = m.make_lump_id(version);
+                let mut tracking = PutFragmentFailureTracking::new(metrics.clone());
                 let future: BoxFuture<_> = Box::new(
                     request
                         .deadline(deadline)
                         .max_queue_len(cannyls_config.device_max_queue_len)
                         .put_lump(device_id, lump_id, data.clone())
                         .map(|_is_new| ())
-                        .map_err(|e| track!(Error::from(e))),
+                        .map_err(|e| track!(Error::from(e)))
+                        .then(move |result| {
+                            tracking.complete();
+                            result
+                        }),
                 );
                 future
             });

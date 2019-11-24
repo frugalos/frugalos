@@ -20,7 +20,9 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use client::ec::{build_ec, ErasureCoder};
-use client::storage::{append_checksum, verify_and_remove_checksum, MaybeFragment, PutAll};
+use client::storage::{
+    append_checksum, verify_and_remove_checksum, MaybeFragment, PutAll, PutFragmentFailureTracking,
+};
 use config::{
     CannyLsClientConfig, ClusterConfig, ClusterMember, DispersedClientConfig, DispersedConfig,
     Participants,
@@ -244,6 +246,7 @@ impl Future for DispersedPut {
                     let deadline = self.deadline;
                     let cannyls_config = self.cannyls_config.clone();
                     let rpc_service = self.rpc_service.clone();
+                    let metrics = self.metrics.clone();
                     let futures = self
                         .cluster
                         .candidates(self.version)
@@ -276,6 +279,9 @@ impl Future for DispersedPut {
                                     .tag(Tag::new("lump.bytes", data.as_bytes().len() as i64))
                                     .start()
                             });
+
+                            let mut tracking = PutFragmentFailureTracking::new(metrics.clone());
+
                             let future: BoxFuture<_> = Box::new(
                                 request
                                     .deadline(deadline)
@@ -284,6 +290,7 @@ impl Future for DispersedPut {
                                     .map(|_is_new| ())
                                     .map_err(|e| track!(Error::from(e)))
                                     .then(move |result| {
+                                        tracking.complete();
                                         if let Err(ref e) = result {
                                             span.log_error(e);
                                         }
