@@ -275,7 +275,7 @@ fn main() {
             &logger,
             config.clone()
         ));
-        track_try_unwrap!(daemon.run(config.daemon.clone()));
+        track_try_unwrap!(daemon.run());
         // NOTE: ログ出力(非同期)用に少し待機
         std::thread::sleep(std::time::Duration::from_millis(100));
         debug!(logger, "config: {:?}", config);
