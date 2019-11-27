@@ -157,14 +157,6 @@ pub struct FrugalosDaemonConfig {
     /// Jaegerのトレースのサンプリング確率。
     #[serde(default = "default_sampling_rate")]
     pub sampling_rate: f64,
-
-    /// frugalos 停止時に待つ時間。
-    #[serde(
-        rename = "stop_waiting_time_millis",
-        default = "default_stop_waiting_time",
-        with = "frugalos_core::serde_ext::duration_millis"
-    )]
-    pub stop_waiting_time: Duration,
 }
 
 impl Default for FrugalosDaemonConfig {
@@ -172,7 +164,6 @@ impl Default for FrugalosDaemonConfig {
         Self {
             executor_threads: default_executor_threads(),
             sampling_rate: default_sampling_rate(),
-            stop_waiting_time: default_stop_waiting_time(),
         }
     }
 }
@@ -239,10 +230,6 @@ fn default_sampling_rate() -> f64 {
     0.001
 }
 
-fn default_stop_waiting_time() -> Duration {
-    Duration::from_millis(5000)
-}
-
 fn default_http_server_bind_addr() -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], 3000))
 }
@@ -285,7 +272,6 @@ frugalos:
   daemon:
     executor_threads: 3
     sampling_rate: 0.1
-    stop_waiting_time_millis: 300
   http_server:
     bind_addr: "127.0.0.1:2222"
   rpc_client:
@@ -331,7 +317,6 @@ frugalos:
         expected.loglevel = sloggers::types::Severity::Critical;
         expected.daemon.sampling_rate = 0.1;
         expected.daemon.executor_threads = 3;
-        expected.daemon.stop_waiting_time = Duration::from_millis(300);
         expected.http_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 2222));
         expected.rpc_client.tcp_connect_timeout = Duration::from_secs(8);
         expected.rpc_client.tcp_write_timeout = Duration::from_secs(10);
