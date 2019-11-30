@@ -16,7 +16,7 @@ use rustracing_jaeger::span::{Span, SpanHandle};
 use slog::Logger;
 use std::mem;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use trackable::error::ErrorKindExt;
 
 use client::ec::{build_ec, ErasureCoder};
@@ -25,7 +25,7 @@ use config::{
     CannyLsClientConfig, ClusterConfig, ClusterMember, DispersedClientConfig, DispersedConfig,
     Participants,
 };
-use metrics::{DispersedClientMetrics, PutAllMetrics};
+use metrics::{CollectFragmentsMetrics, DispersedClientMetrics, PutAllMetrics};
 use util::{BoxFuture, Phase};
 use {Error, ErrorKind, Result};
 
@@ -95,6 +95,7 @@ impl DispersedClient {
 
         let future = CollectFragments::new(
             self.logger,
+            self.metrics.collect_fragments.clone(),
             self.data_fragments,
             spares,
             version,
@@ -129,8 +130,11 @@ impl DispersedClient {
                 .tag(Tag::new("storage.type", "dispersed"))
                 .start()
         });
+        let now = Instant::now();
+        let metrics = self.metrics.clone();
         let future = CollectFragments::new(
             self.logger,
+            self.metrics.collect_fragments.clone(),
             self.data_fragments,
             candidates,
             version,
@@ -140,11 +144,21 @@ impl DispersedClient {
             span.handle(),
             Some(timer::timeout(self.client_config.get_timeout)),
         );
-        Box::new(DispersedGet {
-            phase: Phase::A(future),
-            ec: self.ec.clone(),
-            span,
-        })
+        Box::new(
+            DispersedGet {
+                phase: Phase::A(future),
+                ec: self.ec.clone(),
+                span,
+            }
+            .then(move |result| {
+                let elapsed = prometrics::timestamp::duration_to_seconds(now.elapsed());
+                metrics.dispersed_get_duration_seconds.observe(elapsed);
+                if result.is_err() {
+                    metrics.dispersed_get_failures_total.increment();
+                }
+                result
+            }),
+        )
     }
     pub fn head(
         self,
@@ -164,17 +178,24 @@ impl DispersedClient {
                 .tag(Tag::new("storage.type", "dispersed"))
                 .start()
         });
-        Box::new(DispersedHead::new(
-            self.logger,
-            self.data_fragments,
-            candidates,
-            version,
-            deadline,
-            self.rpc_service,
-            &self.client_config,
-            span.handle(),
-            Some(timer::timeout(self.client_config.head_timeout)),
-        ))
+        let metrics = self.metrics.dispersed_head_failures_total.clone();
+        Box::new(
+            DispersedHead::new(
+                self.logger,
+                self.data_fragments,
+                candidates,
+                version,
+                deadline,
+                self.rpc_service,
+                &self.client_config,
+                span.handle(),
+                Some(timer::timeout(self.client_config.head_timeout)),
+            )
+            .map_err(move |e| {
+                metrics.increment();
+                e
+            }),
+        )
     }
     pub fn put(
         self,
@@ -193,6 +214,7 @@ impl DispersedClient {
         let mut child = span.child("ec_encode", |span| {
             span.tag(StdTag::component(module_path!())).start()
         });
+        let metrics = self.metrics.dispersed_put_failures_total.clone();
         let future = self
             .ec
             .encode(content)
@@ -206,18 +228,24 @@ impl DispersedClient {
                 }
                 result
             });
-        Box::new(DispersedPut {
-            // NOTE: 他のメトリクスを追加するタイミングで `DispersedPut` 用の metrics に変更する
-            metrics: self.metrics.put_all,
-            cluster: self.cluster.clone(),
-            version,
-            deadline,
-            cannyls_config: self.client_config.cannyls.clone(),
-            data_fragments: self.data_fragments,
-            rpc_service: self.rpc_service,
-            phase: Phase::A(Box::new(future)),
-            parent: span,
-        })
+        Box::new(
+            DispersedPut {
+                // NOTE: 他のメトリクスを追加するタイミングで `DispersedPut` 用の metrics に変更する
+                metrics: self.metrics.put_all,
+                cluster: self.cluster.clone(),
+                version,
+                deadline,
+                cannyls_config: self.client_config.cannyls.clone(),
+                data_fragments: self.data_fragments,
+                rpc_service: self.rpc_service,
+                phase: Phase::A(Box::new(future)),
+                parent: span,
+            }
+            .map_err(move |e| {
+                metrics.increment();
+                e
+            }),
+        )
     }
 }
 
@@ -354,6 +382,7 @@ impl Future for DispersedGet {
 
 struct CollectFragments {
     logger: Logger,
+    metrics: CollectFragmentsMetrics,
     futures: Vec<BoxFuture<Option<Vec<u8>>>>,
     fragments: Vec<Vec<u8>>,
     data_fragments: usize,
@@ -384,6 +413,7 @@ impl CollectFragments {
     #[allow(clippy::too_many_arguments)]
     fn new(
         logger: Logger,
+        metrics: CollectFragmentsMetrics,
         data_fragments: usize,
         candidates: Vec<ClusterMember>,
         version: ObjectVersion,
@@ -397,6 +427,7 @@ impl CollectFragments {
         let dummy: BoxFuture<_> = Box::new(futures::finished(None));
         CollectFragments {
             logger: logger.clone(),
+            metrics,
             futures: vec![dummy],
             fragments: Vec::new(),
             data_fragments,
@@ -426,7 +457,6 @@ impl CollectFragments {
                                );
                                Error::from(ErrorKind::Corrupted.cause(cause))
                            }))?;
-
             let client = CannyLsClient::new(m.node.addr, self.rpc_service.clone());
             let lump_id = m.make_lump_id(self.version);
             debug!(
@@ -449,17 +479,30 @@ impl CollectFragments {
                     .start()
             });
 
+            let now = Instant::now();
+            let metrics = self.metrics.clone();
             let mut request = client.request();
             request.rpc_options(self.cannyls_config.rpc_options());
 
             let future = request
                 .deadline(self.deadline)
                 .get_lump(DeviceId::new(m.device), lump_id)
-                .then(move |result| {
-                    if let Err(ref e) = result {
-                        span.log_error(e);
+                .then(move |result| match result {
+                    Ok(fragment) => {
+                        if fragment.is_none() {
+                            metrics.missing_fragments_total.increment();
+                        }
+                        let elapsed = prometrics::timestamp::duration_to_seconds(now.elapsed());
+                        metrics
+                            .get_fragment_success_duration_seconds
+                            .observe(elapsed);
+                        Ok(fragment)
                     }
-                    result
+                    Err(e) => {
+                        metrics.get_fragment_failures_total.increment();
+                        span.log_error(&e);
+                        Err(e)
+                    }
                 });
             let future: BoxFuture<_> = Box::new(future.map_err(|e| track!(Error::from(e))));
             self.futures.push(future);
@@ -489,6 +532,7 @@ impl Future for CollectFragments {
                             if let Err(e) = track!(verify_and_remove_checksum(&mut fragment)) {
                                 // TODO: Add protection for log overflow
                                 warn!(self.logger, "[CollectFragments] Corrupted fragment: {}", e);
+                                self.metrics.corrupted_fragments_total.increment();
                                 track!(self.fill_shortage_from_spare(false))?;
                             } else {
                                 self.fragments.push(fragment);
@@ -510,6 +554,7 @@ impl Future for CollectFragments {
                     "Collecting fragments timeout expired: add new candidate. next_timeout={:?}",
                     self.next_timeout_duration
                 );
+                self.metrics.get_fragment_timeout_total.increment();
                 self.timeout = None;
                 if !self.spares.is_empty() {
                     if let Err(e) = track!(self.fill_shortage_from_spare(true)) {

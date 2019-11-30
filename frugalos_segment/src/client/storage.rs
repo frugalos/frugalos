@@ -23,7 +23,8 @@ use {Error, ErrorKind, ObjectValue, Result};
 pub enum StorageClient {
     Metadata,
     Replicated(ReplicatedClient),
-    Dispersed(DispersedClient),
+    // `#[warn(clippy::large_enum_variant)]` への対応
+    Dispersed(Box<DispersedClient>),
 }
 impl StorageClient {
     pub fn new(
@@ -47,7 +48,7 @@ impl StorageClient {
             }
             Storage::Dispersed(c) => {
                 let metrics = track!(DispersedClientMetrics::new())?;
-                Ok(StorageClient::Dispersed(DispersedClient::new(
+                Ok(StorageClient::Dispersed(Box::new(DispersedClient::new(
                     logger,
                     metrics,
                     config.cluster,
@@ -55,7 +56,7 @@ impl StorageClient {
                     config.dispersed_client,
                     rpc_service,
                     ec,
-                )))
+                ))))
             }
         }
     }
