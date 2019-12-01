@@ -64,9 +64,12 @@ impl NodeHandle {
             .map_err(|e| track!(Error::from(e)));
         Either::A(future)
     }
-    pub fn list_objects(&self) -> impl Future<Item = Vec<ObjectSummary>, Error = Error> {
+    pub fn list_objects(
+        &self,
+        consistency: ReadConsistency,
+    ) -> impl Future<Item = Vec<ObjectSummary>, Error = Error> {
         let (monitored, monitor) = oneshot::monitor();
-        let request = Request::List(monitored);
+        let request = Request::List(consistency, monitored);
         future_try!(self.request_tx.send(request));
         let future = monitor.map_err(|e| track!(Error::from(e)));
         Either::A(future)
@@ -81,9 +84,12 @@ impl NodeHandle {
         Either::A(future)
     }
 
-    pub fn object_count(&self) -> impl Future<Item = u64, Error = Error> {
+    pub fn object_count(
+        &self,
+        consistency: ReadConsistency,
+    ) -> impl Future<Item = u64, Error = Error> {
         let (monitored, monitor) = oneshot::monitor();
-        let request = Request::ObjectCount(monitored);
+        let request = Request::ObjectCount(consistency, monitored);
 
         future_try!(self.request_tx.send(request));
         let future = monitor.map_err(|e| track!(Error::from(e)));

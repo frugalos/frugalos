@@ -86,12 +86,16 @@ use rustracing_jaeger::span::{Span, SpanHandle};
 use slog::Logger;
 use std::collections::hash_set::HashSet;
 use std::fmt::Debug;
+use std::mem;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use trackable::error::ErrorKindExt;
 
 use config::{ClusterConfig, MdsClientConfig, MdsRequestPolicy};
 use {Error, ErrorKind, ObjectValue, Result};
+
+// TODO: リクエスト毎か、frugalos 起動時の設定で指定するように変更する
+const REQUIRED_RESPONSE_COUNT: usize = 1;
 
 // TODO HEAD/GET 以外の参照系リクエストで `ReadConsistency` をサポートする
 #[derive(Debug, Clone)]
@@ -126,18 +130,49 @@ impl MdsClient {
         Request::new(self.clone(), parent, request)
     }
 
-    pub fn list(&self) -> impl Future<Item = Vec<ObjectSummary>, Error = Error> {
+    pub fn list(
+        &self,
+        consistency: ReadConsistency,
+        parent: SpanHandle,
+    ) -> impl Future<Item = Vec<ObjectSummary>, Error = Error> {
         debug!(self.logger, "Starts LIST");
-        let parent = Span::inactive().handle();
-        let request = SingleRequestOnce::new(RequestKind::Other, move |client| {
-            // TODO: supports consistency levels
-            Box::new(
-                client
-                    .list_objects(ReadConsistency::Consistent)
-                    .map_err(MdsError::from),
-            )
-        });
-        Request::new(self.clone(), parent, request)
+        if let Err(e) = validate_consistency(consistency.clone(), self.member_size()) {
+            return Either::A(futures::future::err(track!(e)));
+        }
+        let concurrency = select_concurrency(consistency.clone(), self.majority_size());
+        let request = if let Some(concurrency) = concurrency {
+            RequestOnce2::Parallel(ParallelRequestOnce::new(
+                RequestKind::List,
+                concurrency,
+                move |clients| {
+                    let futures: Vec<_> = clients
+                        .into_iter()
+                        .map(|(client, mut span)| {
+                            let future: BoxFuture<_> = Box::new(
+                                client.list_objects(consistency.clone()).map_err(move |e| {
+                                    span.log_error(&e);
+                                    track!(MdsError::from(e))
+                                }),
+                            );
+                            future
+                        })
+                        .collect();
+                    let selector = SelectLargestObjectSummaries {
+                        required_response_count: REQUIRED_RESPONSE_COUNT,
+                    };
+                    Box::new(CollectMdsResponses::new(selector, futures))
+                },
+            ))
+        } else {
+            RequestOnce2::Single(SingleRequestOnce::new(RequestKind::List, move |client| {
+                Box::new(
+                    client
+                        .list_objects(consistency.clone())
+                        .map_err(MdsError::from),
+                )
+            }))
+        };
+        Either::B(Request::new(self.clone(), parent, request))
     }
 
     pub fn get(
@@ -147,15 +182,10 @@ impl MdsClient {
         parent: SpanHandle,
     ) -> impl Future<Item = Option<ObjectValue>, Error = Error> {
         debug!(self.logger, "Starts GET: id={:?}", id);
-        let member_size = self.member_size();
-        if let Err(e) = validate_consistency(consistency.clone(), member_size) {
+        if let Err(e) = validate_consistency(consistency.clone(), self.member_size()) {
             return Either::A(futures::future::err(track!(e)));
         }
-        let concurrency = match consistency {
-            ReadConsistency::Quorum => Some(self.majority_size()),
-            ReadConsistency::Subset(n) => Some(n),
-            _ => None,
-        };
+        let concurrency = select_concurrency(consistency.clone(), self.majority_size());
         let request = if let Some(concurrency) = concurrency {
             RequestOnce2::Parallel(ParallelRequestOnce::new(
                 RequestKind::Get,
@@ -176,7 +206,10 @@ impl MdsClient {
                             future
                         })
                         .collect();
-                    Box::new(GetLatestObject::new(futures))
+                    let selector = SelectLatestObject {
+                        required_response_count: REQUIRED_RESPONSE_COUNT,
+                    };
+                    Box::new(CollectMdsResponses::new(selector, futures))
                 },
             ))
         } else {
@@ -198,15 +231,10 @@ impl MdsClient {
         parent: SpanHandle,
     ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
         debug!(self.logger, "Starts HEAD: id={:?}", id);
-        let member_size = self.member_size();
-        if let Err(e) = validate_consistency(consistency.clone(), member_size) {
+        if let Err(e) = validate_consistency(consistency.clone(), self.member_size()) {
             return Either::A(futures::future::err(track!(e)));
         }
-        let concurrency = match consistency {
-            ReadConsistency::Quorum => Some(self.majority_size()),
-            ReadConsistency::Subset(n) => Some(n),
-            _ => None,
-        };
+        let concurrency = select_concurrency(consistency.clone(), self.majority_size());
         let request = if let Some(concurrency) = concurrency {
             RequestOnce2::Parallel(ParallelRequestOnce::new(
                 RequestKind::Head,
@@ -226,7 +254,10 @@ impl MdsClient {
                             future
                         })
                         .collect();
-                    Box::new(GetLatestObject::new(futures))
+                    let selector = SelectLatestVersion {
+                        required_response_count: REQUIRED_RESPONSE_COUNT,
+                    };
+                    Box::new(CollectMdsResponses::new(selector, futures))
                 },
             ))
         } else {
@@ -340,17 +371,51 @@ impl MdsClient {
     }
 
     /// セグメント内に保持されているオブジェクトの数を返す.
-    pub fn object_count(&self) -> impl Future<Item = u64, Error = Error> {
-        let parent = Span::inactive().handle();
-        let request = SingleRequestOnce::new(RequestKind::Other, |client| {
-            // TODO: supports consistency levels
-            Box::new(
-                client
-                    .object_count(ReadConsistency::Consistent)
-                    .map_err(MdsError::from),
-            )
-        });
-        Request::new(self.clone(), parent, request)
+    pub fn object_count(
+        &self,
+        consistency: ReadConsistency,
+        parent: SpanHandle,
+    ) -> impl Future<Item = u64, Error = Error> {
+        if let Err(e) = validate_consistency(consistency.clone(), self.member_size()) {
+            return Either::A(futures::future::err(track!(e)));
+        }
+        let concurrency = select_concurrency(consistency.clone(), self.majority_size());
+        let request = if let Some(concurrency) = concurrency {
+            RequestOnce2::Parallel(ParallelRequestOnce::new(
+                RequestKind::ObjectCount,
+                concurrency,
+                move |clients| {
+                    let futures: Vec<_> = clients
+                        .into_iter()
+                        .map(|(client, mut span)| {
+                            let future: BoxFuture<_> = Box::new(
+                                client.object_count(consistency.clone()).map_err(move |e| {
+                                    span.log_error(&e);
+                                    track!(MdsError::from(e))
+                                }),
+                            );
+                            future
+                        })
+                        .collect();
+                    let selector = SelectLargestObjectCount {
+                        required_response_count: REQUIRED_RESPONSE_COUNT,
+                    };
+                    Box::new(CollectMdsResponses::new(selector, futures))
+                },
+            ))
+        } else {
+            RequestOnce2::Single(SingleRequestOnce::new(
+                RequestKind::ObjectCount,
+                move |client| {
+                    Box::new(
+                        client
+                            .object_count(consistency.clone())
+                            .map_err(MdsError::from),
+                    )
+                },
+            ))
+        };
+        Either::B(Request::new(self.clone(), parent, request))
     }
 
     fn timeout(&self, kind: RequestKind) -> RequestTimeout {
@@ -366,6 +431,8 @@ impl MdsClient {
         match kind {
             RequestKind::Get => &self.client_config.get_request_policy,
             RequestKind::Head => &self.client_config.head_request_policy,
+            RequestKind::List => &self.client_config.list_request_policy,
+            RequestKind::ObjectCount => &self.client_config.object_count_request_policy,
             RequestKind::Other => &self.client_config.default_request_policy,
         }
     }
@@ -457,8 +524,8 @@ impl MdsClient {
     }
 }
 
-type BoxFuture<V> =
-    Box<dyn Future<Item = (Option<RemoteNodeId>, V), Error = MdsError> + Send + 'static>;
+type MdsResponse<V> = (Option<RemoteNodeId>, V);
+type BoxFuture<V> = Box<dyn Future<Item = MdsResponse<V>, Error = MdsError> + Send + 'static>;
 
 fn to_object_value(
     response: (Option<RemoteNodeId>, Option<Metadata>),
@@ -489,6 +556,14 @@ fn validate_consistency(consistency: ReadConsistency, member_size: usize) -> Res
             }
         }
         ReadConsistency::Quorum | ReadConsistency::Stale | ReadConsistency::Consistent => Ok(()),
+    }
+}
+
+fn select_concurrency(consistency: ReadConsistency, majority_size: usize) -> Option<usize> {
+    match consistency {
+        ReadConsistency::Quorum => Some(majority_size),
+        ReadConsistency::Subset(n) => Some(n),
+        _ => None,
     }
 }
 
@@ -524,6 +599,8 @@ impl Inner {
 pub enum RequestKind {
     Head,
     Get,
+    List,
+    ObjectCount,
     Other,
 }
 
@@ -806,68 +883,121 @@ where
     }
 }
 
-/// `ObjectVersion` を取得できる型で実装するべきトレイト。
-///
-/// HEAD と GET で `GetLatestObject` を共用するために利用される。
-trait ContainObjectVersion {
-    fn object_version(&self) -> ObjectVersion;
-}
-impl ContainObjectVersion for ObjectVersion {
-    fn object_version(&self) -> ObjectVersion {
-        *self
-    }
-}
-impl ContainObjectVersion for ObjectValue {
-    fn object_version(&self) -> ObjectVersion {
-        self.version
-    }
-}
-impl<A, B: ContainObjectVersion> ContainObjectVersion for (A, B) {
-    fn object_version(&self) -> ObjectVersion {
-        self.1.object_version()
-    }
-}
+trait SelectOptimalResponse {
+    type Item;
 
-#[inline]
-fn select_latest<I: Iterator>(values: I) -> Option<I::Item>
-where
-    I::Item: ContainObjectVersion,
-{
-    values.max_by_key(ContainObjectVersion::object_version)
-}
-
-/// 複数ノードに同時に参照リクエストを投げ、最新の `ObjectVersion` を返してきたレスポンスを採用する。
-///
-/// 可用性を優先するため、最新ではないオブジェクトを返すことを許容している。
-struct GetLatestObject<V> {
-    /// 存在しないオブジェクトを参照した回数。
+    /// 取得できたレスポンスから最適なレスポンスを選択する。
     ///
-    /// 最新の情報を知らないノードと最新の情報を知っているノードで結果割れた場合に多数決で結果を
-    /// 決めるために利用される。
-    not_found_count: usize,
+    /// レスポンスを返したい場合は `Some` を返し、レスポンスがない場合は `None` を返す。
+    fn select_optimal(
+        &self,
+        values: Vec<MdsResponse<Self::Item>>,
+    ) -> Option<MdsResponse<Self::Item>>;
+}
+struct SelectLatestObject {
+    required_response_count: usize,
+}
+impl SelectOptimalResponse for SelectLatestObject {
+    type Item = Option<ObjectValue>;
+
+    fn select_optimal(
+        &self,
+        values: Vec<MdsResponse<Self::Item>>,
+    ) -> Option<MdsResponse<Self::Item>> {
+        let values: Vec<_> = values.into_iter().filter(|(_, v)| v.is_some()).collect();
+        if values.len() < self.required_response_count {
+            None
+        } else {
+            values
+                .into_iter()
+                .max_by_key(|(_, value)| value.as_ref().map(|v| v.version).unwrap())
+        }
+    }
+}
+struct SelectLatestVersion {
+    required_response_count: usize,
+}
+impl SelectOptimalResponse for SelectLatestVersion {
+    type Item = Option<ObjectVersion>;
+
+    fn select_optimal(
+        &self,
+        values: Vec<MdsResponse<Self::Item>>,
+    ) -> Option<MdsResponse<Self::Item>> {
+        let values: Vec<_> = values.into_iter().filter(|(_, v)| v.is_some()).collect();
+        if values.len() < self.required_response_count {
+            None
+        } else {
+            values
+                .into_iter()
+                .max_by_key(|(_, version)| version.unwrap())
+        }
+    }
+}
+struct SelectLargestObjectSummaries {
+    required_response_count: usize,
+}
+impl SelectOptimalResponse for SelectLargestObjectSummaries {
+    type Item = Vec<ObjectSummary>;
+
+    fn select_optimal(
+        &self,
+        values: Vec<MdsResponse<Self::Item>>,
+    ) -> Option<MdsResponse<Self::Item>> {
+        if values.len() < self.required_response_count {
+            None
+        } else {
+            values
+                .into_iter()
+                .max_by_key(|(_, summaries)| summaries.len())
+        }
+    }
+}
+struct SelectLargestObjectCount {
+    required_response_count: usize,
+}
+impl SelectOptimalResponse for SelectLargestObjectCount {
+    type Item = u64;
+
+    fn select_optimal(
+        &self,
+        values: Vec<MdsResponse<Self::Item>>,
+    ) -> Option<MdsResponse<Self::Item>> {
+        if values.len() < self.required_response_count {
+            None
+        } else {
+            values.into_iter().max_by_key(|(_, count)| *count)
+        }
+    }
+}
+
+/// 複数の MDS ノードからのレスポンスを集め、その内の1つのレスポンスを採用する。
+///
+/// 可用性を優先するため、最新ではない状態を返すことを許容している。
+struct CollectMdsResponses<S: SelectOptimalResponse> {
+    selector: S,
 
     /// 実行中の `Future`。
-    futures: Vec<BoxFuture<Option<V>>>,
+    futures: Vec<BoxFuture<S::Item>>,
 
     /// ノードが返してきた結果のためのバッファ。
-    ///
-    /// `not_found_count` と `values` を比較した上で最終的な結果が決まる。
-    values: Vec<(Option<RemoteNodeId>, V)>,
+    values: Vec<MdsResponse<S::Item>>,
 }
-impl<V> GetLatestObject<V> {
-    fn new(futures: Vec<BoxFuture<Option<V>>>) -> Self {
+impl<S: SelectOptimalResponse> CollectMdsResponses<S> {
+    fn new(selector: S, futures: Vec<BoxFuture<S::Item>>) -> Self {
         Self {
+            selector,
             futures,
-            not_found_count: 0,
             values: Vec::new(),
         }
     }
 }
-impl<V> Future for GetLatestObject<V>
+impl<S> Future for CollectMdsResponses<S>
 where
-    V: Debug + ContainObjectVersion,
+    S: SelectOptimalResponse,
+    S::Item: Debug,
 {
-    type Item = (Option<RemoteNodeId>, Option<V>);
+    type Item = (Option<RemoteNodeId>, S::Item);
     type Error = MdsError;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let mut i = 0;
@@ -882,21 +1012,14 @@ where
                 }
                 Ok(Async::Ready(response)) => {
                     self.futures.swap_remove(i);
-                    if let (leader, Some(value)) = response {
-                        self.values.push((leader, value));
-                    } else {
-                        self.not_found_count += 1;
-                    }
+                    self.values.push(response);
                 }
             }
         }
         if self.futures.is_empty() {
-            let values = self.values.drain(..);
-            if self.not_found_count > values.len() {
-                return Ok(Async::Ready((None, None)));
-            }
-            if let Some((leader, value)) = select_latest(values) {
-                return Ok(Async::Ready((leader, Some(value))));
+            let values = mem::replace(&mut self.values, Vec::new());
+            if let Some(value) = self.selector.select_optimal(values) {
+                return Ok(Async::Ready(value));
             }
             let e = MdsErrorKind::Other.cause("No MDS response");
             return track!(Err(e.into()));
@@ -908,6 +1031,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::SocketAddr;
+
+    fn extract_object_version(v: (Option<RemoteNodeId>, Option<ObjectValue>)) -> ObjectVersion {
+        v.1.map(|v| v.version).unwrap_or(ObjectVersion(0))
+    }
 
     #[test]
     fn validate_consistency_works() {
@@ -921,5 +1049,157 @@ mod tests {
         assert!(validate_consistency(ReadConsistency::Subset(2), 2).is_ok());
         assert!(validate_consistency(ReadConsistency::Subset(2), 1).is_err());
         assert!(validate_consistency(ReadConsistency::Subset(0), 1).is_err());
+    }
+
+    #[test]
+    fn select_concurrency_works() {
+        assert_eq!(select_concurrency(ReadConsistency::Consistent, 3), None);
+        assert_eq!(select_concurrency(ReadConsistency::Quorum, 2), Some(2));
+        assert_eq!(select_concurrency(ReadConsistency::Subset(1), 2), Some(1));
+    }
+
+    #[test]
+    fn select_largest_object_count_works() {
+        let node_id = "127.0.0.1:3000".parse::<SocketAddr>().unwrap();
+        let values1 = vec![
+            (Some((node_id, "test1".to_string())), 3),
+            (Some((node_id, "test2".to_string())), 1),
+            (Some((node_id, "test3".to_string())), 2),
+        ];
+        let values2 = vec![];
+        let values3 = vec![(Some((node_id, "test3".to_string())), 2)];
+        let selector = SelectLargestObjectCount {
+            required_response_count: REQUIRED_RESPONSE_COUNT,
+        };
+        assert_eq!(
+            selector.select_optimal(values1),
+            Some((Some((node_id, "test1".to_string())), 3))
+        );
+        assert_eq!(selector.select_optimal(values2), None);
+        assert_eq!(
+            selector.select_optimal(values3),
+            Some((Some((node_id, "test3".to_string())), 2))
+        );
+    }
+
+    #[test]
+    fn select_largest_object_summaries_works() {
+        let node_id = "127.0.0.1:3000".parse::<SocketAddr>().unwrap();
+        let summary1 = ObjectSummary {
+            id: "object1".to_string(),
+            version: ObjectVersion(1),
+        };
+        let summary2 = ObjectSummary {
+            id: "object2".to_string(),
+            version: ObjectVersion(2),
+        };
+        let summary3 = ObjectSummary {
+            id: "object3".to_string(),
+            version: ObjectVersion(3),
+        };
+        let values1 = vec![
+            (
+                Some((node_id, "test1".to_string())),
+                vec![summary1.clone(), summary2.clone()],
+            ),
+            (Some((node_id, "test2".to_string())), vec![summary2.clone()]),
+            (
+                Some((node_id, "test3".to_string())),
+                vec![summary3, summary2.clone(), summary1],
+            ),
+        ];
+        let values2 = vec![];
+        let values3 = vec![(Some((node_id, "test3".to_string())), vec![summary2])];
+        let selector = SelectLargestObjectSummaries {
+            required_response_count: REQUIRED_RESPONSE_COUNT,
+        };
+        assert_eq!(
+            selector.select_optimal(values1).map(|(_, v)| v.len()),
+            Some(3)
+        );
+        assert_eq!(selector.select_optimal(values2).map(|(_, v)| v.len()), None);
+        assert_eq!(
+            selector.select_optimal(values3).map(|(_, v)| v.len()),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn select_latest_object_version_works() {
+        let node_id = "127.0.0.1:3000".parse::<SocketAddr>().unwrap();
+        let version1 = ObjectVersion(1);
+        let version2 = ObjectVersion(2);
+        let version3 = ObjectVersion(3);
+        let values1 = vec![
+            (Some((node_id, "test1".to_string())), Some(version1)),
+            (Some((node_id, "test2".to_string())), Some(version2)),
+            (Some((node_id, "test3".to_string())), Some(version3)),
+        ];
+        let values2 = vec![];
+        let values3 = vec![
+            (Some((node_id, "test3".to_string())), None),
+            (Some((node_id, "test3".to_string())), Some(version2)),
+        ];
+        let values4 = vec![(Some((node_id, "test3".to_string())), None)];
+        let selector = SelectLatestVersion {
+            required_response_count: REQUIRED_RESPONSE_COUNT,
+        };
+        assert_eq!(
+            selector.select_optimal(values1),
+            Some((Some((node_id, "test3".to_string())), Some(version3)))
+        );
+        assert_eq!(selector.select_optimal(values2), None);
+        assert_eq!(
+            selector.select_optimal(values3),
+            Some((Some((node_id, "test3".to_string())), Some(version2)))
+        );
+        assert_eq!(selector.select_optimal(values4), None);
+    }
+
+    #[test]
+    fn select_latest_object_value_works() {
+        let node_id = "127.0.0.1:3000".parse::<SocketAddr>().unwrap();
+        let value1 = ObjectValue {
+            version: ObjectVersion(1),
+            content: vec![],
+        };
+        let value2 = ObjectValue {
+            version: ObjectVersion(2),
+            content: vec![],
+        };
+        let value3 = ObjectValue {
+            version: ObjectVersion(3),
+            content: vec![],
+        };
+        let values1 = vec![
+            (Some((node_id, "test1".to_string())), Some(value1)),
+            (Some((node_id, "test2".to_string())), Some(value2.clone())),
+            (Some((node_id, "test3".to_string())), Some(value3)),
+        ];
+        let values2 = vec![];
+        let values3 = vec![
+            (Some((node_id, "test3".to_string())), None),
+            (Some((node_id, "test3".to_string())), Some(value2)),
+        ];
+        let values4 = vec![(Some((node_id, "test3".to_string())), None)];
+        let selector = SelectLatestObject {
+            required_response_count: REQUIRED_RESPONSE_COUNT,
+        };
+        assert_eq!(
+            selector.select_optimal(values1).map(extract_object_version),
+            Some(ObjectVersion(3))
+        );
+        assert_eq!(
+            selector.select_optimal(values2).map(extract_object_version),
+            None
+        );
+        assert_eq!(
+            selector.select_optimal(values3).map(extract_object_version),
+            Some(ObjectVersion(2))
+        );
+        assert_eq!(
+            selector.select_optimal(values4).map(extract_object_version),
+            None
+        );
     }
 }

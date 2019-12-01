@@ -316,12 +316,15 @@ impl Node {
     #[allow(clippy::cognitive_complexity)]
     fn handle_request(&mut self, request: Request) {
         // NOTE: 整合性を保証したいので、更新系の要求を処理できるのはリーダのみとする.
-        //       Get と Head はクライアントが指定した整合性に従う.
+        //       参照系のリクエストはクライアントが指定した整合性に従う.
+        // TODO: 未対応の参照系リクエストで整合性指定ができるようにする
         // TODO: リースないしハートビートを使って、leaderであることを保証する (READ時)
         match request {
             Request::GetLeader(_, _)
             | Request::Get(_, _, _, _, _)
             | Request::Head(_, _, _, _)
+            | Request::List(_, _)
+            | Request::ObjectCount(_, _)
             | Request::Exit
             | Request::Stop(_)
             | Request::TakeSnapshot
@@ -364,15 +367,18 @@ impl Node {
                     }
                 }
             }
-            Request::List(monitored) => {
-                let list = self.machine.to_summaries();
-                monitored.exit(Ok(list));
+            Request::List(consistency, monitored) => {
+                let result = self.check_leader_if_needed(&consistency);
+                monitored.exit(result.map(|()| self.machine.to_summaries()));
             }
             Request::LatestVersion(monitored) => {
                 let latest = self.machine.latest_version();
                 monitored.exit(Ok(latest));
             }
-            Request::ObjectCount(monitored) => monitored.exit(Ok(self.machine.len() as u64)),
+            Request::ObjectCount(consistency, monitored) => {
+                let result = self.check_leader_if_needed(&consistency);
+                monitored.exit(result.map(|()| self.machine.len() as u64));
+            }
             Request::Get(object_id, expect, consistency, started_at, monitored) => {
                 let result = self.check_leader_if_needed(&consistency);
                 let elapsed = prometrics::timestamp::duration_to_seconds(started_at.elapsed());

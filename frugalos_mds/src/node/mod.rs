@@ -181,9 +181,9 @@ impl ProposalMetrics {
 pub(crate) enum Request {
     StartElection,
     GetLeader(Instant, Reply<NodeId>),
-    List(Reply<Vec<ObjectSummary>>),
+    List(ReadConsistency, Reply<Vec<ObjectSummary>>),
     LatestVersion(Reply<Option<ObjectSummary>>),
-    ObjectCount(Reply<u64>),
+    ObjectCount(ReadConsistency, Reply<u64>),
     Get(
         ObjectId,
         Expect,
@@ -222,9 +222,9 @@ impl Request {
     pub fn failed(self, e: Error) {
         match self {
             Request::GetLeader(_, tx) => tx.exit(Err(track!(e))),
-            Request::List(tx) => tx.exit(Err(track!(e))),
+            Request::List(_, tx) => tx.exit(Err(track!(e))),
             Request::LatestVersion(tx) => tx.exit(Err(track!(e))),
-            Request::ObjectCount(tx) => tx.exit(Err(track!(e))),
+            Request::ObjectCount(_, tx) => tx.exit(Err(track!(e))),
             Request::Get(_, _, _, _, tx) => tx.exit(Err(track!(e))),
             Request::Head(_, _, _, tx) => tx.exit(Err(track!(e))),
             Request::Put(_, _, _, _, _, tx) => tx.exit(Err(track!(e))),

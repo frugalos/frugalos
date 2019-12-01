@@ -138,13 +138,21 @@ pub struct MdsClientConfig {
     #[serde(default)]
     pub default_request_policy: MdsRequestPolicy,
 
-    /// Request policy for mds get requests.
+    /// Request policy for mds `Get` requests.
     #[serde(default)]
     pub get_request_policy: MdsRequestPolicy,
 
-    /// Request policy for mds head requests.
+    /// Request policy for mds `Head` requests.
     #[serde(default)]
     pub head_request_policy: MdsRequestPolicy,
+
+    /// Request policy for mds `List` requests.
+    #[serde(default)]
+    pub list_request_policy: MdsRequestPolicy,
+
+    /// Request policy for mds `ObjectCount` requests.
+    #[serde(default)]
+    pub object_count_request_policy: MdsRequestPolicy,
 }
 
 fn default_mds_client_request_timeout() -> Duration {
@@ -159,6 +167,8 @@ impl Default for MdsClientConfig {
             default_request_policy: Default::default(),
             get_request_policy: Default::default(),
             head_request_policy: Default::default(),
+            list_request_policy: Default::default(),
+            object_count_request_policy: Default::default(),
         }
     }
 }

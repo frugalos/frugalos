@@ -204,11 +204,15 @@ impl<'a> Request<'a> {
             DeleteObjectsByPrefixSummary { total }
         }))
     }
-    pub fn list(&self, segment: usize) -> BoxFuture<Vec<ObjectSummary>> {
+    pub fn list(
+        &self,
+        segment: usize,
+        consistency: ReadConsistency,
+    ) -> BoxFuture<Vec<ObjectSummary>> {
         let buckets = self.client.buckets.load();
         let bucket = try_get_bucket!(buckets, self.bucket_id);
         if segment < bucket.segments().len() {
-            let future = bucket.segments()[segment].list();
+            let future = bucket.segments()[segment].list(consistency, self.parent.clone());
             Box::new(future.map_err(|e| track!(Error::from(e))))
         } else {
             let e = ErrorKind::InvalidInput.cause(format!("Too large segment number: {}", segment));
@@ -226,11 +230,11 @@ impl<'a> Request<'a> {
             Box::new(futures::failed(e.into()))
         }
     }
-    pub fn object_count(&self, segment: usize) -> BoxFuture<u64> {
+    pub fn object_count(&self, segment: usize, consistency: ReadConsistency) -> BoxFuture<u64> {
         let buckets = self.client.buckets.load();
         let bucket = try_get_bucket!(buckets, self.bucket_id);
         if segment < bucket.segments().len() {
-            let future = bucket.segments()[segment].object_count();
+            let future = bucket.segments()[segment].object_count(consistency, self.parent.clone());
             Box::new(future.map_err(|e| track!(Error::from(e))))
         } else {
             let e = ErrorKind::InvalidInput.cause(format!("Too large segment number: {}", segment));

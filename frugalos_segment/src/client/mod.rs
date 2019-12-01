@@ -210,8 +210,12 @@ impl Client {
     }
 
     /// 保存済みのオブジェクト一覧を取得する。
-    pub fn list(&self) -> impl Future<Item = Vec<ObjectSummary>, Error = Error> {
-        self.mds.list()
+    pub fn list(
+        &self,
+        consistency: ReadConsistency,
+        parent: SpanHandle,
+    ) -> impl Future<Item = Vec<ObjectSummary>, Error = Error> {
+        self.mds.list(consistency, parent)
     }
 
     /// セグメント内の最新オブジェクトのバージョンを取得する。
@@ -220,8 +224,12 @@ impl Client {
     }
 
     /// セグメント内に保持されているオブジェクトの数を返す.
-    pub fn object_count(&self) -> impl Future<Item = u64, Error = Error> {
-        self.mds.object_count()
+    pub fn object_count(
+        &self,
+        consistency: ReadConsistency,
+        parent: SpanHandle,
+    ) -> impl Future<Item = u64, Error = Error> {
+        self.mds.object_count(consistency, parent)
     }
 }
 

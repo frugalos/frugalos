@@ -173,11 +173,12 @@ impl HandleRequest for ListObjects {
     fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
         let bucket_id = get_bucket_id(req.url());
         let segment_num = try_badarg!(get_segment_num(req.url()));
+        let consistency = try_badarg!(get_consistency(&req.url()));
         let future = self
             .0
             .client
             .request(bucket_id)
-            .list(segment_num as usize)
+            .list(segment_num as usize, consistency)
             .then(|result| {
                 let response = match track!(result) {
                     Ok(list) => make_json_response(Status::Ok, Ok(list)),
@@ -205,6 +206,7 @@ impl HandleRequest for GetBucketStatistics {
 
     fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
         let bucket_id = get_bucket_id(req.url());
+        let consistency = try_badarg!(get_consistency(&req.url()));
 
         let segments = if let Some(segments) = self.0.client.segment_count(&bucket_id) {
             segments
@@ -220,7 +222,7 @@ impl HandleRequest for GetBucketStatistics {
             .and_then(move |segment| {
                 let request = client.request(bucket_id.clone());
                 request
-                    .object_count(segment as usize)
+                    .object_count(segment as usize, consistency.clone())
                     .map_err(|e| track!(e))
             })
             .fold(0, |total, objects| -> Result<_> { Ok(total + objects) })
