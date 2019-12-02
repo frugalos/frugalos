@@ -1,6 +1,6 @@
 #![allow(clippy::needless_pass_by_value)]
 use cannyls::deadline::Deadline;
-use cannyls::lump::{LumpData, LumpHeader};
+use cannyls::lump::{LumpData, LumpHeader, LumpId};
 use cannyls_rpc::Client as CannyLsClient;
 use cannyls_rpc::DeviceId;
 use ecpool::liberasurecode::LibErasureCoderBuilder;
@@ -10,7 +10,7 @@ use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_core::tracer::SpanExt;
 use frugalos_raft::NodeId;
 use futures::{self, Async, Future, Poll};
-use libfrugalos::entity::object::ObjectVersion;
+use libfrugalos::entity::object::{FragmentsSummary, ObjectVersion};
 use rustracing::tag::{StdTag, Tag};
 use rustracing_jaeger::span::{Span, SpanHandle};
 use slog::Logger;
@@ -165,6 +165,36 @@ impl DispersedClient {
                 .start()
         });
         Box::new(DispersedHead::new(
+            self.logger,
+            self.data_fragments,
+            candidates,
+            version,
+            deadline,
+            self.rpc_service,
+            &self.client_config,
+            span.handle(),
+            Some(timer::timeout(self.client_config.head_timeout)),
+        ))
+    }
+    pub fn count_fragments(
+        self,
+        version: ObjectVersion,
+        deadline: Deadline,
+        parent: SpanHandle,
+    ) -> BoxFuture<FragmentsSummary> {
+        let mut candidates = self
+            .cluster
+            .candidates(version)
+            .cloned()
+            .collect::<Vec<_>>();
+        candidates.reverse();
+        let span = parent.child("count_fragments", |span| {
+            span.tag(StdTag::component(module_path!()))
+                .tag(Tag::new("object.version", version.0 as i64))
+                .tag(Tag::new("storage.type", "dispersed"))
+                .start()
+        });
+        Box::new(DispersedCountFragments::new(
             self.logger,
             self.data_fragments,
             candidates,
@@ -584,10 +614,8 @@ impl DispersedHead {
         parent: SpanHandle,
         timeout: Option<timer::Timeout>,
     ) -> Self {
-        let futures = candidates.iter().map(move |cluster_member| {
-            let client = CannyLsClient::new(cluster_member.node.addr, rpc_service.clone());
-            let lump_id = cluster_member.make_lump_id(version);
-            let mut span = parent.child("dispersed_head", |span| {
+        let set_span = |cluster_member: &ClusterMember, lump_id: LumpId| {
+            parent.child("dispersed_head", |span| {
                 span.tag(StdTag::component(module_path!()))
                     .tag(StdTag::span_kind("client"))
                     .tag(StdTag::peer_ip(cluster_member.node.addr.ip()))
@@ -595,22 +623,16 @@ impl DispersedHead {
                     .tag(Tag::new("device", cluster_member.device.clone()))
                     .tag(Tag::new("lump", format!("{:?}", lump_id)))
                     .start()
-            });
-            let mut request = client.request();
-            request.rpc_options(client_config.cannyls.rpc_options());
-            let device = cluster_member.device.clone();
-            let future = request
-                .deadline(deadline)
-                .head_lump(DeviceId::new(device), lump_id)
-                .then(move |result| {
-                    if let Err(ref e) = result {
-                        span.log_error(e);
-                    }
-                    result
-                });
-            let future: BoxFuture<_> = Box::new(future.map_err(|e| track!(Error::from(e))));
-            future
-        });
+            })
+        };
+        let futures = send_head_requests(
+            candidates,
+            version,
+            deadline,
+            rpc_service,
+            client_config,
+            set_span,
+        );
         DispersedHead {
             logger: logger.clone(),
             future: futures::future::select_all(futures),
@@ -654,4 +676,120 @@ impl Future for DispersedHead {
         }
         Ok(Async::NotReady)
     }
+}
+
+pub struct DispersedCountFragments {
+    logger: Logger,
+    future: futures::future::SelectAll<BoxFuture<Option<LumpHeader>>>,
+    data_fragments: usize,
+    summary: FragmentsSummary,
+    timeout: Option<timer::Timeout>,
+}
+impl DispersedCountFragments {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        logger: Logger,
+        data_fragments: usize,
+        candidates: Vec<ClusterMember>,
+        version: ObjectVersion,
+        deadline: Deadline,
+        rpc_service: RpcServiceHandle,
+        client_config: &DispersedClientConfig,
+        parent: SpanHandle,
+        timeout: Option<timer::Timeout>,
+    ) -> Self {
+        let set_span = |cluster_member: &ClusterMember, lump_id: LumpId| {
+            parent.child("dispersed_count_fragments", |span| {
+                span.tag(StdTag::component(module_path!()))
+                    .tag(StdTag::span_kind("client"))
+                    .tag(StdTag::peer_ip(cluster_member.node.addr.ip()))
+                    .tag(StdTag::peer_port(cluster_member.node.addr.port()))
+                    .tag(Tag::new("device", cluster_member.device.clone()))
+                    .tag(Tag::new("lump", format!("{:?}", lump_id)))
+                    .start()
+            })
+        };
+        let futures = send_head_requests(
+            candidates,
+            version,
+            deadline,
+            rpc_service,
+            client_config,
+            set_span,
+        );
+        DispersedCountFragments {
+            logger: logger.clone(),
+            future: futures::future::select_all(futures),
+            data_fragments,
+            summary: FragmentsSummary {
+                is_corrupted: true,
+                found_total: 0,
+                lost_total: 0,
+            },
+            timeout,
+        }
+    }
+}
+impl Future for DispersedCountFragments {
+    type Item = FragmentsSummary;
+    type Error = Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        loop {
+            let remainings = match self.future.poll() {
+                Ok(Async::NotReady) => return Ok(Async::NotReady),
+                Err((e, _, remainings)) => {
+                    debug!(self.logger, "DispersedCountFragments: {}", e);
+                    self.summary.lost_total += 1;
+                    remainings
+                }
+                Ok(Async::Ready((lump_header, _, remainings))) => {
+                    self.summary.found_total += lump_header.map_or(0, |_| 1);
+                    remainings
+                }
+            };
+            if remainings.is_empty() {
+                self.summary.is_corrupted =
+                    self.data_fragments > (self.summary.found_total as usize);
+                return Ok(Async::Ready(self.summary.clone()));
+            }
+            self.future = futures::future::select_all(remainings);
+            if let Ok(Async::Ready(Some(()))) = self.timeout.poll() {
+                let cause = "DispersedCountFragments: timeout expired";
+                return Err(track!(Error::from(ErrorKind::Busy.cause(cause))));
+            }
+        }
+    }
+}
+
+fn send_head_requests<F: Fn(&ClusterMember, LumpId) -> Span>(
+    candidates: Vec<ClusterMember>,
+    version: ObjectVersion,
+    deadline: Deadline,
+    rpc_service: RpcServiceHandle,
+    client_config: &DispersedClientConfig,
+    f: F,
+) -> Vec<BoxFuture<Option<LumpHeader>>> {
+    candidates
+        .iter()
+        .map(move |cluster_member| {
+            let client = CannyLsClient::new(cluster_member.node.addr, rpc_service.clone());
+            let lump_id = cluster_member.make_lump_id(version);
+            let mut request = client.request();
+            request.rpc_options(client_config.cannyls.rpc_options());
+            let device = cluster_member.device.clone();
+            let mut span = f(cluster_member, lump_id);
+            let future = request
+                .deadline(deadline)
+                .head_lump(DeviceId::new(device), lump_id)
+                .then(move |result| {
+                    if let Err(ref e) = result {
+                        span.log_error(e);
+                    }
+                    result
+                });
+            let future: BoxFuture<_> = Box::new(future.map_err(|e| track!(Error::from(e))));
+            future
+        })
+        .collect()
 }

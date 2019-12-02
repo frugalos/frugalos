@@ -4,7 +4,8 @@ use futures::future::Either;
 use futures::{self, Future};
 use libfrugalos::consistency::ReadConsistency;
 use libfrugalos::entity::object::{
-    DeleteObjectsByPrefixSummary, ObjectId, ObjectPrefix, ObjectSummary, ObjectVersion,
+    DeleteObjectsByPrefixSummary, FragmentsSummary, ObjectId, ObjectPrefix, ObjectSummary,
+    ObjectVersion,
 };
 use libfrugalos::expect::Expect;
 use rustracing_jaeger::span::SpanHandle;
@@ -105,6 +106,26 @@ impl Client {
                         .head(version, deadline, parent)
                         .map(move |()| Some(version));
                     Either::A(future)
+                } else {
+                    Either::B(futures::future::ok(None))
+                }
+            })
+    }
+
+    /// フラグメント数をストレージに問い合わせる。
+    pub fn count_fragments(
+        &self,
+        id: ObjectId,
+        deadline: Deadline,
+        consistency: ReadConsistency,
+        parent: SpanHandle,
+    ) -> impl Future<Item = Option<FragmentsSummary>, Error = Error> {
+        let storage = self.storage.clone();
+        self.mds
+            .head(id, consistency, parent.clone())
+            .and_then(move |version| {
+                if let Some(version) = version {
+                    Either::A(storage.count_fragments(version, deadline, parent).map(Some))
                 } else {
                     Either::B(futures::future::ok(None))
                 }
