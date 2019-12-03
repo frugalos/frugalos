@@ -1,7 +1,6 @@
 ---
 # 設定項目については https://github.com/frugalos/frugalos/wiki/Configuration を参照。
 frugalos:
-  daemon:
   rpc_client:
     tcp_connect_timeout_millis: 5000
     tcp_write_timeout_millis: 5000
