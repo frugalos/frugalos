@@ -9,7 +9,7 @@ use frugalos_core::tracer::ThreadLocalTracer;
 use frugalos_mds::{
     FrugalosMdsConfig, Node, Service as RaftMdsService, ServiceHandle as MdsHandle,
 };
-use frugalos_raft::{self, LocalNodeId, NodeId};
+use frugalos_raft::{self, LocalNodeId, NodeCoordinator, NodeId, RaftDeviceId};
 use futures::{Async, Future, Poll, Stream};
 use raftlog::cluster::ClusterMembers;
 use slog::Logger;
@@ -137,7 +137,15 @@ where
 
     fn handle_command(&mut self, command: Command) {
         match command {
-            Command::AddNode(node_id, device, client, cluster, config) => {
+            Command::AddNode(
+                node_id,
+                raft_device_id,
+                device,
+                client,
+                cluster,
+                config,
+                node_coordinator,
+            ) => {
                 // TODO: error handling
                 let logger = self.logger.clone();
                 let logger0 = logger.clone();
@@ -169,7 +177,9 @@ where
                             let storage = frugalos_raft::Storage::new(
                                 logger,
                                 local_id,
+                                raft_device_id,
                                 device.clone(),
+                                node_coordinator.clone(),
                                 frugalos_raft::StorageMetrics::new(),
                             );
                             frugalos_raft::ClearLog::new(storage)
@@ -187,10 +197,12 @@ where
                             &mds_config,
                             mds_service,
                             node_id,
+                            raft_device_id,
                             device,
                             service_handle,
                             client,
                             cluster,
+                            node_coordinator.clone(),
                             segment_node_command_rx
                         ))
                     })
@@ -250,16 +262,26 @@ impl ServiceHandle {
     pub fn add_node(
         &self,
         node_id: NodeId,
+        device_id: RaftDeviceId,
         device: CreateDeviceHandle,
         client: Client,
         cluster: ClusterMembers,
+        node_coordinator: NodeCoordinator,
         // NOTE: "前回の状態"は raft だけに限らないので raft を意識しない
         discard_former_state: bool,
     ) -> Result<()> {
         let raft_config = RaftConfig {
             discard_former_log: discard_former_state,
         };
-        let command = Command::AddNode(node_id, device, client.storage, cluster, raft_config);
+        let command = Command::AddNode(
+            node_id,
+            device_id,
+            device,
+            client.storage,
+            cluster,
+            raft_config,
+            node_coordinator,
+        );
         track!(self
             .command_tx
             .send(command,)
@@ -333,10 +355,12 @@ struct RaftConfig {
 enum Command {
     AddNode(
         NodeId,
+        RaftDeviceId,
         CreateDeviceHandle,
         StorageClient,
         ClusterMembers,
         RaftConfig,
+        NodeCoordinator,
     ),
     SetRepairConfig(RepairConfig),
 }
@@ -359,10 +383,12 @@ impl SegmentNode {
         mds_service: MdsHandle,
 
         node_id: NodeId,
+        raft_device_id: RaftDeviceId,
         device: DeviceHandle,
         service_handle: ServiceHandle,
         client: StorageClient,
         cluster: ClusterMembers,
+        coordinator: NodeCoordinator,
         segment_node_command_rx: mpsc::Receiver<SegmentNodeCommand>,
     ) -> Result<Self>
     where
@@ -387,7 +413,9 @@ impl SegmentNode {
         let storage = frugalos_raft::Storage::new(
             logger.clone(),
             node_id.local_id,
+            raft_device_id,
             device.clone(),
+            coordinator,
             frugalos_raft::StorageMetrics::new(),
         );
         let mailer = frugalos_raft::Mailer::new(

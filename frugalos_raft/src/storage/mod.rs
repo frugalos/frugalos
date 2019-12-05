@@ -16,28 +16,12 @@ pub use self::ballot::{LoadBallot, SaveBallot};
 pub use self::log::{DeleteLog, LoadLog, SaveLog};
 pub use self::log_prefix::{LoadLogPrefix, SaveLogPrefix};
 pub use self::log_suffix::{LoadLogSuffix, SaveLogSuffix};
+pub use super::raft_io::{DeviceOwnership, NodeCoordinator, RaftDeviceId};
 
 mod ballot;
 mod log;
 mod log_prefix;
 mod log_suffix;
-
-// ストレージの初期化処理を直列化するためのグローバル変数.
-//
-// 初期化時には、スナップ処理や大きなAppendEntriesの処理が入り重いので、
-// 並列度を下げるために、これを利用する.
-//
-// 最終的にはもう少し上手い仕組みを考えたい.
-// (個々のRaftノードに独立した仕組みにできるのとベスト)
-static INITIALIZATION_LOCK: AtomicUsize = AtomicUsize::new(0);
-
-fn acquire_initialization_lock() -> bool {
-    INITIALIZATION_LOCK.compare_and_swap(0, 1, atomic::Ordering::SeqCst) == 0
-}
-
-fn release_initialization_lock() {
-    INITIALIZATION_LOCK.fetch_sub(1, atomic::Ordering::SeqCst);
-}
 
 /// Raft用の永続ストレージ実装.
 #[derive(Debug)]
@@ -59,6 +43,7 @@ pub struct Storage {
     event_rx: mpsc::Receiver<Event>,
     event_tx: mpsc::Sender<Event>,
     phase: Phase,
+    coordinator: NodeCoordinator,
     metrics: StorageMetrics,
 }
 impl Storage {
@@ -66,7 +51,9 @@ impl Storage {
     pub fn new(
         logger: Logger,
         node_id: LocalNodeId,
+        device_id: RaftDeviceId,
         device: DeviceHandle,
+        coordinator: NodeCoordinator,
         metrics: StorageMetrics,
     ) -> Self {
         let (event_tx, event_rx) = mpsc::channel();
@@ -75,11 +62,13 @@ impl Storage {
                 logger,
                 node_id,
                 device,
+                device_id,
             },
             log_suffix: LogSuffix::default(),
             event_rx,
             event_tx,
             phase: Phase::Started,
+            coordinator,
             metrics,
         }
     }
@@ -162,11 +151,10 @@ impl Storage {
         LoadLog::new(future, self.metrics.clone())
     }
     pub(crate) fn save_log_suffix(&mut self, suffix: &LogSuffix) -> SaveLog {
-        if self.phase != Phase::Initialized {
+        if !self.phase.is_initialized() {
             // ログ書き込みが発生する、ということは初期化フェーズは抜けたことを意味する
             info!(self.handle.logger, "Initialized");
-            if self.phase == Phase::Initializing {
-                release_initialization_lock();
+            if self.phase.is_initializing() {
                 info!(self.handle.logger, "Initialization lock is released");
             }
             self.phase = Phase::Initialized;
@@ -189,11 +177,10 @@ impl Storage {
         SaveLog::new(log::SaveLogInner::Suffix(future), self.metrics.clone())
     }
     pub(crate) fn save_log_prefix(&mut self, prefix: LogPrefix) -> SaveLog {
-        if self.phase != Phase::Initialized {
+        if !self.phase.is_initialized() {
             // ログ書き込みが発生する、ということは初期化フェーズは抜けたことを意味する
             info!(self.handle.logger, "Initialized");
-            if self.phase == Phase::Initializing {
-                release_initialization_lock();
+            if self.phase.is_initializing() {
                 info!(self.handle.logger, "Initialization lock is released");
             }
             self.phase = Phase::Initialized;
@@ -209,10 +196,13 @@ impl Storage {
 
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn is_busy(&mut self) -> bool {
-        if self.phase == Phase::Started {
-            if acquire_initialization_lock() {
+        if self.phase.is_started() {
+            if let Some(ownership) = self
+                .coordinator
+                .try_acquire_ownership(self.handle.device_id)
+            {
                 info!(self.handle.logger, "Initialization lock is acquired");
-                self.phase = Phase::Initializing;
+                self.phase = Phase::Initializing(ownership);
                 false
             } else {
                 true
@@ -334,6 +324,7 @@ pub(crate) struct Handle {
     pub logger: Logger,
     pub node_id: LocalNodeId,
     pub device: DeviceHandle,
+    pub device_id: RaftDeviceId,
 }
 
 #[derive(Debug)]
@@ -362,11 +353,31 @@ where
     Box::new(future)
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 enum Phase {
     Started,
-    Initializing,
+    Initializing(DeviceOwnership),
     Initialized,
+}
+impl Phase {
+    fn is_initializing(&self) -> bool {
+        if let Phase::Initializing(_) = self {
+            return true;
+        }
+        false
+    }
+    fn is_initialized(&self) -> bool {
+        if let Phase::Initialized = self {
+            return true;
+        }
+        false
+    }
+    fn is_started(&self) -> bool {
+        if let Phase::Started = self {
+            return true;
+        }
+        false
+    }
 }
 
 /// Metrics for `storage`.

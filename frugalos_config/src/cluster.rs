@@ -8,7 +8,7 @@ use fibers_rpc::client::{
     ClientServiceBuilder as RpcServiceBuilder, ClientServiceHandle as RpcServiceHandle,
 };
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
-use frugalos_raft::{self, RaftIo};
+use frugalos_raft::{self, NodeCoordinator, RaftDeviceId, RaftIo};
 use futures::{Async, Future, Poll, Stream};
 use libfrugalos::client::config::Client;
 use libfrugalos::entity::server::Server;
@@ -87,10 +87,17 @@ pub fn make_rlog<P: AsRef<Path>, S: Spawn + Clone + Send + 'static>(
 
     // FIXME: パラメータ化
     let timer = frugalos_raft::Timer::new(Duration::from_secs(10), Duration::from_secs(35));
+    // NOTE: ここでは 1 Storage しか生成しないため ID は何でもよく、並行度も 1 でよい
+    let mut node_coordinator = NodeCoordinator::new();
+    let raft_device_id = RaftDeviceId::default();
+    // FIXME: 定数化
+    node_coordinator.put_device(raft_device_id, 1);
     let storage = frugalos_raft::Storage::new(
         logger,
         node.local_id,
+        raft_device_id,
         device.handle(),
+        node_coordinator,
         frugalos_raft::StorageMetrics::new(),
     );
     let mailer = frugalos_raft::Mailer::new(spawner, rpc_service, None);

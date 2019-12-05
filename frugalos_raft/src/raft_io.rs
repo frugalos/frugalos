@@ -5,6 +5,9 @@ use raftlog::{ErrorKind, Io, Result};
 use slog::Logger;
 use trackable::error::ErrorKindExt;
 
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
 use storage::{self, Storage};
 use timer::{Timeout, Timer};
 use {LocalNodeId, Mailer, ServiceHandle};
@@ -89,6 +92,61 @@ impl Drop for RaftIo {
                 self.logger,
                 "Cannot remove the node {:?}: {}", self.node_id, e
             );
+        }
+    }
+}
+
+/// デバイスID
+// FIXME どこの crate に置くかを再検討
+#[derive(Debug, Default, Clone, Copy, Hash, Eq, PartialEq)]
+pub struct RaftDeviceId(usize);
+
+/// デバイス毎の並行数.
+pub type DeviceOwnerships = Arc<Mutex<HashMap<RaftDeviceId, usize>>>;
+
+/// ノード間の処理を調停する.
+// 初期化時には、スナップ処理や大きなAppendEntriesの処理が入り重いので、
+// 並列度を下げるために、これを利用する.
+#[derive(Debug, Clone)]
+pub struct NodeCoordinator(DeviceOwnerships);
+impl NodeCoordinator {
+    /// `NodeCoordinator` を生成する.
+    pub fn new() -> Self {
+        Self(Arc::new(Mutex::new(HashMap::new())))
+    }
+    /// デバイスを登録する.
+    pub fn put_device(&mut self, device_id: RaftDeviceId, concurrency: usize) {
+        let mut locks = self.0.lock().expect("Lock never fails");
+        locks.entry(device_id).or_insert(concurrency);
+    }
+    /// 所有権を獲得する.
+    pub fn try_acquire_ownership(&mut self, device_id: RaftDeviceId) -> Option<DeviceOwnership> {
+        let mut locks = self.0.lock().expect("Lock never fails");
+        match locks.get_mut(&device_id) {
+            None => None,
+            Some(concurrency) if *concurrency == 0 => None,
+            Some(concurrency) => {
+                *concurrency -= 1;
+                Some(DeviceOwnership {
+                    device_id,
+                    ownerships: self.0.clone(),
+                })
+            }
+        }
+    }
+}
+
+/// デバイスを利用する権利.
+#[derive(Debug)]
+pub struct DeviceOwnership {
+    device_id: RaftDeviceId,
+    ownerships: DeviceOwnerships,
+}
+impl Drop for DeviceOwnership {
+    fn drop(&mut self) {
+        let mut locks = self.ownerships.lock().expect("Lock never fails");
+        if let Some(concurrency) = locks.get_mut(&self.device_id) {
+            *concurrency += 1;
         }
     }
 }

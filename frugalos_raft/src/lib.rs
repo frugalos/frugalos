@@ -40,7 +40,7 @@ pub mod future_impls {
 }
 
 pub use node::{LocalNodeId, NodeId};
-pub use raft_io::RaftIo;
+pub use raft_io::{DeviceOwnership, NodeCoordinator, RaftDeviceId, RaftIo};
 pub use rpc::{Mailer, RpcMetrics, Service, ServiceHandle};
 pub use storage::{ClearLog, Storage, StorageMetrics};
 pub use timer::Timer;

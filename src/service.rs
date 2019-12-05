@@ -12,7 +12,7 @@ use fibers_tasque::TaskQueueExt;
 use frugalos_config::{DeviceGroup, Event as ConfigEvent, Service as ConfigService};
 use frugalos_core::tracer::ThreadLocalTracer;
 use frugalos_mds;
-use frugalos_raft::{NodeId, Service as RaftService};
+use frugalos_raft::{NodeCoordinator, NodeId, RaftDeviceId, Service as RaftService};
 use frugalos_segment;
 use frugalos_segment::FrugalosSegmentConfig;
 use frugalos_segment::Service as SegmentService;
@@ -64,6 +64,8 @@ pub struct Service<S> {
     // 起動済みのノード一覧
     spawned_nodes: HashSet<NodeId>,
 
+    node_coordinator: NodeCoordinator,
+
     recovery_request: Option<RecoveryRequest>,
 }
 impl<S> Service<S>
@@ -108,6 +110,7 @@ where
             servers: HashMap::new(),
             spawned_nodes: HashSet::new(),
             recovery_request,
+            node_coordinator: NodeCoordinator::new(1), // FIXME 並行度を設定できるようにする
             segment_config,
         })
     }
@@ -129,6 +132,9 @@ where
                         id: DeviceId::new(device.id().clone()),
                         server: server.clone(),
                     };
+                    // TODO: seqno をセットする
+                    // FIXME: 並行度を設定できるようにする
+                    self.node_coordinator.put_device(RaftDeviceId(0), 1);
                     self.seqno_to_device.insert(device.seqno(), d);
                 }
                 if device
@@ -224,6 +230,7 @@ where
 
             // このサーバが扱うべきRaftノードを起動
             for (node, device_no) in members.iter().zip(group.members.iter()) {
+                let raft_device_id = RaftDeviceId(device_no as usize);
                 let device_id =
                     if let Some(id) = self.local_devices.get(&device_no).map(LocalDevice::id) {
                         id
@@ -251,12 +258,14 @@ where
                 let device_handle = self.local_devices.get_mut(&device_no).unwrap().watch();
                 track!(self.frugalos_segment_service.handle().add_node(
                     node.clone(),
+                    raft_device_id,
                     Box::new(
                         device_handle
                             .map_err(|e| frugalos_segment::ErrorKind::Other.takes_over(e).into())
                     ),
                     segment.clone(),
                     members.iter().map(NodeId::to_raft_node_id).collect(),
+                    self.node_coordinator.clone(),
                     self.recovery_request.is_some(),
                 ))?;
             }
