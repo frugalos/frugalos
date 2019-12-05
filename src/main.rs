@@ -89,11 +89,6 @@ fn main() {
                         .takes_value(true),
                 )
                 .arg(
-                    Arg::with_name("STOP_WAITING_TIME_MILLIS")
-                        .long("stop-waiting-time-millis")
-                        .takes_value(true),
-                )
-                .arg(
                     Arg::with_name("RPC_CONNECT_TIMEOUT_MILLIS")
                         .long("rpc-connect-timeout-millis")
                         .takes_value(true),
@@ -275,7 +270,7 @@ fn main() {
             &logger,
             config.clone()
         ));
-        track_try_unwrap!(daemon.run(config.daemon.clone()));
+        track_try_unwrap!(daemon.run());
         // NOTE: ログ出力(非同期)用に少し待機
         std::thread::sleep(std::time::Duration::from_millis(100));
         debug!(logger, "config: {:?}", config);
@@ -406,12 +401,6 @@ fn set_daemon_config(
     }
     if let Some(v) = matches.value_of("SAMPLING_RATE") {
         config.sampling_rate = v.parse().map_err(|e| track!(Error::from(e)))?;
-    }
-    if let Some(v) = matches.value_of("STOP_WAITING_TIME_MILLIS") {
-        config.stop_waiting_time = v
-            .parse::<u64>()
-            .map(Duration::from_millis)
-            .map_err(|e| track!(Error::from(e)))?;
     }
     Ok(())
 }
