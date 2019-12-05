@@ -108,6 +108,11 @@ where
     pub fn set_repair_config(&mut self, repair_config: RepairConfig) {
         // TODO: handle RepairConfig's remaining field (segment_gc_concurrency_limit)
         if let Some(repair_idleness_threshold) = repair_config.repair_idleness_threshold {
+            // https://github.com/frugalos/frugalos/issues/244
+            info!(
+                self.logger,
+                "repair_idleness_threshold set to {:?}", repair_idleness_threshold,
+            );
             for (_, segment_node_handle) in self.segment_node_handles.iter() {
                 let command =
                     SegmentNodeCommand::SetRepairIdlenessThreshold(repair_idleness_threshold);

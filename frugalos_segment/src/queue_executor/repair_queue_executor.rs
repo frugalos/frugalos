@@ -101,10 +101,6 @@ impl RepairQueueExecutor {
         &mut self,
         repair_idleness_threshold: RepairIdleness,
     ) {
-        info!(
-            self.logger,
-            "repair_idleness_threshold set to {:?}", repair_idleness_threshold,
-        );
         self.repair_idleness_threshold = repair_idleness_threshold;
     }
 }
