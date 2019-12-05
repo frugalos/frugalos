@@ -17,10 +17,12 @@ use std::mem;
 use std::ops::Range;
 use SegmentStatistics;
 
+// TODO use の並び順を直す
 use self::ec::ErasureCoder;
 use self::mds::MdsClient;
 use self::storage::StorageClient;
 use config::ClientConfig;
+use metrics::MdsClientMetrics;
 use trackable::error::ErrorKindExt;
 use {Error, ErrorKind, ObjectValue, Result};
 
@@ -45,11 +47,13 @@ impl Client {
         config: ClientConfig,
         ec: Option<ErasureCoder>,
     ) -> Result<Self> {
+        let mds_client_metrics = track!(MdsClientMetrics::new())?;
         let mds = MdsClient::new(
             logger.clone(),
             rpc_service.clone(),
             config.cluster.clone(),
             config.mds.clone(),
+            mds_client_metrics,
         );
         let storage = track!(StorageClient::new(logger.clone(), config, rpc_service, ec))?;
         Ok(Client {

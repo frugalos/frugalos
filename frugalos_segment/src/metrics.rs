@@ -1,8 +1,78 @@
 //! Metrics for `frugalos_segment`.
 
-use prometrics::metrics::{Counter, CounterBuilder};
+use prometrics::metrics::{Counter, CounterBuilder, Histogram, HistogramBuilder};
 
 use Result;
+
+#[derive(Debug, Clone)]
+pub struct MdsClientMetrics {
+    pub(crate) request_max_retry_reached_total: Counter,
+    pub(crate) request_retries_total: Histogram,
+    pub(crate) request_timeout_total: Histogram,
+    pub(crate) request_duration_seconds: Histogram,
+}
+impl MdsClientMetrics {
+    pub(crate) fn new() -> Result<Self> {
+        let request_max_retry_reached_total = track!(CounterBuilder::new(
+            "mds_client_request_max_retry_reached_total"
+        )
+        .namespace("frugalos")
+        .subsystem("segment")
+        .help("Number of MDS request retries")
+        .default_registry()
+        .finish())?;
+        let request_retries_total =
+            track!(HistogramBuilder::new("mds_client_request_retries_total")
+                .namespace("frugalos")
+                .subsystem("segment")
+                .help("MDS request retries")
+                .bucket(0.0)
+                .bucket(1.0)
+                .bucket(2.0)
+                .bucket(3.0)
+                .bucket(4.0)
+                .bucket(5.0)
+                .default_registry()
+                .finish())?;
+        let request_timeout_total =
+            track!(HistogramBuilder::new("mds_client_request_timeout_total")
+                .namespace("frugalos")
+                .subsystem("segment")
+                .help("MDS request timeout")
+                .bucket(0.0)
+                .bucket(1.0)
+                .bucket(2.0)
+                .bucket(3.0)
+                .bucket(4.0)
+                .bucket(5.0)
+                .default_registry()
+                .finish())?;
+        let request_duration_seconds =
+            track!(HistogramBuilder::new("mds_client_request_duration_seconds")
+                .namespace("frugalos")
+                .subsystem("segment")
+                .help("MDS request duration")
+                .bucket(0.001)
+                .bucket(0.005)
+                .bucket(0.01)
+                .bucket(0.05)
+                .bucket(0.1)
+                .bucket(0.5)
+                .bucket(1.0)
+                .bucket(2.0)
+                .bucket(3.0)
+                .bucket(4.0)
+                .bucket(5.0)
+                .default_registry()
+                .finish())?;
+        Ok(Self {
+            request_max_retry_reached_total,
+            request_retries_total,
+            request_timeout_total,
+            request_duration_seconds,
+        })
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct PutAllMetrics {
