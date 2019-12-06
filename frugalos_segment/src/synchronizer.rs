@@ -118,8 +118,9 @@ impl Synchronizer {
                 Event::Putted { .. } => {
                     self.general_queue.push(event);
                 }
-                Event::Deleted { .. } => {
+                Event::Deleted { version, .. } => {
                     self.general_queue.push(event);
+                    self.repair_queue.delete(version);
                 }
                 // Because pushing FullSync into the task queue causes difficulty in implementation,
                 // we decided not to push this task to the task priority queue and handle it manually.
