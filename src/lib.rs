@@ -38,6 +38,7 @@ extern crate trackable;
 extern crate clap;
 extern crate sloggers;
 
+use fibers_http_server::metrics::BucketConfig;
 use std::fs::File;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -157,6 +158,9 @@ pub struct FrugalosDaemonConfig {
     /// Jaegerのトレースのサンプリング確率。
     #[serde(default = "default_sampling_rate")]
     pub sampling_rate: f64,
+    /// daemon 管理の HTTP サーバのメトリクスのバケツの設定
+    #[serde(default)]
+    pub bucket_config: HistogramBucketConfig,
 }
 
 impl Default for FrugalosDaemonConfig {
@@ -164,6 +168,7 @@ impl Default for FrugalosDaemonConfig {
         Self {
             executor_threads: default_executor_threads(),
             sampling_rate: default_sampling_rate(),
+            bucket_config: HistogramBucketConfig::default(),
         }
     }
 }
@@ -174,12 +179,16 @@ pub struct FrugalosHttpServerConfig {
     /// bind するアドレス。
     #[serde(default = "default_http_server_bind_addr")]
     pub bind_addr: SocketAddr,
+    /// HTTP サーバのメトリクスのバケツの設定
+    #[serde(default)]
+    pub bucket_config: HistogramBucketConfig,
 }
 
 impl Default for FrugalosHttpServerConfig {
     fn default() -> Self {
         Self {
             bind_addr: default_http_server_bind_addr(),
+            bucket_config: HistogramBucketConfig::default(),
         }
     }
 }
@@ -218,6 +227,21 @@ impl Default for FrugalosRpcClientConfig {
         Self {
             tcp_connect_timeout: default_tcp_connect_timeout(),
             tcp_write_timeout: default_tcp_write_timeout(),
+        }
+    }
+}
+
+/// histogram メトリクスにおける、バケツの upper_bound の設定。単調増加である必要がある。
+/// 設定がない場合は fibers_http_server のデフォルト値が使われる。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct HistogramBucketConfig(pub Option<Vec<f64>>);
+
+impl From<HistogramBucketConfig> for BucketConfig {
+    /// BucketConfig を作って返す
+    fn from(config: HistogramBucketConfig) -> Self {
+        match config.0 {
+            Some(buckets) => BucketConfig::new(buckets),
+            None => BucketConfig::default(),
         }
     }
 }
@@ -272,8 +296,17 @@ frugalos:
   daemon:
     executor_threads: 3
     sampling_rate: 0.1
+    bucket_config:
+      - 0.5
+      - 1.0
+      - 1.5
   http_server:
     bind_addr: "127.0.0.1:2222"
+    bucket_config:
+      - 1.5
+      - 2.0
+      - 3.0
+      - 4.0
   rpc_client:
     tcp_connect_timeout_millis: 8000
     tcp_write_timeout_millis: 10000
@@ -317,7 +350,9 @@ frugalos:
         expected.loglevel = sloggers::types::Severity::Critical;
         expected.daemon.sampling_rate = 0.1;
         expected.daemon.executor_threads = 3;
+        expected.daemon.bucket_config = HistogramBucketConfig(Some(vec![0.5, 1.0, 1.5]));
         expected.http_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 2222));
+        expected.http_server.bucket_config = HistogramBucketConfig(Some(vec![1.5, 2.0, 3.0, 4.0]));
         expected.rpc_client.tcp_connect_timeout = Duration::from_secs(8);
         expected.rpc_client.tcp_write_timeout = Duration::from_secs(10);
         expected.mds.commit_timeout_threshold = 20;

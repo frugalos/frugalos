@@ -20,7 +20,7 @@ cannyls = "0.9"
 cannyls_rpc = "0.1"
 clap = "2"
 fibers = "0.1"
-fibers_http_server = "0.1"
+fibers_http_server = "0.1.12"
 fibers_rpc = "0.2"
 fibers_tasque = "0.1"
 frugalos_core = { version = "0.1", path = "frugalos_core" }

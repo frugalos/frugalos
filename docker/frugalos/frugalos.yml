@@ -1,6 +1,11 @@
 ---
 # 設定項目については https://github.com/frugalos/frugalos/wiki/Configuration を参照。
 frugalos:
+  daemon:
+    bucket_config:
+      - 0.5
+      - 1.0
+      - 1.5
   rpc_client:
     tcp_connect_timeout_millis: 5000
     tcp_write_timeout_millis: 5000
@@ -12,3 +17,11 @@ frugalos:
       head_request_policy:
         type: 'speculative'
         timeout_millis: 200
+  http_server:
+    bucket_config:
+      - 0.5
+      - 1.0
+      - 1.5
+      - 2.0
+      - 3.0
+      - 4.0

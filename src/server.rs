@@ -14,6 +14,7 @@ use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, ObjectPrefix, ObjectSummary, ObjectVersion,
 };
 use libfrugalos::expect::Expect;
+use prometrics::metrics::MetricBuilder;
 use rustracing::tag::{StdTag, Tag};
 use rustracing_jaeger::reporter::JaegerCompactReporter;
 use rustracing_jaeger::span::{SpanContext, SpanReceiver};
@@ -93,16 +94,39 @@ impl Server {
     }
     pub fn register(self, builder: &mut HttpServerBuilder) -> Result<()> {
         track!(builder.add_handler(ListSegments(self.clone())))?;
-        track!(builder.add_handler(WithMetrics::new(ListObjects(self.clone()))))?;
-        track!(builder.add_handler(WithMetrics::new(GetObject(self.clone()))))?;
-        track!(builder.add_handler(WithMetrics::new(HeadObject(self.clone()))))?;
-        track!(builder.add_handler(WithMetrics::new(DeleteObject(self.clone()))))?;
-        track!(builder.add_handler(WithMetrics::new(DeleteObjectByPrefix(self.clone()))))?;
-        track!(builder.add_handler(WithMetrics::new(PutObject(self.clone()))))?;
-        track!(builder.add_handler(WithMetrics::new(PutManyObject(self.clone()))))?;
-        track!(builder.add_handler(WithMetrics::new(GetBucketStatistics(self.clone()))))?;
+        self.register_once_with_metrics(ListObjects(self.clone()), builder)?;
+        self.register_once_with_metrics(GetObject(self.clone()), builder)?;
+        self.register_once_with_metrics(HeadObject(self.clone()), builder)?;
+        self.register_once_with_metrics(DeleteObject(self.clone()), builder)?;
+        self.register_once_with_metrics(DeleteObjectByPrefix(self.clone()), builder)?;
+        self.register_once_with_metrics(PutObject(self.clone()), builder)?;
+        self.register_once_with_metrics(PutManyObject(self.clone()), builder)?;
+        self.register_once_with_metrics(GetBucketStatistics(self.clone()), builder)?;
         track!(builder.add_handler(JemallocStats))?;
         track!(builder.add_handler(CurrentConfigurations(self.config)))?;
+        Ok(())
+    }
+
+    /// Add one handler with metrics
+    fn register_once_with_metrics<H>(
+        &self,
+        handle_request: H,
+        builder: &mut HttpServerBuilder,
+    ) -> Result<()>
+    where
+        H: HandleRequest,
+        H::Decoder: Default,
+        H::Encoder: Default,
+    {
+        // Config に書かれたバケツの設定を読む
+        let bucket_config = self.config.http_server.bucket_config.clone().into();
+        track!(
+            builder.add_handler(WithMetrics::with_metrics_and_bucket_config(
+                handle_request,
+                MetricBuilder::new(),
+                bucket_config
+            ))
+        )?;
         Ok(())
     }
 }
