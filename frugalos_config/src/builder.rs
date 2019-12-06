@@ -223,12 +223,8 @@ impl<'a> SegmentsBuilder<'a> {
         unsafe { &*(device as *const _) }
     }
 
-    #[allow(clippy::mut_from_ref)]
-    #[allow(clippy::cast_ref_to_mut)]
-    fn get_ring(&self, device_no: DeviceNo) -> &mut HashRing {
-        // NOTE: 現状のRustの借用チェックの制約を回避するためのワークアラウンド
-        let ring = &self.device_states[&device_no].ring;
-        unsafe { &mut *(ring as *const _ as *mut _) }
+    fn get_ring(&self, device_no: DeviceNo) -> &HashRing {
+        &self.device_states[&device_no].ring
     }
 
     fn init_device_states(
