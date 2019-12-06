@@ -548,14 +548,6 @@ impl HandleRequest for PutObject {
                 content.len(),
                 req.url()
             );
-            {
-                use std::fs::File;
-                use std::io::Write;
-
-                // TODO: 調査用の一時コード
-                let _ = File::create("/tmp/frugalos.huge.object.dump")
-                    .and_then(|mut f| f.write_all(&content));
-            }
             return Box::new(futures::finished(make_object_response(
                 Status::BadRequest,
                 None,
