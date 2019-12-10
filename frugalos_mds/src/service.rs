@@ -119,7 +119,7 @@ impl Service {
                 }
                 ServiceState::Stopping {
                     logger: self.logger.clone(),
-                    nodes: nodes.clone(),
+                    nodes,
                     future: Box::new(futures::future::join_all(futures)),
                 }
             }

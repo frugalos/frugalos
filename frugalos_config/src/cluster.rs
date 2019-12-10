@@ -82,7 +82,7 @@ pub fn make_rlog<P: AsRef<Path>, S: Spawn + Clone + Send + 'static>(
         track!(storage_builder.open(nvm))?
     };
     let device = cannyls::device::DeviceBuilder::new()
-        .metrics(metrics.clone())
+        .metrics(metrics)
         .spawn(|| Ok(storage));
 
     // FIXME: パラメータ化
@@ -245,7 +245,7 @@ pub fn leave<P: AsRef<Path>>(
     let client = Client::new(contact_server, rpc_service.handle());
     executor.spawn(rpc_service.map_err(|e| panic!("{}", e)));
 
-    let monitor = executor.spawn_monitor(client.delete_server(local.id.clone()));
+    let monitor = executor.spawn_monitor(client.delete_server(local.id));
     let result = track!(executor.run_fiber(monitor).map_err(Error::from))?;
     let left = track!(result.map_err(Error::from))?;
     info!(

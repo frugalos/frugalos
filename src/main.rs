@@ -172,7 +172,7 @@ fn main() {
         warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
         let logger = logger.new(o!("server" => format!("{}@{}", server_id, server_addr)));
         let server = Server::new(
-            server_id.to_string(),
+            server_id,
             track_try_unwrap!(server_addr.parse().map_err(Failure::from_error)),
         );
         debug!(logger, "config: {:?}", config);
@@ -196,7 +196,7 @@ fn main() {
         warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
         let logger = logger.new(o!("server" => format!("{}@{}", server_id, server_addr)));
         let server = Server::new(
-            server_id.to_string(),
+            server_id,
             track_try_unwrap!(server_addr.parse().map_err(Failure::from_error)),
         );
         let contact_server =
@@ -236,7 +236,7 @@ fn main() {
         warn_if_there_are_unknown_fields(&mut logger, &unknown_fields);
         let logger = logger.new(o!("server" => format!("{}@{}", server_id, server_addr)));
         let mut server = Server::new(
-            server_id.to_string(),
+            server_id,
             track_try_unwrap!(server_addr.parse().map_err(Failure::from_error)),
         );
         server.seqno = track_try_unwrap!(get_server_seqno(matches));

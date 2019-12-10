@@ -11,7 +11,7 @@ pub struct RpcServer {
 impl RpcServer {
     pub fn register(service_handle: ServiceHandle, builder: &mut RpcServerBuilder) {
         let this = RpcServer { service_handle };
-        builder.add_call_handler::<rpc::SetRepairConfigRpc, _>(this.clone());
+        builder.add_call_handler::<rpc::SetRepairConfigRpc, _>(this);
     }
 }
 

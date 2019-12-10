@@ -60,7 +60,7 @@ pub fn put_many_objects<E>(
                     .span(&span)
                     .put(object_id.clone(), content.clone())
                     .then(move |result| {
-                        if let Err(e) = track!(result.clone()) {
+                        if let Err(e) = track!(result) {
                             warn!(
                                 logger,
                                 "Cannot put object (bucket={:?}, object={:?}): {}",
