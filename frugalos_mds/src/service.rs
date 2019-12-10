@@ -13,6 +13,7 @@ use std::sync::Arc;
 use node::NodeHandle;
 use server::Server;
 use {Error, Result};
+use {StartSegmentGcReply, StopSegmentGcReply};
 
 type Nodes = Arc<AtomicImmut<HashMap<LocalNodeId, NodeHandle>>>;
 
@@ -146,7 +147,7 @@ impl Service {
     /// After this command, mds sends to Synchronizer a command which contains the following:
     /// - machine
     /// - next_commit_id
-    pub fn start_segment_gc(&self, local_id: LocalNodeId, tx: fibers::sync::oneshot::Sender<()>) {
+    pub fn start_segment_gc(&self, local_id: LocalNodeId, tx: StartSegmentGcReply) {
         if let Some(node) = self.state.nodes().load().get(&local_id) {
             info!(
                 self.logger,
@@ -156,7 +157,7 @@ impl Service {
         }
     }
     /// Stops segment_gc on a single node.
-    pub fn stop_segment_gc(&self, local_id: LocalNodeId, tx: fibers::sync::oneshot::Sender<()>) {
+    pub fn stop_segment_gc(&self, local_id: LocalNodeId, tx: StopSegmentGcReply) {
         if let Some(node) = self.state.nodes().load().get(&local_id) {
             info!(
                 self.logger,

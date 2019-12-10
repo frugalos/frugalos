@@ -26,9 +26,9 @@ mod snapshot;
 pub(crate) type Reply<T> = Monitored<T, Error>;
 
 /// StartSegmentGcReply で渡される tx の型。
-pub type StartSegmentGcReply = fibers::sync::oneshot::Sender<()>;
+pub type StartSegmentGcReply = Monitored<(), Box<dyn std::error::Error + Send + 'static>>;
 /// StopSegmentGcReply で渡される tx の型。
-pub type StopSegmentGcReply = fibers::sync::oneshot::Sender<()>;
+pub type StopSegmentGcReply = Monitored<(), Box<dyn std::error::Error + Send + 'static>>;
 
 /// Raftに提案中のコマンド.
 #[derive(Debug)]

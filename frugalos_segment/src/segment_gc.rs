@@ -82,9 +82,17 @@ impl SegmentGc {
                     segment_gc_metrics.segment_gc_remaining,
                 )
             })
-            .map(move |()| {
-                info!(logger2, "SegmentGc objects done");
-                let _ = tx.send(());
+            .then(move |result| {
+                match &result {
+                    Ok(()) => {
+                        info!(logger2, "SegmentGc objects done");
+                        tx.exit(Ok(()));
+                    }
+                    Err(e) => {
+                        tx.exit(Err(Box::new(e.clone())));
+                    }
+                }
+                futures::future::done(result)
             });
 
         let future = Box::new(combined_future);

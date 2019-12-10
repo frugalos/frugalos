@@ -8,6 +8,7 @@ use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
 use frugalos_core::tracer::ThreadLocalTracer;
 use frugalos_mds::{
     FrugalosMdsConfig, Node, Service as RaftMdsService, ServiceHandle as MdsHandle,
+    StartSegmentGcReply, StopSegmentGcReply,
 };
 use frugalos_raft::{self, LocalNodeId, NodeId};
 use futures::{Async, Future, Poll, Stream};
@@ -21,6 +22,7 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use client::storage::StorageClient;
+use fibers::sync::oneshot::{Monitor, MonitorError};
 use rpc_server::RpcServer;
 use segment_gc_manager::{SegmentGcManager, Toggle, UnitFuture};
 use synchronizer::Synchronizer;
@@ -318,12 +320,12 @@ impl ServiceHandle {
     }
     /// segment_gc の開始を要求する。segment_gc の実行が終わったら tx に send する。
     /// 途中で停止された場合は tx は捨てられる。
-    pub fn start_segment_gc(&self, local_id: LocalNodeId, tx: fibers::sync::oneshot::Sender<()>) {
+    pub fn start_segment_gc(&self, local_id: LocalNodeId, tx: StartSegmentGcReply) {
         let command = Command::StartSegmentGc(local_id, tx);
         let _ = self.command_tx.send(command);
     }
     /// segment_gc の停止を要求する。停止が終わったら tx に send する。
-    pub fn stop_segment_gc(&self, local_id: LocalNodeId, tx: fibers::sync::oneshot::Sender<()>) {
+    pub fn stop_segment_gc(&self, local_id: LocalNodeId, tx: StopSegmentGcReply) {
         let command = Command::StopSegmentGc(local_id, tx);
         let _ = self.command_tx.send(command);
     }
@@ -391,8 +393,8 @@ enum Command {
         RaftConfig,
     ),
     SetRepairConfig(RepairConfig),
-    StartSegmentGc(LocalNodeId, fibers::sync::oneshot::Sender<()>),
-    StopSegmentGc(LocalNodeId, fibers::sync::oneshot::Sender<()>),
+    StartSegmentGc(LocalNodeId, StartSegmentGcReply),
+    StopSegmentGc(LocalNodeId, StopSegmentGcReply),
 }
 
 struct SegmentNode {
@@ -553,18 +555,27 @@ struct SegmentNodeToggle(ServiceHandle, LocalNodeId);
 
 impl Toggle for SegmentNodeToggle {
     fn start(&self) -> UnitFuture {
-        let (tx, rx) = fibers::sync::oneshot::channel();
+        let (tx, rx) = fibers::sync::oneshot::monitor();
         self.0.start_segment_gc(self.1, tx);
-        Box::new(rx.map_err(
-            |_e| (), // エラーを捨てる
-        ))
+        Self::convert_rx_to_unit_future(rx)
     }
 
     fn stop(&self) -> UnitFuture {
-        let (tx, rx) = fibers::sync::oneshot::channel();
+        let (tx, rx) = fibers::sync::oneshot::monitor();
         self.0.stop_segment_gc(self.1, tx);
-        Box::new(rx.map_err(
-            |_e| (), // エラーを捨てる
-        ))
+        Self::convert_rx_to_unit_future(rx)
+    }
+}
+
+impl SegmentNodeToggle {
+    // rx を UnitFuture に変換するためのヘルパー関数。
+    // polymorphism を導入しようとするとなぜか型エラーになる。(TODO: 解消)
+    fn convert_rx_to_unit_future(
+        rx: Monitor<(), Box<dyn std::error::Error + Send + 'static>>,
+    ) -> UnitFuture {
+        Box::new(rx.map_err(|e| match e {
+            MonitorError::Aborted => Box::new(ErrorKind::Other.error()),
+            MonitorError::Failed(e) => e,
+        }))
     }
 }

@@ -1,7 +1,9 @@
 use futures::{Async, Future, Poll};
 use slog::Logger;
+use std::error::Error;
 
-pub(crate) type UnitFuture = Box<dyn Future<Item = (), Error = ()> + Send>;
+pub(crate) type UnitFuture =
+    Box<dyn Future<Item = (), Error = Box<dyn Error + Send + 'static>> + Send + 'static>;
 
 /// 実行開始と停止ができる型
 pub(crate) trait Toggle {
@@ -66,9 +68,12 @@ impl<Task: Toggle> Future for SegmentGcManager<Task> {
             match fut.poll() {
                 Ok(Async::NotReady) => new_running.push((index, fut)),
                 Ok(Async::Ready(())) => (),
-                Err(_) => {
+                Err(e) => {
                     // ログだけ吐いて握り潰す
-                    warn!(self.logger, "Error executing running: index = {}", index);
+                    warn!(
+                        self.logger,
+                        "Error executing running: index = {}, error = {:?}", index, e
+                    );
                 }
             }
         }
@@ -79,9 +84,12 @@ impl<Task: Toggle> Future for SegmentGcManager<Task> {
             match fut.poll() {
                 Ok(Async::NotReady) => new_stopping.push((index, fut)),
                 Ok(Async::Ready(())) => self.waiting.push(index),
-                Err(_) => {
+                Err(e) => {
                     // ログだけ吐いて握り潰す
-                    warn!(self.logger, "Error executing running: index = {}", index);
+                    warn!(
+                        self.logger,
+                        "Error in executing a task: index = {}, error = {:?}", index, e
+                    );
                 }
             }
         }
