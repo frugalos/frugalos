@@ -43,7 +43,7 @@ pub struct Service<S> {
     // Senders of `SegmentNode`s
     segment_node_handles: HashMap<LocalNodeId, SegmentNodeHandle>,
     repair_concurrency: Arc<Mutex<RepairConcurrency>>,
-    segment_gc_manager: Option<SegmentGcManager<SegmentNodeToggle>>,
+    segment_gc_manager: Option<SegmentGcManager<SegmentGcToggle>>,
 }
 impl<S> Service<S>
 where
@@ -258,7 +258,7 @@ where
             let mut manager = SegmentGcManager::new(self.logger.clone());
             let mut tasks = Vec::new();
             for &local_id in self.segment_node_handles.keys() {
-                tasks.push(SegmentNodeToggle(self.handle(), local_id));
+                tasks.push(SegmentGcToggle(self.handle(), local_id));
             }
             manager.init(tasks);
             self.segment_gc_manager = Some(manager);
@@ -552,9 +552,9 @@ enum SegmentNodeCommand {
 
 /// SegmentService に segment_gc 要求を送る。
 /// machine の情報が欲しいため MdsService を経由しなければならない。
-struct SegmentNodeToggle(ServiceHandle, LocalNodeId);
+struct SegmentGcToggle(ServiceHandle, LocalNodeId);
 
-impl Toggle for SegmentNodeToggle {
+impl Toggle for SegmentGcToggle {
     fn start(&self) -> UnitFuture {
         let (tx, rx) = fibers::sync::oneshot::monitor();
         self.0.start_segment_gc(self.1, tx);
@@ -568,7 +568,7 @@ impl Toggle for SegmentNodeToggle {
     }
 }
 
-impl SegmentNodeToggle {
+impl SegmentGcToggle {
     // rx を UnitFuture に変換するためのヘルパー関数。
     // polymorphism を導入しようとするとなぜか型エラーになる。(TODO: 解消)
     fn convert_rx_to_unit_future(
