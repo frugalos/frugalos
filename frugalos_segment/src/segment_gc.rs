@@ -252,8 +252,7 @@ mod tests {
     use cannyls::device::DeviceHandle;
     use cannyls::lump::LumpId;
     use futures::future::Future;
-    use libfrugalos::entity::object::{Metadata, ObjectVersion};
-    use libfrugalos::expect::Expect;
+    use libfrugalos::entity::object::ObjectVersion;
     use segment_gc::{
         make_create_object_table, make_list_and_delete_content, ObjectTable, SegmentGc,
     };
@@ -264,7 +263,6 @@ mod tests {
 
     use config::make_lump_id;
     use fibers::executor::Executor;
-    use frugalos_mds::machine::Machine;
     use prometrics::metrics::{Counter, Gauge};
 
     #[test]
@@ -328,17 +326,12 @@ mod tests {
     #[test]
     fn create_object_table_lists_objects_correctly() -> TestResult {
         let logger = Logger::root(Discard, o!());
-        let mut machine = Machine::new();
+        let mut object_versions = Vec::new();
         for i in 0..10 {
-            let metadata = Metadata {
-                version: ObjectVersion(i),
-                data: vec![],
-            };
-
-            machine.put(format!("test-object-{}", i), metadata, &Expect::None)?;
+            object_versions.push(ObjectVersion(i));
         }
 
-        let create_object_table = make_create_object_table(logger, machine);
+        let create_object_table = make_create_object_table(logger, object_versions);
         let ObjectTable(result) = wait(create_object_table)?;
         assert_eq!(result.len(), 10);
         for (i, object_version) in result.into_iter().enumerate() {
