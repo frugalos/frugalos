@@ -1,6 +1,8 @@
 //! Definitions for frugalos set-repair-config
 use clap::{App, Arg, ArgMatches, SubCommand};
-use libfrugalos::repair::{RepairConcurrencyLimit, RepairConfig, RepairIdleness};
+use libfrugalos::repair::{
+    RepairConcurrencyLimit, RepairConfig, RepairIdleness, SegmentGcConcurrencyLimit,
+};
 use sloggers::Build;
 use sloggers::LoggerBuilder;
 use std::time::Duration;
@@ -19,6 +21,8 @@ static DISABLE_REPAIR_IDLENESS: &str = "DISABLE_REPAIR_IDLENESS";
 static DISABLE_REPAIR_IDLENESS_LONG_ARG: &str = "disable-repair-idleness";
 static REPAIR_CONCURRENCY_LIMIT: &str = "REPAIR_CONCURRENCY_LIMIT";
 static REPAIR_CONCURRENCY_LIMIT_LONG_ARG: &str = "repair-concurrency-limit";
+static SEGMENT_GC_CONCURRENCY_LIMIT: &str = "SEGMENT_GC_CONCURRENCY_LIMIT";
+static SEGMENT_GC_CONCURRENCY_LIMIT_LONG_ARG: &str = "segment-gc-concurrency-limit";
 
 impl FrugalosSubcommand for SetRepairConfigCommand {
     fn get_subcommand<'a, 'b: 'a>(&self) -> App<'a, 'b> {
@@ -37,6 +41,11 @@ impl FrugalosSubcommand for SetRepairConfigCommand {
             .arg(
                 Arg::with_name(REPAIR_CONCURRENCY_LIMIT)
                     .long(REPAIR_CONCURRENCY_LIMIT_LONG_ARG)
+                    .takes_value(true),
+            )
+            .arg(
+                Arg::with_name(SEGMENT_GC_CONCURRENCY_LIMIT)
+                    .long(SEGMENT_GC_CONCURRENCY_LIMIT_LONG_ARG)
                     .takes_value(true),
             )
     }
@@ -87,10 +96,17 @@ impl SetRepairConfigCommand {
             RepairConcurrencyLimit(limit)
         });
         // TODO: accept segment_gc_concurrency_limit
+        let segment_gc_concurrency_limit =
+            matches.value_of(SEGMENT_GC_CONCURRENCY_LIMIT).map(|str| {
+                let limit: u64 = track_try_unwrap!(str.parse().map_err(|_| Error::from(
+                    ErrorKind::InvalidInput.cause("segment-gc-concurrency-limit must be a u64")
+                )));
+                SegmentGcConcurrencyLimit(limit)
+            });
         RepairConfig {
             repair_concurrency_limit,
             repair_idleness_threshold,
-            segment_gc_concurrency_limit: None,
+            segment_gc_concurrency_limit,
         }
     }
 }
