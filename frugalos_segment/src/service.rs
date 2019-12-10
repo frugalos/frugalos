@@ -7,7 +7,7 @@ use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
 use frugalos_core::tracer::ThreadLocalTracer;
 use frugalos_mds::{
-    FrugalosMdsConfig, Node, Service as RaftMdsService, ServiceHandle as MdsHandle,
+    Event, FrugalosMdsConfig, Node, Service as RaftMdsService, ServiceHandle as MdsHandle,
 };
 use frugalos_raft::{self, LocalNodeId, NodeId};
 use futures::{Async, Future, Poll, Stream};
@@ -19,9 +19,12 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use client::storage::StorageClient;
+use fibers::sync::mpsc::Sender;
 use libfrugalos::repair::{RepairConfig, RepairIdleness};
 use rpc_server::RpcServer;
+use segment_gc_manager::{Toggle, UnitFuture};
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 use synchronizer::Synchronizer;
 use {Client, Error, ErrorKind, Result};
 
@@ -196,7 +199,7 @@ where
                             service_handle,
                             client,
                             cluster,
-                            segment_node_command_rx
+                            segment_node_command_rx,
                         ))
                     })
                     .map_err(move |e| crit!(logger, "Error: {}", e))
@@ -205,6 +208,12 @@ where
             }
             Command::SetRepairConfig(repair_config) => {
                 self.set_repair_config(repair_config);
+            }
+            Command::StartSegmentGc(local_id, tx) => {
+                self.mds_service.start_segment_gc(local_id, tx);
+            }
+            Command::StopSegmentGc(local_id, tx) => {
+                self.mds_service.stop_segment_gc(local_id, tx);
             }
         }
     }
@@ -280,6 +289,15 @@ impl ServiceHandle {
     pub fn acquire_repair_lock(&self) -> Option<RepairLock> {
         RepairLock::new(&self.repair_concurrency)
     }
+    /// segment_gc の開始を要求する。segment_gc の実行が終わったら tx に send する。
+    pub fn start_segment_gc(&self, local_id: LocalNodeId, tx: fibers::sync::oneshot::Sender<()>) {
+        let command = Command::StartSegmentGc(local_id, tx);
+        let _ = self.command_tx.send(command);
+    }
+    pub fn stop_segment_gc(&self, local_id: LocalNodeId, tx: fibers::sync::oneshot::Sender<()>) {
+        let command = Command::StopSegmentGc(local_id, tx);
+        let _ = self.command_tx.send(command);
+    }
 }
 
 // Settings of repair's concurrency.
@@ -344,6 +362,8 @@ enum Command {
         RaftConfig,
     ),
     SetRepairConfig(RepairConfig),
+    StartSegmentGc(LocalNodeId, fibers::sync::oneshot::Sender<()>),
+    StopSegmentGc(LocalNodeId, fibers::sync::oneshot::Sender<()>),
 }
 
 struct SegmentNode {
@@ -449,7 +469,7 @@ impl SegmentNode {
         }
         while let Async::Ready(event) = track!(self.node.poll())? {
             if let Some(event) = event {
-                self.synchronizer.handle_event(&event);
+                self.synchronizer.handle_event(event);
             } else {
                 return Ok(false);
             }
@@ -496,4 +516,26 @@ impl SegmentNodeHandle {
 
 enum SegmentNodeCommand {
     SetRepairIdlenessThreshold(RepairIdleness),
+}
+
+/// SegmentService に segment_gc 要求を送る。
+/// machine の情報が欲しいため MdsService を経由しなければならない。
+struct SegmentNodeToggle(ServiceHandle, LocalNodeId);
+
+impl Toggle for SegmentNodeToggle {
+    fn start(&self) -> UnitFuture {
+        let (tx, rx) = fibers::sync::oneshot::channel();
+        self.0.start_segment_gc(self.1, tx);
+        Box::new(rx.map_err(|_e| {
+            () // エラーを捨てる
+        }))
+    }
+
+    fn stop(&self) -> UnitFuture {
+        let (tx, rx) = fibers::sync::oneshot::channel();
+        self.0.stop_segment_gc(self.1, tx);
+        Box::new(rx.map_err(|_e| {
+            () // エラーを捨てる
+        }))
+    }
 }

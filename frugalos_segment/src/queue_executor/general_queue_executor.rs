@@ -47,7 +47,7 @@ impl TodoItem {
                     version,
                 }
             }
-            Event::FullSync { .. } => unreachable!(),
+            Event::StartSegmentGc { .. } | Event::StopSegmentGc { .. } => unreachable!(),
         }
     }
     pub fn wait_time(&self) -> Option<Duration> {
@@ -135,7 +135,7 @@ impl GeneralQueueExecutor {
                 self.repair_candidates.remove(&version);
                 self.delete_queue.push(version);
             }
-            Event::FullSync { .. } => {
+            Event::StartSegmentGc { .. } | Event::StopSegmentGc { .. } => {
                 unreachable!();
             }
         }

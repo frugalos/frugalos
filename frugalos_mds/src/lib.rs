@@ -39,6 +39,7 @@ extern crate trackable;
 pub use config::FrugalosMdsConfig;
 pub use error::{Error, ErrorKind};
 pub use node::{Event, Node};
+pub use node::{StartSegmentGcReply, StopSegmentGcReply};
 pub use service::{Service, ServiceHandle};
 
 mod codec;

@@ -26,6 +26,9 @@ mod snapshot;
 
 pub(crate) type Reply<T> = Monitored<T, Error>;
 
+pub type StartSegmentGcReply = fibers::sync::oneshot::Sender<()>;
+pub type StopSegmentGcReply = fibers::sync::oneshot::Sender<()>;
+
 /// Raftに提案中のコマンド.
 #[derive(Debug)]
 enum Proposal {
@@ -214,6 +217,8 @@ pub(crate) enum Request {
     /// 停止処理を開始する.
     Stop(Reply<()>),
     TakeSnapshot,
+    StartSegmentGc(StartSegmentGcReply),
+    StopSegmentGc(StopSegmentGcReply),
 }
 impl Request {
     pub fn failed(self, e: Error) {
@@ -230,13 +235,17 @@ impl Request {
             Request::DeleteByRange(_, _, tx) => tx.exit(Err(track!(e))),
             Request::DeleteByPrefix(_, tx) => tx.exit(Err(track!(e))),
             Request::Stop(tx) => tx.exit(Err(track!(e))),
-            Request::Exit | Request::TakeSnapshot | Request::StartElection => {}
+            Request::Exit
+            | Request::TakeSnapshot
+            | Request::StartElection
+            | Request::StartSegmentGc(_)
+            | Request::StopSegmentGc(_) => {}
         }
     }
 }
 
 /// MDSノードが発行するイベント.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[allow(missing_docs)]
 pub enum Event {
     /// メタデータオブジェクトが追加された.
@@ -248,10 +257,15 @@ pub enum Event {
     /// メタデータオブジェクトが削除された.
     Deleted { version: ObjectVersion },
 
-    FullSync {
-        machine: Machine,
+    /// segment_gc の開始要求を行った。
+    StartSegmentGc {
+        object_versions: Vec<ObjectVersion>,
         next_commit: LogIndex,
+        tx: StartSegmentGcReply,
     },
+
+    /// segment_gc の停止要求を行った。
+    StopSegmentGc { tx: StopSegmentGcReply },
 }
 
 #[cfg(test)]

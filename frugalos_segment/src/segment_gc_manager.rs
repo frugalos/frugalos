@@ -1,7 +1,7 @@
 use futures::{Async, Future, Poll};
 use slog::Logger;
 
-type UnitFuture = Box<dyn Future<Item = (), Error = ()>>;
+pub(crate) type UnitFuture = Box<dyn Future<Item = (), Error = ()>>;
 
 /// 実行開始と停止ができる型
 pub(crate) trait Toggle {

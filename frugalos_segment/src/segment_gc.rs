@@ -3,6 +3,7 @@ use cannyls::device::DeviceHandle;
 use cannyls::lump::LumpId;
 use fibers_tasque::{DefaultCpuTaskQueue, TaskQueueExt};
 use frugalos_mds::machine::Machine;
+use frugalos_mds::StartSegmentGcReply;
 use frugalos_raft::NodeId;
 use futures::future::{join_all, loop_fn, ok, Either};
 use futures::future::{Future, Loop};
@@ -54,15 +55,16 @@ impl SegmentGc {
         logger: &Logger,
         node_id: NodeId,
         device: &DeviceHandle,
-        machine: Machine,
+        object_versions: Vec<ObjectVersion>,
         object_version_limit: ObjectVersion,
         segment_gc_metrics: SegmentGcMetrics,
         segment_gc_step: u64,
+        tx: StartSegmentGcReply,
     ) -> Self {
         let logger = logger.clone();
         info!(logger, "Starts segment_gc");
         segment_gc_metrics.segment_gc_count.increment();
-        let create_object_table = make_create_object_table(logger.clone(), machine);
+        let create_object_table = make_create_object_table(logger.clone(), object_versions);
 
         let logger = logger.clone();
         let logger2 = logger.clone();
@@ -176,16 +178,15 @@ pub(self) fn make_list_and_delete_content(
 
 pub(self) fn make_create_object_table(
     logger: Logger,
-    machine: Machine,
+    object_versions: Vec<ObjectVersion>,
 ) -> impl Future<Item = ObjectTable, Error = Error> + Send {
     debug!(logger, "Starts segment_gc");
     DefaultCpuTaskQueue
-        .async_call(move || get_object_table(&logger, &machine))
+        .async_call(move || get_object_table(&logger, object_versions))
         .map_err(From::from)
 }
 
-fn get_object_table(logger: &Logger, machine: &Machine) -> ObjectTable {
-    let mut versions = machine.to_versions();
+fn get_object_table(logger: &Logger, mut versions: Vec<ObjectVersion>) -> ObjectTable {
     versions.sort_unstable();
     let objects_count = versions.len();
     debug!(
