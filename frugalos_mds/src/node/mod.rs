@@ -7,7 +7,6 @@ use libfrugalos::entity::object::{
 };
 use libfrugalos::expect::Expect;
 use libfrugalos::time::Seconds;
-use machine::Machine;
 use prometrics::metrics::{Counter, Histogram, MetricBuilder};
 use raftlog::log::LogIndex;
 use raftlog::log::ProposalId;
@@ -26,7 +25,9 @@ mod snapshot;
 
 pub(crate) type Reply<T> = Monitored<T, Error>;
 
+/// StartSegmentGcReply で渡される tx の型。
 pub type StartSegmentGcReply = fibers::sync::oneshot::Sender<()>;
+/// StopSegmentGcReply で渡される tx の型。
 pub type StopSegmentGcReply = fibers::sync::oneshot::Sender<()>;
 
 /// Raftに提案中のコマンド.

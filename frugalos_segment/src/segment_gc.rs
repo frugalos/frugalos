@@ -2,7 +2,6 @@ use cannyls::deadline::Deadline;
 use cannyls::device::DeviceHandle;
 use cannyls::lump::LumpId;
 use fibers_tasque::{DefaultCpuTaskQueue, TaskQueueExt};
-use frugalos_mds::machine::Machine;
 use frugalos_mds::StartSegmentGcReply;
 use frugalos_raft::NodeId;
 use futures::future::{join_all, loop_fn, ok, Either};
@@ -83,7 +82,10 @@ impl SegmentGc {
                     segment_gc_metrics.segment_gc_remaining,
                 )
             })
-            .map(move |()| info!(logger2, "SegmentGc objects done"));
+            .map(move |()| {
+                info!(logger2, "SegmentGc objects done");
+                let _ = tx.send(());
+            });
 
         let future = Box::new(combined_future);
         SegmentGc { future }

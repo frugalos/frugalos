@@ -7,24 +7,22 @@ use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
 use frugalos_core::tracer::ThreadLocalTracer;
 use frugalos_mds::{
-    Event, FrugalosMdsConfig, Node, Service as RaftMdsService, ServiceHandle as MdsHandle,
+    FrugalosMdsConfig, Node, Service as RaftMdsService, ServiceHandle as MdsHandle,
 };
 use frugalos_raft::{self, LocalNodeId, NodeId};
 use futures::{Async, Future, Poll, Stream};
+use libfrugalos::repair::{RepairConfig, RepairIdleness};
 use raftlog::cluster::ClusterMembers;
 use slog::Logger;
+use std::collections::HashMap;
 use std::env;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use client::storage::StorageClient;
-use fibers::sync::mpsc::Sender;
-use libfrugalos::repair::{RepairConfig, RepairIdleness};
 use rpc_server::RpcServer;
-use segment_gc_manager::{Toggle, UnitFuture};
-use std::collections::HashMap;
-use std::sync::atomic::Ordering;
+use segment_gc_manager::{SegmentGcManager, Toggle, UnitFuture};
 use synchronizer::Synchronizer;
 use {Client, Error, ErrorKind, Result};
 
@@ -43,6 +41,7 @@ pub struct Service<S> {
     // Senders of `SegmentNode`s
     segment_node_handles: HashMap<LocalNodeId, SegmentNodeHandle>,
     repair_concurrency: Arc<Mutex<RepairConcurrency>>,
+    segment_gc_manager: Option<SegmentGcManager<SegmentNodeToggle>>,
 }
 impl<S> Service<S>
 where
@@ -76,6 +75,7 @@ where
             mds_config,
             segment_node_handles: HashMap::new(),
             repair_concurrency: Arc::new(Mutex::new(RepairConcurrency::new())),
+            segment_gc_manager: None,
         };
 
         RpcServer::register(service.handle(), rpc);
@@ -130,6 +130,11 @@ where
                 .lock()
                 .unwrap_or_else(|e| panic!("Lock failed with error: {:?}", e));
             lock.set_limit(repair_concurrency_limit.0);
+        }
+        if let Some(segment_gc_concurrency_limit) = repair_config.segment_gc_concurrency_limit {
+            if let Some(manager) = self.segment_gc_manager.as_mut() {
+                manager.set_limit(segment_gc_concurrency_limit.0 as usize);
+            }
         }
     }
 
@@ -245,6 +250,28 @@ where
                 self.handle_command(command);
             }
         }
+
+        // segment_gc を実行する。
+        if self.segment_gc_manager.is_none() {
+            let mut manager = SegmentGcManager::new(self.logger.clone());
+            let mut tasks = Vec::new();
+            for &local_id in self.segment_node_handles.keys() {
+                tasks.push(SegmentNodeToggle(self.handle(), local_id));
+            }
+            manager.init(tasks);
+            self.segment_gc_manager = Some(manager);
+        }
+        let manager = self.segment_gc_manager.as_mut().expect("Never fail");
+        match manager.poll() {
+            Ok(Async::NotReady) => (),
+            Ok(Async::Ready(())) => {
+                self.segment_gc_manager = None;
+            }
+            Err(e) => {
+                warn!(self.logger, "Error: {:?}", e);
+            }
+        }
+
         Ok(Async::NotReady)
     }
 }
@@ -290,10 +317,12 @@ impl ServiceHandle {
         RepairLock::new(&self.repair_concurrency)
     }
     /// segment_gc の開始を要求する。segment_gc の実行が終わったら tx に send する。
+    /// 途中で停止された場合は tx は捨てられる。
     pub fn start_segment_gc(&self, local_id: LocalNodeId, tx: fibers::sync::oneshot::Sender<()>) {
         let command = Command::StartSegmentGc(local_id, tx);
         let _ = self.command_tx.send(command);
     }
+    /// segment_gc の停止を要求する。停止が終わったら tx に send する。
     pub fn stop_segment_gc(&self, local_id: LocalNodeId, tx: fibers::sync::oneshot::Sender<()>) {
         let command = Command::StopSegmentGc(local_id, tx);
         let _ = self.command_tx.send(command);
@@ -526,16 +555,16 @@ impl Toggle for SegmentNodeToggle {
     fn start(&self) -> UnitFuture {
         let (tx, rx) = fibers::sync::oneshot::channel();
         self.0.start_segment_gc(self.1, tx);
-        Box::new(rx.map_err(|_e| {
-            () // エラーを捨てる
-        }))
+        Box::new(rx.map_err(
+            |_e| (), // エラーを捨てる
+        ))
     }
 
     fn stop(&self) -> UnitFuture {
         let (tx, rx) = fibers::sync::oneshot::channel();
         self.0.stop_segment_gc(self.1, tx);
-        Box::new(rx.map_err(|_e| {
-            () // エラーを捨てる
-        }))
+        Box::new(rx.map_err(
+            |_e| (), // エラーを捨てる
+        ))
     }
 }

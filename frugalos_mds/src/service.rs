@@ -155,6 +155,7 @@ impl Service {
             node.start_segment_gc(tx);
         }
     }
+    /// Stops segment_gc on a single node.
     pub fn stop_segment_gc(&self, local_id: LocalNodeId, tx: fibers::sync::oneshot::Sender<()>) {
         if let Some(node) = self.state.nodes().load().get(&local_id) {
             info!(

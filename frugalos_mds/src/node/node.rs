@@ -538,7 +538,9 @@ impl Node {
                     tx,
                 })
             }
-            Request::StopSegmentGc(tx) => {}
+            Request::StopSegmentGc(tx) => {
+                self.events.push_back(StopSegmentGc { tx });
+            }
             Request::Exit => {
                 if self.phase == Phase::Stopping {
                     info!(self.logger, "Exit: node={:?}", self.node_id);
