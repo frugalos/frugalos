@@ -340,7 +340,9 @@ impl Node {
             | Request::Exit
             | Request::Stop(_)
             | Request::TakeSnapshot
-            | Request::StartElection => {}
+            | Request::StartElection
+            | Request::StartSegmentGc(_)
+            | Request::StopSegmentGc(_) => {}
             _ => {
                 if let Err(e) = self.check_leader() {
                     request.failed(e);

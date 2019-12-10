@@ -236,11 +236,9 @@ impl Request {
             Request::DeleteByRange(_, _, tx) => tx.exit(Err(track!(e))),
             Request::DeleteByPrefix(_, tx) => tx.exit(Err(track!(e))),
             Request::Stop(tx) => tx.exit(Err(track!(e))),
-            Request::Exit
-            | Request::TakeSnapshot
-            | Request::StartElection
-            | Request::StartSegmentGc(_)
-            | Request::StopSegmentGc(_) => {}
+            Request::StartSegmentGc(tx) => tx.exit(Err(Box::new(track!(e)))),
+            Request::StopSegmentGc(tx) => tx.exit(Err(Box::new(track!(e)))),
+            Request::Exit | Request::TakeSnapshot | Request::StartElection => {}
         }
     }
 }
