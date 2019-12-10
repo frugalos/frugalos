@@ -113,7 +113,14 @@ impl Synchronizer {
             event,
             self.client.is_metadata(),
         );
-        if !self.client.is_metadata() {
+        // metadata かどうかによって場合分けする。
+        if self.client.is_metadata() {
+            // metadata の場合、StartSegmentGc と StopSegmentGc に含まれている tx は処理しないといけないので処理する。
+            match event {
+                Event::StartSegmentGc { tx, .. } | Event::StopSegmentGc { tx } => tx.exit(Ok(())),
+                _ => (),
+            }
+        } else {
             match event {
                 Event::Putted { .. } => {
                     self.general_queue.push(&event);

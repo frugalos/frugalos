@@ -154,6 +154,11 @@ impl Service {
                 "Sending segment_gc request to a single node: {:?}", local_id
             );
             node.start_segment_gc(tx);
+        } else {
+            warn!(
+                self.logger,
+                "Sending segment_gc request failed: local_node_id not found: {:?}", local_id
+            );
         }
     }
     /// Stops segment_gc on a single node.

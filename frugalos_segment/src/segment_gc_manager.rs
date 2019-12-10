@@ -63,6 +63,7 @@ impl<Task: Toggle> Future for SegmentGcManager<Task> {
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         let mut new_running = Vec::new();
+        let old_count = (self.running.len(), self.waiting.len(), self.stopping.len());
         // running -> discarded
         for (index, mut fut) in std::mem::replace(&mut self.running, Vec::new()) {
             match fut.poll() {
@@ -72,7 +73,7 @@ impl<Task: Toggle> Future for SegmentGcManager<Task> {
                     // ログだけ吐いて握り潰す
                     warn!(
                         self.logger,
-                        "Error executing running: index = {}, error = {:?}", index, e
+                        "Error in executing a task: index = {}, error = {:?}", index, e
                     );
                 }
             }
@@ -88,7 +89,7 @@ impl<Task: Toggle> Future for SegmentGcManager<Task> {
                     // ログだけ吐いて握り潰す
                     warn!(
                         self.logger,
-                        "Error in executing a task: index = {}, error = {:?}", index, e
+                        "Error in stopping a task: index = {}, error = {:?}", index, e
                     );
                 }
             }
@@ -106,6 +107,19 @@ impl<Task: Toggle> Future for SegmentGcManager<Task> {
         // 全ての仕事が終わったかどうか確認する。
         if self.running.is_empty() && self.waiting.is_empty() && self.stopping.is_empty() {
             return Ok(Async::Ready(()));
+        }
+        let new_count = (self.running.len(), self.waiting.len(), self.stopping.len());
+        if old_count != new_count {
+            // 進捗があったのでログを出す
+            let (running, waiting, stopping) = new_count;
+            info!(
+                self.logger,
+                "remaining tasks: {} (running: {}, waiting: {}, stopping: {})",
+                running + waiting + stopping,
+                running,
+                waiting,
+                stopping,
+            );
         }
         Ok(Async::NotReady)
     }

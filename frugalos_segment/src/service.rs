@@ -267,6 +267,7 @@ where
         match manager.poll() {
             Ok(Async::NotReady) => (),
             Ok(Async::Ready(())) => {
+                info!(self.logger, "Segment gc done");
                 self.segment_gc_manager = None;
             }
             Err(e) => {
