@@ -1,6 +1,5 @@
 use cannyls;
 use ecpool;
-use fibers::sync::oneshot::MonitorError;
 use frugalos_mds;
 use libfrugalos;
 use libfrugalos::entity::object::ObjectVersion;
@@ -94,15 +93,6 @@ impl From<cannyls::Error> for Error {
         ErrorKind::Other.takes_over(f).into()
     }
 }
-impl From<MonitorError<Error>> for Error {
-    fn from(f: MonitorError<Error>) -> Self {
-        f.unwrap_or_else(|| {
-            ErrorKind::Other
-                .cause("Monitor channel disconnected")
-                .into()
-        })
-    }
-}
 impl From<prometrics::Error> for Error {
     fn from(f: prometrics::Error) -> Self {
         ErrorKind::Other.takes_over(f).into()
@@ -111,6 +101,23 @@ impl From<prometrics::Error> for Error {
 
 impl From<fibers_tasque::AsyncCallError> for Error {
     fn from(f: fibers_tasque::AsyncCallError) -> Self {
+        ErrorKind::Other.cause(f).into()
+    }
+}
+
+impl<E: Into<Error>> From<fibers::sync::oneshot::MonitorError<E>> for Error {
+    fn from(f: fibers::sync::oneshot::MonitorError<E>) -> Self {
+        match f {
+            fibers::sync::oneshot::MonitorError::Aborted => {
+                ErrorKind::MonitorAborted.error().into()
+            }
+            fibers::sync::oneshot::MonitorError::Failed(e) => e.into(),
+        }
+    }
+}
+
+impl From<Box<dyn std::error::Error + Send + Sync>> for Error {
+    fn from(f: Box<dyn std::error::Error + Send + Sync>) -> Self {
         ErrorKind::Other.cause(f).into()
     }
 }

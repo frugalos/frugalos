@@ -22,10 +22,10 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use client::storage::StorageClient;
-use fibers::sync::oneshot::{Monitor, MonitorError};
 use rpc_server::RpcServer;
-use segment_gc_manager::{SegmentGcManager, Toggle, UnitFuture};
+use segment_gc_manager::{SegmentGcManager, Toggle};
 use synchronizer::Synchronizer;
+use util::UnitFuture;
 use {Client, Error, ErrorKind, Result};
 
 /// セグメント群を管理するためのサービス。
@@ -558,25 +558,12 @@ impl Toggle for SegmentGcToggle {
     fn start(&self) -> UnitFuture {
         let (tx, rx) = fibers::sync::oneshot::monitor();
         self.0.start_segment_gc(self.1, tx);
-        Self::convert_rx_to_unit_future(rx)
+        Box::new(rx.map_err(Into::into))
     }
 
     fn stop(&self) -> UnitFuture {
         let (tx, rx) = fibers::sync::oneshot::monitor();
         self.0.stop_segment_gc(self.1, tx);
-        Self::convert_rx_to_unit_future(rx)
-    }
-}
-
-impl SegmentGcToggle {
-    // rx を UnitFuture に変換するためのヘルパー関数。
-    // polymorphism を導入しようとするとなぜか型エラーになる。(TODO: 解消)
-    fn convert_rx_to_unit_future(
-        rx: Monitor<(), Box<dyn std::error::Error + Send + Sync>>,
-    ) -> UnitFuture {
-        Box::new(rx.map_err(|e| match e {
-            MonitorError::Aborted => ErrorKind::MonitorAborted.error().into(),
-            MonitorError::Failed(e) => ErrorKind::Other.cause(e).into(),
-        }))
+        Box::new(rx.map_err(Into::into))
     }
 }

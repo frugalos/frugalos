@@ -1,9 +1,7 @@
 use futures::{Async, Future, Poll};
 use slog::Logger;
 
-use util::BoxFuture;
-
-pub(crate) type UnitFuture = BoxFuture<()>;
+use util::UnitFuture;
 
 /// 実行開始と停止ができる型
 pub(crate) trait Toggle {
