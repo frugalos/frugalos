@@ -157,7 +157,12 @@ impl Synchronizer {
                         ));
                     }
                 }
-                Event::StopSegmentGc { .. } => unimplemented!(),
+                Event::StopSegmentGc { tx } => {
+                    // If segment gc is running, stop it without notifying its caller of stopping.
+                    self.segment_gc = None;
+                    // Notify stop's caller of success.
+                    tx.exit(Ok(()));
+                }
             }
         }
     }
