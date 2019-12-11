@@ -20,7 +20,10 @@ pub(crate) struct SegmentGcMetrics {
     segment_gc_count: Counter,
     segment_gc_deleted_objects: Counter,
     // How many objects have to be swept before segment_gc is completed (including non-existent ones)
+    // TODO: 多数のノードがあっても正しく動くように、変更に set 以外を使う
     segment_gc_remaining: Gauge,
+    // How many jobs were aborted till now.
+    pub(crate) segment_gc_aborted: Counter,
 }
 
 impl SegmentGcMetrics {
@@ -36,6 +39,10 @@ impl SegmentGcMetrics {
                 .expect("metric should be well-formed"),
             segment_gc_remaining: metric_builder
                 .gauge("segment_gc_remaining")
+                .finish()
+                .expect("metric should be well-formed"),
+            segment_gc_aborted: metric_builder
+                .counter("segment_gc_aborted")
                 .finish()
                 .expect("metric should be well-formed"),
         }

@@ -159,7 +159,11 @@ impl Synchronizer {
                 }
                 Event::StopSegmentGc { tx } => {
                     // If segment gc is running, stop it without notifying its caller of stopping.
-                    self.segment_gc = None;
+                    if self.segment_gc.is_some() {
+                        self.segment_gc_metrics.segment_gc_aborted.increment();
+                        self.segment_gc = None;
+                        self.segment_gc_metrics.reset();
+                    }
                     // Notify stop's caller of success.
                     tx.exit(Ok(()));
                 }

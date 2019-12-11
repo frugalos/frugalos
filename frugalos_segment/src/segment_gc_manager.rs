@@ -1,4 +1,5 @@
 use futures::{Async, Future, Poll};
+use prometrics::metrics::{Gauge, MetricBuilder};
 use slog::Logger;
 
 use util::UnitFuture;
@@ -14,6 +15,9 @@ pub(crate) trait Toggle {
 /// Task は SegmentHandle のラッパを入れることを想定された型変数である。テストのしやすさのために多相型にしている。
 pub(crate) struct SegmentGcManager<Task> {
     logger: Logger,
+    segment_gc_running: Gauge,
+    segment_gc_waiting: Gauge,
+    segment_gc_stopping: Gauge,
     tasks: Vec<Task>,
     running: Vec<(usize, UnitFuture)>,  // 実行中のタスクの番号の列
     waiting: Vec<usize>,                // 実行待ちのタスクの番号の列
@@ -23,8 +27,27 @@ pub(crate) struct SegmentGcManager<Task> {
 
 impl<Task: Toggle> SegmentGcManager<Task> {
     pub(crate) fn new(logger: Logger) -> Self {
+        let metric_builder = MetricBuilder::new()
+            .namespace("frugalos")
+            .subsystem("segment_gc_manager")
+            .clone();
+        let segment_gc_running = metric_builder
+            .gauge("segment_gc_running")
+            .finish()
+            .expect("metric should be well-formed");
+        let segment_gc_waiting = metric_builder
+            .gauge("segment_gc_waiting")
+            .finish()
+            .expect("metric should be well-formed");
+        let segment_gc_stopping = metric_builder
+            .gauge("segment_gc_stopping")
+            .finish()
+            .expect("metric should be well-formed");
         Self {
             logger,
+            segment_gc_running,
+            segment_gc_waiting,
+            segment_gc_stopping,
             tasks: Vec::new(),
             running: Vec::new(),
             waiting: Vec::new(),
@@ -102,6 +125,11 @@ impl<Task: Toggle> Future for SegmentGcManager<Task> {
                 break;
             }
         }
+        // Update metrics
+        self.segment_gc_running.set(self.running.len() as f64);
+        self.segment_gc_waiting.set(self.waiting.len() as f64);
+        self.segment_gc_stopping.set(self.stopping.len() as f64);
+
         // 全ての仕事が終わったかどうか確認する。
         if self.running.is_empty() && self.waiting.is_empty() && self.stopping.is_empty() {
             return Ok(Async::Ready(()));
