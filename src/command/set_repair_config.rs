@@ -95,7 +95,6 @@ impl SetRepairConfigCommand {
             )));
             RepairConcurrencyLimit(limit)
         });
-        // TODO: accept segment_gc_concurrency_limit
         let segment_gc_concurrency_limit =
             matches.value_of(SEGMENT_GC_CONCURRENCY_LIMIT).map(|str| {
                 let limit: u64 = track_try_unwrap!(str.parse().map_err(|_| Error::from(
