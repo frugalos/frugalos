@@ -1,9 +1,9 @@
 use futures::{Async, Future, Poll};
 use slog::Logger;
-use std::error::Error;
 
-pub(crate) type UnitFuture =
-    Box<dyn Future<Item = (), Error = Box<dyn Error + Send + 'static>> + Send + 'static>;
+use util::BoxFuture;
+
+pub(crate) type UnitFuture = BoxFuture<()>;
 
 /// 実行開始と停止ができる型
 pub(crate) trait Toggle {

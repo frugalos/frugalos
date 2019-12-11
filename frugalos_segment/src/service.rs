@@ -572,11 +572,11 @@ impl SegmentGcToggle {
     // rx を UnitFuture に変換するためのヘルパー関数。
     // polymorphism を導入しようとするとなぜか型エラーになる。(TODO: 解消)
     fn convert_rx_to_unit_future(
-        rx: Monitor<(), Box<dyn std::error::Error + Send + 'static>>,
+        rx: Monitor<(), Box<dyn std::error::Error + Send + Sync>>,
     ) -> UnitFuture {
         Box::new(rx.map_err(|e| match e {
-            MonitorError::Aborted => Box::new(ErrorKind::Other.error()),
-            MonitorError::Failed(e) => e,
+            MonitorError::Aborted => ErrorKind::MonitorAborted.error().into(),
+            MonitorError::Failed(e) => ErrorKind::Other.cause(e).into(),
         }))
     }
 }

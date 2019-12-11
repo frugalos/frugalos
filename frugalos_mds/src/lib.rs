@@ -38,8 +38,8 @@ extern crate trackable;
 
 pub use config::FrugalosMdsConfig;
 pub use error::{Error, ErrorKind};
+use fibers::sync::oneshot::Monitored;
 pub use node::{Event, Node};
-pub use node::{StartSegmentGcReply, StopSegmentGcReply};
 pub use service::{Service, ServiceHandle};
 
 mod codec;
@@ -54,3 +54,8 @@ mod service;
 
 /// クレート固有の`Result`型.
 pub type Result<T> = ::std::result::Result<T, Error>;
+
+/// StartSegmentGcReply で渡される tx の型。
+pub type StartSegmentGcReply = Monitored<(), Box<dyn std::error::Error + Send + Sync>>;
+/// StopSegmentGcReply で渡される tx の型。
+pub type StopSegmentGcReply = Monitored<(), Box<dyn std::error::Error + Send + Sync>>;

@@ -17,6 +17,7 @@ use {Error, ErrorKind, Result};
 
 pub use self::handle::NodeHandle;
 pub use self::node::Node;
+use {StartSegmentGcReply, StopSegmentGcReply};
 
 mod handle;
 mod metrics;
@@ -24,11 +25,6 @@ mod node;
 mod snapshot;
 
 pub(crate) type Reply<T> = Monitored<T, Error>;
-
-/// StartSegmentGcReply で渡される tx の型。
-pub type StartSegmentGcReply = Monitored<(), Box<dyn std::error::Error + Send + 'static>>;
-/// StopSegmentGcReply で渡される tx の型。
-pub type StopSegmentGcReply = Monitored<(), Box<dyn std::error::Error + Send + 'static>>;
 
 /// Raftに提案中のコマンド.
 #[derive(Debug)]
