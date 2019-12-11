@@ -11,8 +11,9 @@ use libfrugalos::entity::object::ObjectVersion;
 use prometrics::metrics::{Counter, Gauge, MetricBuilder};
 use slog::Logger;
 
-use config;
+use trackable::error::ErrorKindExt;
 use Error;
+use {config, ErrorKind};
 
 #[derive(Clone)]
 pub(crate) struct SegmentGcMetrics {
@@ -135,7 +136,11 @@ pub(self) fn make_list_and_delete_content(
     segment_gc_deleted_objects: Counter,
     segment_gc_remaining: Gauge,
 ) -> impl Future<Item = (), Error = Error> + Send {
-    assert!(step > 0);
+    if step == 0 {
+        return Either::A(futures::future::err(
+            ErrorKind::Other.cause("step should be > 0").into(),
+        ));
+    }
     let logger = logger.clone();
     let device = device.clone();
     info!(
@@ -144,7 +149,7 @@ pub(self) fn make_list_and_delete_content(
         object_version_limit,
         step
     );
-    loop_fn(
+    let returned_future = loop_fn(
         (ObjectVersion(0), object_table),
         move |(current_version, object_table)| {
             if current_version >= object_version_limit {
@@ -183,7 +188,8 @@ pub(self) fn make_list_and_delete_content(
                 .map_err(From::from);
             Either::B(future)
         },
-    )
+    );
+    Either::B(returned_future)
 }
 
 pub(self) fn make_create_object_table(
