@@ -136,14 +136,14 @@ impl Synchronizer {
                     self.general_queue.push(&event);
                     self.repair_queue.delete(version);
                 }
-                // Because pushing FullSync into the task queue causes difficulty in implementation,
+                // Because pushing StartSegmentGc into the task queue causes difficulty in implementation,
                 // we decided not to push this task to the task priority queue and handle it manually.
                 Event::StartSegmentGc {
                     object_versions,
                     next_commit,
                     tx,
                 } => {
-                    // If FullSync is not being processed now, this event lets the synchronizer to handle one.
+                    // If SegmentGc is not being processed now, this event lets the synchronizer to handle one.
                     if self.segment_gc.is_none() {
                         self.segment_gc = Some(SegmentGc::new(
                             &self.logger,
@@ -177,7 +177,7 @@ impl Future for Synchronizer {
             warn!(self.logger, "Task failure: {}", e);
             Async::Ready(Some(()))
         }) {
-            // Full sync is done. Clearing the segment_gc field.
+            // Segment GC is done. Clearing the segment_gc field.
             self.segment_gc = None;
             self.segment_gc_metrics.reset();
         }

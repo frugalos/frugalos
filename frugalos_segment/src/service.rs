@@ -44,6 +44,7 @@ pub struct Service<S> {
     segment_node_handles: HashMap<LocalNodeId, SegmentNodeHandle>,
     repair_concurrency: Arc<Mutex<RepairConcurrency>>,
     segment_gc_manager: Option<SegmentGcManager<SegmentGcToggle>>,
+    segment_gc_step: u64,
 }
 impl<S> Service<S>
 where
@@ -64,6 +65,12 @@ where
         let (command_tx, command_rx) = mpsc::channel();
         CannyLsRpcServer::new(device_registry.handle()).register(rpc);
 
+        let segment_gc_step = env::var("FRUGALOS_SEGMENT_GC_STEP")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(100);
+        info!(logger, "SegmentGc step: {}", segment_gc_step);
+
         let service = Service {
             logger,
             rpc_service,
@@ -78,6 +85,7 @@ where
             segment_node_handles: HashMap::new(),
             repair_concurrency: Arc::new(Mutex::new(RepairConcurrency::new())),
             segment_gc_manager: None,
+            segment_gc_step,
         };
 
         RpcServer::register(service.handle(), rpc);
@@ -170,6 +178,7 @@ where
                 // we pass rx only and hold tx for use in SegmentService.
                 // That is because we need tx only in SegmentService.
                 let (segment_node_command_tx, segment_node_command_rx) = mpsc::channel();
+                let segment_gc_step = self.segment_gc_step;
                 // TODO: Remove a node from segment_node_handles when a SegmentNode terminates with an error
                 self.segment_node_handles
                     .insert(local_id, SegmentNodeHandle(segment_node_command_tx));
@@ -207,6 +216,7 @@ where
                             client,
                             cluster,
                             segment_node_command_rx,
+                            segment_gc_step,
                         ))
                     })
                     .map_err(move |e| crit!(logger, "Error: {}", e))
@@ -421,6 +431,7 @@ impl SegmentNode {
         client: StorageClient,
         cluster: ClusterMembers,
         segment_node_command_rx: mpsc::Receiver<SegmentNodeCommand>,
+        segment_gc_step: u64,
     ) -> Result<Self>
     where
         S: Clone + Spawn + Send + 'static,
@@ -468,19 +479,13 @@ impl SegmentNode {
             rpc_service
         ))?;
 
-        let full_sync_step = env::var("FRUGALOS_FULL_SYNC_STEP")
-            .ok()
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(100);
-        info!(logger, "FullSync step: {}", full_sync_step);
-
         let synchronizer = Synchronizer::new(
             logger.clone(),
             node_id,
             device,
             service_handle,
             client,
-            full_sync_step,
+            segment_gc_step,
         );
 
         Ok(SegmentNode {
