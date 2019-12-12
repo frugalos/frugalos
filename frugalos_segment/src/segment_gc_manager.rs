@@ -154,18 +154,47 @@ impl<Task: Toggle> Future for SegmentGcManager<Task> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fibers::time::timer::timeout;
+    use futures::future::{ok, Either, Loop};
     use std::sync::atomic::{AtomicI32, Ordering};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
     struct IncrementToggle(Arc<AtomicI32>);
 
     impl Toggle for IncrementToggle {
         fn start(&self) -> UnitFuture {
             self.0.fetch_add(1, Ordering::SeqCst);
-            Box::new(futures::future::ok(()))
+            Box::new(ok(()))
         }
         fn stop(&self) -> UnitFuture {
-            Box::new(futures::future::ok(()))
+            Box::new(ok(()))
+        }
+    }
+
+    /// self.0 で見ているカウンタが self.1 以上になるまで待つ。
+    struct WaitingToggle(Arc<AtomicI32>, i32, Arc<AtomicI32>);
+
+    impl Toggle for WaitingToggle {
+        fn start(&self) -> UnitFuture {
+            let future =
+                futures::future::loop_fn((Arc::clone(&self.0), self.1), |(counter, limit)| {
+                    if counter.load(Ordering::SeqCst) < limit {
+                        Either::A(
+                            timeout(Duration::from_millis(1))
+                                .map(move |_| Loop::Continue((counter, limit))),
+                        )
+                    } else {
+                        Either::B(ok(Loop::Break(())))
+                    }
+                });
+            Box::new(future.map_err(Into::into))
+        }
+
+        fn stop(&self) -> UnitFuture {
+            // Do nothing
+            self.2.fetch_add(1, Ordering::SeqCst);
+            Box::new(ok(()))
         }
     }
 
@@ -202,5 +231,43 @@ mod tests {
             assert_eq!(Ok(Async::NotReady), manager.poll())
         }
         assert_eq!(counter.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn stop_works() -> std::io::Result<()> {
+        let logger = Logger::root(slog::Discard, o!());
+        let mut manager = SegmentGcManager::new(logger);
+        let count = 13;
+        let stop_count = 6; // tasks[6] まで終わらせたら中断する
+        let counter = Arc::new(AtomicI32::new(0));
+        let stop_counter = Arc::new(AtomicI32::new(0));
+        let mut tasks = Vec::new();
+        for index in 0..count {
+            tasks.push(WaitingToggle(
+                Arc::clone(&counter),
+                index,
+                Arc::clone(&stop_counter),
+            ));
+        }
+        manager.init(tasks);
+        manager.set_limit(3);
+        let manager = Arc::new(Mutex::new(manager));
+        let manager_cloned = Arc::clone(&manager);
+        // manager は別スレッドで走らせる
+        let manager_thread = std::thread::spawn(move || {
+            while let Ok(Async::NotReady) = manager_cloned.lock().unwrap().poll() {}
+        });
+        for _ in 0..stop_count {
+            counter.fetch_add(1, Ordering::SeqCst);
+        }
+        // 3 並列実行になるまで待つ
+        while manager.lock().unwrap().running.len() != 3 {}
+        manager.lock().unwrap().set_limit(1);
+        // ジョブが 2 個 キャンセルされる。停止要求の送信は set_limit が返ってくる時には終わっている。
+        assert_eq!(stop_counter.load(Ordering::SeqCst), 2);
+        // 全ジョブを終了する
+        counter.store(count - 1, Ordering::SeqCst);
+        manager_thread.join().unwrap();
+        Ok(())
     }
 }
