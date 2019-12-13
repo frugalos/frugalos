@@ -73,7 +73,14 @@ pub fn make_rlog<P: AsRef<Path>, S: Spawn + Clone + Send + 'static>(
         100 * 1024 * 1024 // FIXME: パラメータ化
     ))?;
 
+    // Journal region のサイズの指定。デフォルトは 0.01。
+    // TODO: クラスタ構築時に指定できるようにする
+    let ratio: f64 = std::env::var("FRUGALOS_CLUSTER_DEVICE_JOURNAL_REGION_RATIO")
+        .map(|value| value.parse().unwrap())
+        .unwrap_or(0.01);
+
     let mut storage_builder = cannyls::storage::StorageBuilder::new();
+    storage_builder.journal_region_ratio(ratio);
     let metrics = MetricBuilder::new().label("device", "system").clone();
     storage_builder.metrics(metrics.clone());
     let storage = if created {

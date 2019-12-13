@@ -408,7 +408,15 @@ fn spawn_file_device(device: &FileDeviceConfig) -> fibers_tasque::AsyncCall<Resu
         .clone();
     let filepath = device.filepath.clone();
     let capacity = device.capacity;
+
+    // Journal region のサイズの指定。デフォルトは 0.01。
+    // TODO: file device を PUT する時に指定できるようにする
+    let ratio: f64 = std::env::var("FRUGALOS_FILE_DEVICE_JOURNAL_REGION_RATIO")
+        .map(|value| value.parse().unwrap())
+        .unwrap_or(0.01);
+
     let mut storage = cannyls::storage::StorageBuilder::new();
+    storage.journal_region_ratio(ratio);
     storage.metrics(metrics.clone());
     fibers_tasque::DefaultIoTaskQueue.async_call(move || {
         let (nvm, created) =
