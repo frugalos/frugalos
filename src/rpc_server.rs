@@ -184,7 +184,8 @@ impl HandleCall<rpc::PutObjectRpc> for RpcServer {
     }
 }
 impl HandleCall<rpc::ListObjectsRpc> for RpcServer {
-    fn handle_call(&self, request: rpc::SegmentRequest) -> Reply<rpc::ListObjectsRpc> {
+    fn handle_call(&self, request: rpc::ListObjectsRequest) -> Reply<rpc::ListObjectsRpc> {
+        // TODO: supports consistency levels
         let future = self
             .client
             .request(request.bucket_id)
