@@ -119,7 +119,12 @@ impl Server {
         H::Encoder: Default,
     {
         // Config に書かれたバケツの設定を読む
-        let bucket_config = self.config.http_server.bucket_config.clone().into();
+        let bucket_config = self
+            .config
+            .http_server
+            .fibers_http_server_handler_request_duration_seconds_bucket_config
+            .clone()
+            .into();
         track!(
             builder.add_handler(WithMetrics::with_metrics_and_bucket_config(
                 handle_request,

@@ -1,8 +1,9 @@
 ---
+# scripts/ 以下のファイルで使用するためのもの。
 # 設定項目については https://github.com/frugalos/frugalos/wiki/Configuration を参照。
 frugalos:
   daemon:
-    bucket_config:
+    fibers_http_server_handler_request_duration_seconds_bucket_config:
       - 0.5
       - 1.0
       - 1.5
@@ -18,7 +19,7 @@ frugalos:
         type: 'speculative'
         timeout_millis: 200
   http_server:
-    bucket_config:
+    fibers_http_server_handler_request_duration_seconds_bucket_config:
       - 0.5
       - 1.0
       - 1.5

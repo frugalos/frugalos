@@ -118,7 +118,10 @@ impl FrugalosDaemon {
         let server = Server::new(logger.clone(), cloned_config, client, tracer);
         track!(server.register(&mut http_server_builder))?;
 
-        let bucket_config = config.daemon.bucket_config.into();
+        let bucket_config = config
+            .daemon
+            .fibers_http_server_handler_request_duration_seconds_bucket_config
+            .into();
 
         track!(
             http_server_builder.add_handler(WithMetrics::with_metrics_and_bucket_config(
