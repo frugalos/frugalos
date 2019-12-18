@@ -88,6 +88,13 @@ impl RepairQueueExecutor {
             self.enqueued_repair.increment();
         }
     }
+    /// Deletes an element from this queue.
+    /// This is typically called for deleted objects.
+    pub(crate) fn delete(&mut self, version: ObjectVersion) {
+        if self.queue.remove(&version) {
+            self.dequeued_repair.increment();
+        }
+    }
     fn pop(&mut self) -> Option<ObjectVersion> {
         // Pick the minimum element, if queue is not empty.
         let result = self.queue.iter().next().copied();
