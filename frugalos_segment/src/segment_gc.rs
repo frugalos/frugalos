@@ -294,7 +294,7 @@ mod tests {
             1,
             object_table,
             segment_gc_deleted_objects.clone(),
-            segment_gc_remaining.clone(),
+            segment_gc_remaining,
         ))?;
 
         // Assert objects are deleted and therefore not found

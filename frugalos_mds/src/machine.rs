@@ -311,11 +311,7 @@ mod tests {
 
         // バージョンが存在している
         assert!(machine
-            .put(
-                id.clone(),
-                meta.clone(),
-                &Expect::IfNoneMatch(vec![DEFAULT_OBJECT_VERSION])
-            )
+            .put(id, meta, &Expect::IfNoneMatch(vec![DEFAULT_OBJECT_VERSION]))
             .is_err());
 
         Ok(())

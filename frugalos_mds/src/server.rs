@@ -67,6 +67,8 @@ impl Server {
         builder.add_call_handler::<rpc::DeleteObjectByVersionRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectsByRangeRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectsByPrefixRpc, _>(this.clone());
+        // 上の clone を一つだけ消したくないので、ここで drop する
+        drop(this);
     }
 
     fn get_node(&self, node: LocalNodeId) -> Result<NodeHandle> {
