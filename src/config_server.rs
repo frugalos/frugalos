@@ -39,6 +39,8 @@ impl ConfigServer {
         track!(builder.add_handler(PutBucket(self.clone())))?;
         track!(builder.add_handler(GetBucket(self.clone())))?;
 
+        // 上の clone を一つだけ消したくないので、ここで drop する
+        drop(self);
         Ok(())
     }
     fn client(&self) -> ConfigRpcClient {

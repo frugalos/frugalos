@@ -30,6 +30,7 @@ use codec;
 use config::FrugalosMdsConfig;
 use machine::{Command, Machine};
 use protobuf;
+use std::cmp::Ordering;
 use {Error, ErrorKind, Result, ServiceHandle};
 
 type RaftEvent = raftlog::Event;
@@ -239,7 +240,7 @@ impl Node {
         rpc_service: RpcServiceHandle,
     ) -> Result<Self> {
         let (request_tx, request_rx) = mpsc::channel();
-        let node_handle = NodeHandle::new(request_tx.clone());
+        let node_handle = NodeHandle::new(request_tx);
         track!(service.add_node(node_id, node_handle))?;
 
         let metric_builder = MetricBuilder::new();
@@ -675,20 +676,24 @@ impl Node {
         // 保留中のリクエストを処理
         let mut proposal = None;
         while let Some(next) = self.proposals.pop_front() {
-            if next.id().index == commit {
-                if next.id().term == entry.term() {
-                    proposal = Some(next);
-                    break;
-                } else {
-                    warn!(self.logger, "This proposal is rejected: {:?}", next.id());
-                    next.notify_rejected();
+            match next.id().index.cmp(&commit) {
+                Ordering::Equal => {
+                    if next.id().term == entry.term() {
+                        proposal = Some(next);
+                        break;
+                    } else {
+                        warn!(self.logger, "This proposal is rejected: {:?}", next.id());
+                        next.notify_rejected();
+                    }
                 }
-            } else if commit < next.id().index {
-                self.proposals.push_front(next);
-                break;
-            } else {
-                // 不整合: コミットされたログインデックスが連続していない
-                track_panic!(ErrorKind::Other, "Inconsistent state");
+                Ordering::Greater => {
+                    self.proposals.push_front(next);
+                    break;
+                }
+                Ordering::Less => {
+                    // 不整合: コミットされたログインデックスが連続していない
+                    track_panic!(ErrorKind::Other, "Inconsistent state");
+                }
             }
         }
 

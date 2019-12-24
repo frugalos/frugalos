@@ -384,7 +384,7 @@ impl Service {
         self.update_segment_table(bucket.id());
 
         if let Some(Proposal::PutBucket { reply, .. }) = self.pop_committed_proposal(proposal_id) {
-            reply.exit(Ok(bucket.clone()));
+            reply.exit(Ok(bucket));
         }
     }
     #[allow(clippy::ptr_arg)]

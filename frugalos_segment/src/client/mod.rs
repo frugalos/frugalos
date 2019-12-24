@@ -295,7 +295,7 @@ mod tests {
 
         let (object_version, _) = wait(client.put(
             object_id.to_owned(),
-            expected.clone(),
+            expected,
             Deadline::Infinity,
             Expect::Any,
             Span::inactive().handle(),
@@ -397,6 +397,9 @@ mod tests {
             Span::inactive().handle(),
         ))?;
 
+        // 上の object_id の clone を一つだけ消したくないので、ここで drop する
+        drop(object_id);
+
         assert!(data.is_none());
 
         Ok(())
@@ -425,7 +428,7 @@ mod tests {
 
         let (object_version, _) = wait(client.put(
             object_id.clone(),
-            expected.clone(),
+            expected,
             Deadline::Infinity,
             Expect::Any,
             Span::inactive().handle(),
@@ -467,7 +470,7 @@ mod tests {
         ))?;
         assert_eq!(result, Some(object_version));
         let result = wait(client.head_storage(
-            object_id.to_owned(),
+            object_id,
             Deadline::Infinity,
             ReadConsistency::Consistent,
             Span::inactive().handle(),

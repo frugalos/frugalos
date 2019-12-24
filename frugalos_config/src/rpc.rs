@@ -31,6 +31,8 @@ impl RpcServer {
         builder.add_call_handler::<spec::GetBucketRpc, _>(this.clone());
         builder.add_call_handler::<spec::PutBucketRpc, _>(this.clone());
         builder.add_call_handler::<spec::DeleteBucketRpc, _>(this.clone());
+        // 上の clone を一つだけ消したくないので、ここで drop する
+        drop(this);
     }
 }
 impl HandleCall<spec::GetLeaderRpc> for RpcServer {

@@ -114,7 +114,7 @@ impl FrugalosDaemon {
             tracer.clone(),
         );
 
-        let server = Server::new(logger.clone(), cloned_config, client, tracer.clone());
+        let server = Server::new(logger.clone(), cloned_config, client, tracer);
         track!(server.register(&mut http_server_builder))?;
 
         track!(http_server_builder.add_handler(WithMetrics::new(MetricsHandler)))?;
