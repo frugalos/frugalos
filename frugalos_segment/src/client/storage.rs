@@ -116,6 +116,19 @@ impl StorageClient {
             StorageClient::Dispersed(c) => c.put(version, content, deadline, parent),
         }
     }
+    pub fn delete_fragment(
+        self,
+        version: ObjectVersion,
+        deadline: Deadline,
+        parent: SpanHandle,
+        index: usize,
+    ) -> BoxFuture<bool> {
+        match self {
+            StorageClient::Metadata => Box::new(future::ok(false)),
+            StorageClient::Replicated(c) => c.delete_fragment(version, deadline, index),
+            StorageClient::Dispersed(c) => c.delete_fragment(version, deadline, parent, index),
+        }
+    }
 }
 
 pub struct PutAll {
