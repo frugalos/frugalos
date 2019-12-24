@@ -98,6 +98,7 @@ impl Server {
         track!(builder.add_handler(WithMetrics::new(HeadObject(self.clone()))))?;
         track!(builder.add_handler(WithMetrics::new(DeleteObject(self.clone()))))?;
         track!(builder.add_handler(WithMetrics::new(DeleteObjectByPrefix(self.clone()))))?;
+        track!(builder.add_handler(WithMetrics::new(DeleteFragment(self.clone()))))?;
         track!(builder.add_handler(WithMetrics::new(PutObject(self.clone()))))?;
         track!(builder.add_handler(WithMetrics::new(PutManyObject(self.clone()))))?;
         track!(builder.add_handler(WithMetrics::new(GetBucketStatistics(self.clone()))))?;
@@ -394,6 +395,7 @@ impl HandleRequest for DeleteObject {
         let logger = self.0.logger.clone();
         let expect = try_badarg!(get_expect(&req.header()));
         let deadline = try_badarg!(get_deadline(&req.url()));
+
         let future = self
             .0
             .client
@@ -493,6 +495,77 @@ impl HandleRequest for DeleteObjectByPrefix {
                         );
                         span.set_tag(|| StdTag::http_status_code(500));
                         make_json_response(Status::InternalServerError, Err(e))
+                    }
+                };
+                Ok(response)
+            });
+        Box::new(future)
+    }
+}
+
+struct DeleteFragment(Server);
+impl HandleRequest for DeleteFragment {
+    const METHOD: &'static str = "DELETE";
+    const PATH: &'static str = "/v1/buckets/*/objects/*/fragments/*";
+
+    type ReqBody = ();
+    type ResBody = HttpResult<Vec<u8>>;
+    type Decoder = BodyDecoder<NullDecoder>;
+    type Encoder = BodyEncoder<ObjectResultEncoder>;
+    type Reply = Reply<Self::ResBody>;
+
+    fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
+        let bucket_id = get_bucket_id(req.url());
+        let object_id = get_object_id(req.url());
+        let fragment_index = try_badarg_option!(try_badarg!(get_fragment_index(req.url())));
+
+        let client_span = SpanContext::extract_from_http_header(&TraceHeader(req.header()))
+            .ok()
+            .and_then(|c| c);
+        let mut span = self
+            .0
+            .tracer
+            .span(|t| t.span("delete_fragment").child_of(&client_span).start());
+        span.set_tag(|| StdTag::http_method("DELETE"));
+        span.set_tag(|| Tag::new("bucket.id", bucket_id.clone()));
+        span.set_tag(|| Tag::new("object.id", object_id.clone()));
+
+        let logger = self.0.logger.clone();
+        let deadline = try_badarg!(get_deadline(&req.url()));
+
+        let future = self
+            .0
+            .client
+            .request(bucket_id)
+            .deadline(deadline)
+            .span(&span)
+            .delete_fragment(object_id, fragment_index)
+            .then(move |result| {
+                let response = match track!(result) {
+                    Ok(None) => {
+                        span.set_tag(|| StdTag::http_status_code(404));
+                        make_object_response(Status::NotFound, None, Err(not_found()))
+                    }
+                    Ok(Some(version)) => {
+                        span.set_tag(|| Tag::new("object.version", version.0 as i64));
+                        span.set_tag(|| StdTag::http_status_code(200));
+                        make_object_response(Status::Ok, Some(version), Ok(Vec::new()))
+                    }
+                    Err(e) => {
+                        if let ErrorKind::Unexpected(version) = *e.kind() {
+                            span.set_tag(|| StdTag::http_status_code(412));
+                            make_object_response(Status::PreconditionFailed, version, Err(e))
+                        } else {
+                            warn!(
+                                logger,
+                                "Cannot delete object fragment (bucket={:?}, object={:?}): {}",
+                                get_bucket_id(req.url()),
+                                get_object_id(req.url()),
+                                e
+                            );
+                            span.set_tag(|| StdTag::http_status_code(500));
+                            make_object_response(Status::InternalServerError, None, Err(e))
+                        }
                     }
                 };
                 Ok(response)
@@ -878,6 +951,15 @@ fn get_usize_option(url: &Url, option_name: &str) -> Result<Option<usize>> {
         }
     }
     Ok(None)
+}
+
+fn get_fragment_index(url: &Url) -> Result<Option<usize>> {
+    let fragment_index = url.path_segments().expect("Never fails").nth(6);
+    if let Some(v) = fragment_index {
+        return track!(v.parse::<usize>().map_err(Error::from).map(Some));
+    } else {
+        Ok(None)
+    }
 }
 
 #[cfg(test)]
