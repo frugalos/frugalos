@@ -209,7 +209,7 @@ impl Client {
         self.mds.delete_by_prefix(prefix, parent)
     }
 
-    /// オブジェクトの実体を構成するフラグメントのみを削除する
+    /// オブジェクトのフラグメントのみを削除する
     pub fn delete_fragment(
         &self,
         id: ObjectId,
