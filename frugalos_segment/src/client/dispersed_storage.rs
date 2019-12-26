@@ -226,12 +226,11 @@ impl DispersedClient {
         parent: SpanHandle,
         index: usize,
     ) -> BoxFuture<bool> {
-        let mut candidates = self
+        let candidates = self
             .cluster
             .candidates(version)
             .cloned()
             .collect::<Vec<_>>();
-        candidates.reverse();
         let span = parent.child("delete_fragment", |span| {
             span.tag(StdTag::component(module_path!()))
                 .tag(Tag::new("object.version", version.0 as i64))

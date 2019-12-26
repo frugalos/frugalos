@@ -122,12 +122,11 @@ impl ReplicatedClient {
         deadline: Deadline,
         index: usize,
     ) -> BoxFuture<bool> {
-        let mut candidates = self
+        let candidates = self
             .cluster
             .candidates(version)
             .cloned()
             .collect::<Vec<_>>();
-        candidates.reverse();
         if candidates.len() <= index {
             return Box::new(futures::future::ok(false));
         }
@@ -139,8 +138,7 @@ impl ReplicatedClient {
         let device = cluster_member.device;
         let future = request
             .deadline(deadline)
-            .delete_lump(DeviceId::new(device), lump_id)
-            .then(move |result| result);
+            .delete_lump(DeviceId::new(device), lump_id);
         Box::new(future.map_err(|e| track!(Error::from(e))))
     }
 }
