@@ -69,6 +69,7 @@ impl<Task: GcTask> SegmentGcManager<Task> {
 
     /// 実行数のリミットを設定する。すでに実行中のタスクがある場合、リミットに収まらない分は中断される。
     pub(crate) fn set_limit(&mut self, limit: usize) {
+        info!(self.logger, "set_limit: {} -> {}", self.limit, limit);
         self.limit = limit;
         while self.running.len() > limit {
             let (index, _) = self.running.pop().unwrap();
@@ -91,7 +92,7 @@ impl<Task: GcTask> Future for SegmentGcManager<Task> {
                 Ok(Async::NotReady) => new_running.push((index, fut)),
                 Ok(Async::Ready(())) => (),
                 Err(e) => {
-                    // ログだけ吐いて握り潰す
+                    // segment_gc に失敗したからといって致命的な何かが起こるわけではないので、ログだけ吐いて握り潰す。
                     warn!(
                         self.logger,
                         "Error in executing a task: index = {}, error = {:?}", index, e
@@ -107,7 +108,7 @@ impl<Task: GcTask> Future for SegmentGcManager<Task> {
                 Ok(Async::NotReady) => new_stopping.push((index, fut)),
                 Ok(Async::Ready(())) => self.waiting.push(index),
                 Err(e) => {
-                    // ログだけ吐いて握り潰す
+                    // segment_gc の中止に失敗したからといって致命的な何かが起こるわけではないので、ログだけ吐いて握り潰す。
                     warn!(
                         self.logger,
                         "Error in stopping a task: index = {}, error = {:?}", index, e
@@ -138,7 +139,7 @@ impl<Task: GcTask> Future for SegmentGcManager<Task> {
         if old_count != new_count {
             // 進捗があったのでログを出す
             let (running, waiting, stopping) = new_count;
-            info!(
+            debug!(
                 self.logger,
                 "remaining tasks: {} (running: {}, waiting: {}, stopping: {})",
                 running + waiting + stopping,
