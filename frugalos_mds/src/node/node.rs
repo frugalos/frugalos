@@ -25,6 +25,7 @@ use trackable::error::ErrorKindExt;
 
 use super::metrics::make_histogram;
 use super::snapshot::SnapshotThreshold;
+use super::timeout::CountDownTimeout;
 use super::{Event, NodeHandle, Proposal, ProposalMetrics, Reply, Request, Seconds};
 use codec;
 use config::FrugalosMdsConfig;
@@ -42,31 +43,6 @@ struct LargeProposalQueueThreshold(usize);
 /// リーダー選出待ちキューが長すぎると判断する基準となる閾値。
 #[derive(Debug)]
 struct LargeLeaderWaitingQueueThreshold(usize);
-
-/// リーダー選出待ちをあきらめるまでのタイムアウト値。
-#[derive(Debug)]
-struct LeaderWaitingTimeout {
-    max: usize,
-    current: usize,
-}
-
-impl LeaderWaitingTimeout {
-    fn new(max: usize) -> Self {
-        Self { max, current: 0 }
-    }
-
-    fn decrement(&mut self) {
-        self.current = self.current.saturating_sub(1);
-    }
-
-    fn reset(&mut self) {
-        self.current = self.max;
-    }
-
-    fn is_expired(&self) -> bool {
-        self.current == 0
-    }
-}
 
 /// リーダが重い場合に再選出を行うかどうかを決める閾値。
 #[derive(Debug)]
@@ -194,7 +170,7 @@ pub struct Node {
     leader: Option<NodeId>,
     large_leader_waiting_queue_threshold: LargeLeaderWaitingQueueThreshold,
     leader_waitings: Vec<LeaderWaiting>,
-    leader_waiting_timeout: LeaderWaitingTimeout,
+    leader_waiting_timeout: CountDownTimeout,
     request_rx: mpsc::Receiver<Request>,
     proposals: VecDeque<Proposal>,
     local_log_size: usize,
@@ -215,6 +191,8 @@ pub struct Node {
     // `Request::Stop` を受け取り、かつ、スナップショットの取得を開始した時にだけ `Some` になる.
     stopping: Option<Stopping>,
     rpc_service: RpcServiceHandle,
+
+    log_leader_absence_timeout: Option<CountDownTimeout>,
 
     // 整合性保証のレベルを変更するための変数群
     // リーダーが決定した場合に `rounds` はリセットされる。
@@ -271,17 +249,23 @@ impl Node {
             .unwrap_or_else(|| LargeProposalQueueThreshold(config.large_proposal_queue_threshold));
         let large_leader_waiting_queue_threshold =
             LargeLeaderWaitingQueueThreshold(config.large_leader_waiting_queue_threshold);
-        let leader_waiting_timeout =
-            LeaderWaitingTimeout::new(config.leader_waiting_timeout_threshold);
+        let leader_waiting_timeout = CountDownTimeout::new(config.leader_waiting_timeout_threshold);
+        let log_leader_absence_timeout = if config.log_leader_absence {
+            Some(CountDownTimeout::new(config.log_leader_absence_threshold))
+        } else {
+            None
+        };
         info!(
             logger,
-            "Thresholds: snapshot={}, reelection={}, queue={}, commit_timeout={}, leader_waiting={}, staled_object={}",
+            "Thresholds: snapshot={}, reelection={}, queue={}, commit_timeout={}, leader_waiting={}, staled_object={}, log_leader_absence={}, log_leader_absence_threshold={}",
             snapshot_threshold,
             reelection_threshold.0,
             large_queue_threshold.0,
             config.commit_timeout_threshold,
             large_leader_waiting_queue_threshold.0,
             config.staled_object_threshold,
+            config.log_leader_absence,
+            config.log_leader_absence_threshold,
         );
 
         let metrics = track!(Metrics::new(&node_id))?;
@@ -311,6 +295,7 @@ impl Node {
             polling_timer_interval: config.node_polling_interval,
             phase: Phase::Running,
             stopping: None,
+            log_leader_absence_timeout,
             large_queue_rounds: 0,
             large_queue_threshold,
             reelection_threshold,
@@ -892,8 +877,7 @@ impl Stream for Node {
             }
 
             // リーダ待機チェック
-            self.leader_waiting_timeout.decrement();
-            if self.leader_waiting_timeout.is_expired() && !self.leader_waitings.is_empty() {
+            if self.leader_waiting_timeout.count_down() && !self.leader_waitings.is_empty() {
                 warn!(self.logger, "Leader waiting timeout (cleared)");
                 self.clear_leader_waitings();
             }
@@ -903,6 +887,19 @@ impl Stream for Node {
                 self.staled_object_rounds = 0;
             } else {
                 self.staled_object_rounds += 1;
+            }
+
+            // リーダー不在チェック
+            if let Some(ref mut timeout) = self.log_leader_absence_timeout {
+                if self.leader.is_some() {
+                    timeout.reset();
+                } else if timeout.count_down() {
+                    warn!(
+                        self.logger,
+                        "Leader absence timeout has been expired: expired_total={}",
+                        timeout.expired_total(),
+                    );
+                }
             }
         }
 
@@ -987,26 +984,5 @@ impl Stream for Node {
         }
 
         Ok(Async::NotReady)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn leader_waiting_timeout_works() {
-        let mut timeout = LeaderWaitingTimeout::new(3);
-        assert!(timeout.is_expired());
-        timeout.reset();
-        assert!(!timeout.is_expired());
-        timeout.decrement();
-        timeout.decrement();
-        timeout.decrement();
-        assert!(timeout.is_expired());
-        timeout.decrement();
-        assert!(timeout.is_expired());
-        timeout.reset();
-        assert!(!timeout.is_expired());
     }
 }

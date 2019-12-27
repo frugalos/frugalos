@@ -23,6 +23,7 @@ mod handle;
 mod metrics;
 mod node;
 mod snapshot;
+mod timeout;
 
 pub(crate) type Reply<T> = Monitored<T, Error>;
 
