@@ -149,7 +149,7 @@ impl Synchronizer {
                             &self.logger,
                             self.node_id,
                             &self.device,
-                            object_versions.clone(),
+                            object_versions,
                             ObjectVersion(next_commit.as_u64()),
                             self.segment_gc_metrics.clone(),
                             self.segment_gc_step,
