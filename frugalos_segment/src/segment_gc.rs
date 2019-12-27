@@ -145,7 +145,7 @@ pub(self) fn make_list_and_delete_content(
 ) -> impl Future<Item = (), Error = Error> + Send {
     if step == 0 {
         return Either::A(futures::future::err(
-            ErrorKind::Other.cause("step should be > 0").into(),
+            ErrorKind::Invalid.cause("step should be > 0").into(),
         ));
     }
     let logger = logger.clone();

@@ -118,11 +118,11 @@ impl Synchronizer {
             // metadata の場合、StartSegmentGc と StopSegmentGc に含まれている tx は処理しないといけないので処理する。
             match event {
                 Event::StartSegmentGc { tx, .. } => {
-                    info!(self.logger, "StartSegmentGc suppressed");
+                    debug!(self.logger, "StartSegmentGc suppressed");
                     tx.exit(Ok(()))
                 }
                 Event::StopSegmentGc { tx } => {
-                    info!(self.logger, "StopSegmentGc suppressed");
+                    debug!(self.logger, "StopSegmentGc suppressed");
                     tx.exit(Ok(()))
                 }
                 _ => (),

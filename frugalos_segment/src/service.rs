@@ -23,7 +23,7 @@ use trackable::error::ErrorKindExt;
 
 use client::storage::StorageClient;
 use rpc_server::RpcServer;
-use segment_gc_manager::{SegmentGcManager, Toggle};
+use segment_gc_manager::{GcTask, SegmentGcManager};
 use synchronizer::Synchronizer;
 use util::UnitFuture;
 use {Client, Error, ErrorKind, Result};
@@ -559,7 +559,7 @@ enum SegmentNodeCommand {
 /// machine の情報が欲しいため MdsService を経由しなければならない。
 struct SegmentGcToggle(ServiceHandle, LocalNodeId);
 
-impl Toggle for SegmentGcToggle {
+impl GcTask for SegmentGcToggle {
     fn start(&self) -> UnitFuture {
         let (tx, rx) = fibers::sync::oneshot::monitor();
         self.0.start_segment_gc(self.1, tx);

@@ -5,7 +5,7 @@ use slog::Logger;
 use util::UnitFuture;
 
 /// 実行開始と停止ができる型
-pub(crate) trait Toggle {
+pub(crate) trait GcTask {
     fn start(&self) -> UnitFuture;
     fn stop(&self) -> UnitFuture;
 }
@@ -25,22 +25,22 @@ pub(crate) struct SegmentGcManager<Task> {
     limit: usize,                       // 実行可能なタスク数の上限
 }
 
-impl<Task: Toggle> SegmentGcManager<Task> {
+impl<Task: GcTask> SegmentGcManager<Task> {
     pub(crate) fn new(logger: Logger) -> Self {
         let metric_builder = MetricBuilder::new()
             .namespace("frugalos")
             .subsystem("segment_gc_manager")
             .clone();
         let segment_gc_running = metric_builder
-            .gauge("segment_gc_running")
+            .gauge("running_task_total")
             .finish()
             .expect("metric should be well-formed");
         let segment_gc_waiting = metric_builder
-            .gauge("segment_gc_waiting")
+            .gauge("waiting_task_total")
             .finish()
             .expect("metric should be well-formed");
         let segment_gc_stopping = metric_builder
-            .gauge("segment_gc_stopping")
+            .gauge("stopping_task_total")
             .finish()
             .expect("metric should be well-formed");
         Self {
@@ -78,7 +78,7 @@ impl<Task: Toggle> SegmentGcManager<Task> {
     }
 }
 
-impl<Task: Toggle> Future for SegmentGcManager<Task> {
+impl<Task: GcTask> Future for SegmentGcManager<Task> {
     type Item = ();
     type Error = ();
 
@@ -162,7 +162,7 @@ mod tests {
 
     struct IncrementToggle(Arc<AtomicI32>);
 
-    impl Toggle for IncrementToggle {
+    impl GcTask for IncrementToggle {
         fn start(&self) -> UnitFuture {
             self.0.fetch_add(1, Ordering::SeqCst);
             Box::new(ok(()))
@@ -175,7 +175,7 @@ mod tests {
     /// self.0 で見ているカウンタが self.1 以上になるまで待つ。
     struct WaitingToggle(Arc<AtomicI32>, i32, Arc<AtomicI32>);
 
-    impl Toggle for WaitingToggle {
+    impl GcTask for WaitingToggle {
         fn start(&self) -> UnitFuture {
             let future =
                 futures::future::loop_fn((Arc::clone(&self.0), self.1), |(counter, limit)| {
