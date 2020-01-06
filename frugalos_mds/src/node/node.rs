@@ -618,14 +618,33 @@ impl Node {
             ReadConsistency::Consistent => self.check_leader(),
         }
     }
+    fn change_leader(&mut self, leader: NodeId) {
+        for x in self.leader_waitings.drain(..) {
+            x.exit(Ok(leader));
+        }
+        self.leader = Some(leader);
+    }
     fn handle_raft_event(&mut self, event: RaftEvent) -> Result<()> {
         use raftlog::Event as E;
         trace!(self.logger, "New raft event: {:?}", event);
         match event {
             E::RoleChanged { new_role } => {
-                info!(self.logger, "New raft role: {:?}", new_role);
+                let leader = track!(NodeId::from_raft_node_id(
+                    &self.rlog.local_node().ballot.voted_for
+                ))?;
+                info!(
+                    self.logger,
+                    "New raft role: {:?}(leader: {:?})", new_role, leader
+                );
                 let role = format!("{:?}", new_role);
                 track!(self.metrics.objects.labels_mut().insert("role", &role))?;
+                // leader は `LogEntry::Noop` を待つ必要がある。
+                // follower はこの時点で leader を知っていてもよい。
+                // (candidate の場合は `voted_for` がリーダーとは限らない)
+                // 詳細は Raft の論文の 8 を参照。
+                if self.rlog.local_node().role == Role::Follower {
+                    self.change_leader(leader);
+                }
             }
             E::TermChanged { new_ballot } => {
                 info!(
@@ -703,14 +722,11 @@ impl Node {
                 let leader = track!(NodeId::from_raft_node_id(
                     &self.rlog.local_node().ballot.voted_for
                 ))?;
-                for x in self.leader_waitings.drain(..) {
-                    x.exit(Ok(leader));
-                }
                 info!(
                     self.logger,
                     "New leader is elected: {:?} (commit:{:?})", leader, commit
                 );
-                self.leader = Some(leader);
+                self.change_leader(leader);
             }
             LogEntry::Command { command, .. } => {
                 self.commit_timeout = None;
