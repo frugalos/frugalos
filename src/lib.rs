@@ -236,6 +236,7 @@ impl Default for FrugalosRpcClientConfig {
 }
 
 /// histogram メトリクスにおける、バケツの upper_bound の設定。単調増加である必要がある。
+///
 /// 設定がない場合は fibers_http_server のデフォルト値が使われる。
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct HttpRequestDurationHistogramBucketConfig(pub Option<Vec<f64>>);
