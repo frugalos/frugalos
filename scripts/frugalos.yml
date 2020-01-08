@@ -2,11 +2,6 @@
 # scripts/ 以下のファイルで使用するためのもの。
 # 設定項目については https://github.com/frugalos/frugalos/wiki/Configuration を参照。
 frugalos:
-  daemon:
-    fibers_http_server_handler_request_duration_seconds_bucket_config:
-      - 0.5
-      - 1.0
-      - 1.5
   rpc_client:
     tcp_connect_timeout_millis: 5000
     tcp_write_timeout_millis: 5000
@@ -18,8 +13,8 @@ frugalos:
       head_request_policy:
         type: 'speculative'
         timeout_millis: 200
-  http_server:
-    fibers_http_server_handler_request_duration_seconds_bucket_config:
+  fibers_http_server:
+    request_duration_bucket_config:
       - 0.5
       - 1.0
       - 1.5

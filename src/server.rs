@@ -121,8 +121,8 @@ impl Server {
         // Config に書かれたバケツの設定を読む
         let bucket_config = self
             .config
-            .http_server
-            .fibers_http_server_handler_request_duration_seconds_bucket_config
+            .fibers_http_server
+            .request_duration_bucket_config
             .clone()
             .into();
         track!(

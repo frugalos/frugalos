@@ -111,6 +111,9 @@ pub struct FrugalosConfig {
     /// frugalos_segment 向けの設定。
     #[serde(default)]
     pub segment: frugalos_segment::FrugalosSegmentConfig,
+    /// fibers_http_server 向けの設定。
+    #[serde(default)]
+    pub fibers_http_server: FibersHttpServerConfig,
 }
 
 impl FrugalosConfig {
@@ -144,6 +147,7 @@ impl Default for FrugalosConfig {
             rpc_client: Default::default(),
             mds: Default::default(),
             segment: Default::default(),
+            fibers_http_server: Default::default(),
         }
     }
 }
@@ -158,10 +162,6 @@ pub struct FrugalosDaemonConfig {
     /// Jaegerのトレースのサンプリング確率。
     #[serde(default = "default_sampling_rate")]
     pub sampling_rate: f64,
-    /// daemon 管理の HTTP サーバのメトリクスのバケツの設定
-    #[serde(default)]
-    pub fibers_http_server_handler_request_duration_seconds_bucket_config:
-        HttpRequestDurationHistogramBucketConfig,
 }
 
 impl Default for FrugalosDaemonConfig {
@@ -169,8 +169,6 @@ impl Default for FrugalosDaemonConfig {
         Self {
             executor_threads: default_executor_threads(),
             sampling_rate: default_sampling_rate(),
-            fibers_http_server_handler_request_duration_seconds_bucket_config:
-                HttpRequestDurationHistogramBucketConfig::default(),
         }
     }
 }
@@ -181,18 +179,12 @@ pub struct FrugalosHttpServerConfig {
     /// bind するアドレス。
     #[serde(default = "default_http_server_bind_addr")]
     pub bind_addr: SocketAddr,
-    /// HTTP サーバのメトリクスのバケツの設定
-    #[serde(default)]
-    pub fibers_http_server_handler_request_duration_seconds_bucket_config:
-        HttpRequestDurationHistogramBucketConfig,
 }
 
 impl Default for FrugalosHttpServerConfig {
     fn default() -> Self {
         Self {
             bind_addr: default_http_server_bind_addr(),
-            fibers_http_server_handler_request_duration_seconds_bucket_config:
-                HttpRequestDurationHistogramBucketConfig::default(),
         }
     }
 }
@@ -233,6 +225,12 @@ impl Default for FrugalosRpcClientConfig {
             tcp_write_timeout: default_tcp_write_timeout(),
         }
     }
+}
+
+/// fibers_http_server の設定。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct FibersHttpServerConfig {
+    request_duration_bucket_config: HttpRequestDurationHistogramBucketConfig,
 }
 
 /// histogram メトリクスにおける、バケツの upper_bound の設定。単調増加である必要がある。
@@ -298,20 +296,17 @@ frugalos:
   log_file: ~
   loglevel: critical
   max_concurrent_logs: 30
-  daemon:
-    executor_threads: 3
-    sampling_rate: 0.1
-    fibers_http_server_handler_request_duration_seconds_bucket_config:
-      - 0.5
-      - 1.0
-      - 1.5
-  http_server:
-    bind_addr: "127.0.0.1:2222"
-    fibers_http_server_handler_request_duration_seconds_bucket_config:
+  fibers_http_server:
+    request_duration_bucket_config:
       - 1.5
       - 2.0
       - 3.0
       - 4.0
+  daemon:
+    executor_threads: 3
+    sampling_rate: 0.1
+  http_server:
+    bind_addr: "127.0.0.1:2222"
   rpc_client:
     tcp_connect_timeout_millis: 8000
     tcp_write_timeout_millis: 10000
@@ -353,17 +348,11 @@ frugalos:
         expected.data_dir = "/var/lib/frugalos".to_owned();
         expected.max_concurrent_logs = 30;
         expected.loglevel = sloggers::types::Severity::Critical;
+        expected.fibers_http_server.request_duration_bucket_config =
+            HttpRequestDurationHistogramBucketConfig(Some(vec![1.5, 2.0, 3.0, 4.0]));
         expected.daemon.sampling_rate = 0.1;
         expected.daemon.executor_threads = 3;
-        expected
-            .daemon
-            .fibers_http_server_handler_request_duration_seconds_bucket_config =
-            HttpRequestDurationHistogramBucketConfig(Some(vec![0.5, 1.0, 1.5]));
         expected.http_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 2222));
-        expected
-            .http_server
-            .fibers_http_server_handler_request_duration_seconds_bucket_config =
-            HttpRequestDurationHistogramBucketConfig(Some(vec![1.5, 2.0, 3.0, 4.0]));
         expected.rpc_client.tcp_connect_timeout = Duration::from_secs(8);
         expected.rpc_client.tcp_write_timeout = Duration::from_secs(10);
         expected.mds.commit_timeout_threshold = 20;

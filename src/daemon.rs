@@ -119,8 +119,8 @@ impl FrugalosDaemon {
         track!(server.register(&mut http_server_builder))?;
 
         let bucket_config = config
-            .daemon
-            .fibers_http_server_handler_request_duration_seconds_bucket_config
+            .fibers_http_server
+            .request_duration_bucket_config
             .into();
 
         track!(
