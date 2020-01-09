@@ -38,6 +38,7 @@ extern crate trackable;
 extern crate clap;
 extern crate sloggers;
 
+use fibers_http_server::metrics::BucketConfig;
 use std::fs::File;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -110,6 +111,9 @@ pub struct FrugalosConfig {
     /// frugalos_segment 向けの設定。
     #[serde(default)]
     pub segment: frugalos_segment::FrugalosSegmentConfig,
+    /// fibers_http_server 向けの設定。
+    #[serde(default)]
+    pub fibers_http_server: FibersHttpServerConfig,
 }
 
 impl FrugalosConfig {
@@ -143,6 +147,7 @@ impl Default for FrugalosConfig {
             rpc_client: Default::default(),
             mds: Default::default(),
             segment: Default::default(),
+            fibers_http_server: Default::default(),
         }
     }
 }
@@ -222,6 +227,28 @@ impl Default for FrugalosRpcClientConfig {
     }
 }
 
+/// fibers_http_server の設定。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct FibersHttpServerConfig {
+    request_duration_bucket_config: HttpRequestDurationHistogramBucketConfig,
+}
+
+/// histogram メトリクスにおける、バケツの upper_bound の設定。単調増加である必要がある。
+///
+/// 設定がない場合は fibers_http_server のデフォルト値が使われる。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct HttpRequestDurationHistogramBucketConfig(pub Option<Vec<f64>>);
+
+impl From<HttpRequestDurationHistogramBucketConfig> for BucketConfig {
+    /// BucketConfig を作って返す
+    fn from(config: HttpRequestDurationHistogramBucketConfig) -> Self {
+        match config.0 {
+            Some(buckets) => BucketConfig::new(buckets),
+            None => BucketConfig::default(),
+        }
+    }
+}
+
 fn default_executor_threads() -> usize {
     num_cpus::get()
 }
@@ -269,6 +296,12 @@ frugalos:
   log_file: ~
   loglevel: critical
   max_concurrent_logs: 30
+  fibers_http_server:
+    request_duration_bucket_config:
+      - 1.5
+      - 2.0
+      - 3.0
+      - 4.0
   daemon:
     executor_threads: 3
     sampling_rate: 0.1
@@ -315,6 +348,8 @@ frugalos:
         expected.data_dir = "/var/lib/frugalos".to_owned();
         expected.max_concurrent_logs = 30;
         expected.loglevel = sloggers::types::Severity::Critical;
+        expected.fibers_http_server.request_duration_bucket_config =
+            HttpRequestDurationHistogramBucketConfig(Some(vec![1.5, 2.0, 3.0, 4.0]));
         expected.daemon.sampling_rate = 0.1;
         expected.daemon.executor_threads = 3;
         expected.http_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 2222));

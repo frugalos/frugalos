@@ -15,6 +15,7 @@ use frugalos_raft;
 use futures::{Async, Future, Poll, Stream};
 use libfrugalos;
 use prometrics;
+use prometrics::metrics::MetricBuilder;
 use rustracing::sampler::{PassiveSampler, ProbabilisticSampler, Sampler};
 use rustracing_jaeger;
 use rustracing_jaeger::span::SpanContextState;
@@ -117,7 +118,18 @@ impl FrugalosDaemon {
         let server = Server::new(logger.clone(), cloned_config, client, tracer);
         track!(server.register(&mut http_server_builder))?;
 
-        track!(http_server_builder.add_handler(WithMetrics::new(MetricsHandler)))?;
+        let bucket_config = config
+            .fibers_http_server
+            .request_duration_bucket_config
+            .into();
+
+        track!(
+            http_server_builder.add_handler(WithMetrics::with_metrics_and_bucket_config(
+                MetricsHandler,
+                MetricBuilder::new(),
+                bucket_config,
+            ))
+        )?;
 
         let config_server = ConfigServer::new(rpc_service.handle(), rpc_addr);
         track!(config_server.register(&mut http_server_builder))?;

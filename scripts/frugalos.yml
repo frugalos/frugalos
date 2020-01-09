@@ -1,4 +1,5 @@
 ---
+# scripts/ 以下のファイルで使用するためのもの。
 # 設定項目については https://github.com/frugalos/frugalos/wiki/Configuration を参照。
 frugalos:
   rpc_client:
