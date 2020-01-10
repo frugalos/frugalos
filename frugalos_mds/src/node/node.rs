@@ -617,6 +617,15 @@ impl Node {
             ReadConsistency::Consistent => self.check_leader(),
         }
     }
+    fn change_leader(&mut self, leader: NodeId) {
+        for x in self.leader_waitings.drain(..) {
+            x.exit(Ok(leader));
+        }
+        self.leader = Some(leader);
+    }
+    fn is_follower(&self) -> bool {
+        self.rlog.local_node().role == Role::Follower
+    }
     fn handle_raft_event(&mut self, event: RaftEvent) -> Result<()> {
         use raftlog::Event as E;
         trace!(self.logger, "New raft event: {:?}", event);
@@ -633,6 +642,18 @@ impl Node {
                 );
                 self.leader = None;
             }
+            // leader は `LogEntry::Noop` を待つ必要がある。
+            // follower はこの時点で leader を知っていてもよい。
+            // (candidate の場合は `voted_for` がリーダーとは限らない)
+            // 詳細は Raft の論文の 8 を参照。
+            E::NewLeaderElected if self.is_follower() => {
+                let leader = track!(NodeId::from_raft_node_id(
+                    &self.rlog.local_node().ballot.voted_for
+                ))?;
+                info!(self.logger, "New leader is elected: {:?}", leader);
+                self.change_leader(leader);
+            }
+            E::NewLeaderElected => {}
             E::Committed { index, entry } => track!(self.handle_committed(index, entry))?,
             E::SnapshotLoaded { new_head, snapshot } => {
                 info!(
@@ -698,18 +719,16 @@ impl Node {
 
         // エントリ毎の処理を実施
         match entry {
+            // `Event::NewLeaderElected` と重複があるが `LogEntry::Noop` で上書きされても問題ないため条件分岐はしない。
             LogEntry::Noop { .. } => {
                 let leader = track!(NodeId::from_raft_node_id(
                     &self.rlog.local_node().ballot.voted_for
                 ))?;
-                for x in self.leader_waitings.drain(..) {
-                    x.exit(Ok(leader));
-                }
                 info!(
                     self.logger,
                     "New leader is elected: {:?} (commit:{:?})", leader, commit
                 );
-                self.leader = Some(leader);
+                self.change_leader(leader);
             }
             LogEntry::Command { command, .. } => {
                 self.commit_timeout = None;
