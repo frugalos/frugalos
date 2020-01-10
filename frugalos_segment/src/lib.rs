@@ -47,6 +47,7 @@ mod queue_executor;
 mod repair;
 mod rpc_server;
 mod segment_gc;
+mod segment_gc_manager;
 mod service;
 mod synchronizer;
 mod test_util;

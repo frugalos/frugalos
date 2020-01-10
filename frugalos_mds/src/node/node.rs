@@ -29,6 +29,7 @@ use super::{Event, NodeHandle, Proposal, ProposalMetrics, Reply, Request, Second
 use codec;
 use config::FrugalosMdsConfig;
 use machine::{Command, Machine};
+use node::Event::{StartSegmentGc, StopSegmentGc};
 use protobuf;
 use std::cmp::Ordering;
 use {Error, ErrorKind, Result, ServiceHandle};
@@ -339,7 +340,9 @@ impl Node {
             | Request::Exit
             | Request::Stop(_)
             | Request::TakeSnapshot
-            | Request::StartElection => {}
+            | Request::StartElection
+            | Request::StartSegmentGc(_)
+            | Request::StopSegmentGc(_) => {}
             _ => {
                 if let Err(e) = self.check_leader() {
                     request.failed(e);
@@ -528,6 +531,17 @@ impl Node {
                 if let Err(e) = track!(self.take_snapshot()) {
                     error!(self.logger, "Cannot take snapshot: {}", e);
                 }
+            }
+            Request::StartSegmentGc(tx) => {
+                let object_versions = self.machine.to_versions();
+                self.events.push_back(StartSegmentGc {
+                    object_versions,
+                    next_commit: self.next_commit,
+                    tx,
+                })
+            }
+            Request::StopSegmentGc(tx) => {
+                self.events.push_back(StopSegmentGc { tx });
             }
             Request::Exit => {
                 if self.phase == Phase::Stopping {

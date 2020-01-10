@@ -106,40 +106,66 @@ impl Synchronizer {
             repair_queue,
         }
     }
-    pub fn handle_event(&mut self, event: &Event) {
+    pub fn handle_event(&mut self, event: Event) {
         debug!(
             self.logger,
             "New event: {:?} (metadata={})",
             event,
             self.client.is_metadata(),
         );
-        if !self.client.is_metadata() {
-            match *event {
+        // metadata かどうかによって場合分けする。
+        if self.client.is_metadata() {
+            // metadata の場合、StartSegmentGc と StopSegmentGc に含まれている tx は処理しないといけないので処理する。
+            match event {
+                Event::StartSegmentGc { tx, .. } => {
+                    debug!(self.logger, "StartSegmentGc suppressed");
+                    tx.exit(Ok(()))
+                }
+                Event::StopSegmentGc { tx } => {
+                    debug!(self.logger, "StopSegmentGc suppressed");
+                    tx.exit(Ok(()))
+                }
+                _ => (),
+            }
+        } else {
+            match event {
                 Event::Putted { .. } => {
-                    self.general_queue.push(event);
+                    self.general_queue.push(&event);
                 }
                 Event::Deleted { version, .. } => {
-                    self.general_queue.push(event);
+                    self.general_queue.push(&event);
                     self.repair_queue.delete(version);
                 }
-                // Because pushing FullSync into the task queue causes difficulty in implementation,
+                // Because pushing StartSegmentGc into the task queue causes difficulty in implementation,
                 // we decided not to push this task to the task priority queue and handle it manually.
-                Event::FullSync {
-                    ref machine,
+                Event::StartSegmentGc {
+                    object_versions,
                     next_commit,
+                    tx,
                 } => {
-                    // If FullSync is not being processed now, this event lets the synchronizer to handle one.
+                    // If SegmentGc is not being processed now, this event lets the synchronizer to handle one.
                     if self.segment_gc.is_none() {
                         self.segment_gc = Some(SegmentGc::new(
                             &self.logger,
                             self.node_id,
                             &self.device,
-                            machine.clone(),
+                            object_versions,
                             ObjectVersion(next_commit.as_u64()),
                             self.segment_gc_metrics.clone(),
                             self.segment_gc_step,
+                            tx,
                         ));
                     }
+                }
+                Event::StopSegmentGc { tx } => {
+                    // If segment gc is running, stop it without notifying its caller of stopping.
+                    if self.segment_gc.is_some() {
+                        self.segment_gc_metrics.segment_gc_aborted.increment();
+                        self.segment_gc = None;
+                        self.segment_gc_metrics.reset();
+                    }
+                    // Notify stop's caller of success.
+                    tx.exit(Ok(()));
                 }
             }
         }
@@ -160,7 +186,7 @@ impl Future for Synchronizer {
             warn!(self.logger, "Task failure: {}", e);
             Async::Ready(Some(()))
         }) {
-            // Full sync is done. Clearing the segment_gc field.
+            // Segment GC is done. Clearing the segment_gc field.
             self.segment_gc = None;
             self.segment_gc_metrics.reset();
         }
