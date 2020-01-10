@@ -130,7 +130,12 @@ impl MdsClient {
         debug!(self.logger, "Starts LIST");
         let parent = Span::inactive().handle();
         let request = SingleRequestOnce::new(RequestKind::Other, move |client| {
-            Box::new(client.list_objects().map_err(MdsError::from))
+            // TODO: supports consistency levels
+            Box::new(
+                client
+                    .list_objects(ReadConsistency::Consistent)
+                    .map_err(MdsError::from),
+            )
         });
         Request::new(self.clone(), parent, request)
     }
@@ -338,7 +343,12 @@ impl MdsClient {
     pub fn object_count(&self) -> impl Future<Item = u64, Error = Error> {
         let parent = Span::inactive().handle();
         let request = SingleRequestOnce::new(RequestKind::Other, |client| {
-            Box::new(client.object_count().map_err(MdsError::from))
+            // TODO: supports consistency levels
+            Box::new(
+                client
+                    .object_count(ReadConsistency::Consistent)
+                    .map_err(MdsError::from),
+            )
         });
         Request::new(self.clone(), parent, request)
     }
