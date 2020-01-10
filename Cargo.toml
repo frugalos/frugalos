@@ -36,7 +36,7 @@ httpcodec = "0.2"
 libfrugalos = "0.5.0"
 num_cpus = "1"
 prometrics = "0.1"
-raftlog = "0.5"
+raftlog = "0.6"
 rustracing = "0.1"
 rustracing_jaeger = "0.1"
 siphasher = "0.2"
@@ -58,6 +58,3 @@ trackable = "^0.2.21"
 
 [workspace]
 members = ["frugalos_core", "frugalos_config", "frugalos_mds", "frugalos_raft", "frugalos_segment"]
-
-[patch.crates-io]
-raftlog = { path = "../raftlog" }
