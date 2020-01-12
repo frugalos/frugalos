@@ -220,21 +220,34 @@ impl HandleRequest for GetBucketStatistics {
         };
 
         let client = self.0.client.clone();
-        let future = futures::stream::iter_ok(0..segments)
+        let usage = futures::stream::iter_ok(0..segments.clone())
+            .and_then(move |segment| {
+                let request = client.request(bucket_id.clone());
+                request.segment_stats(segment).map_err(|e| track!(e))
+            })
+            .fold(0, |total, stats| -> Result<_> {
+                Ok(total + stats.storage_usage_bytes)
+            });
+        let bucket_id = get_bucket_id(req.url());
+        let client = self.0.client.clone();
+        let objects = futures::stream::iter_ok(0..segments)
             .and_then(move |segment| {
                 let request = client.request(bucket_id.clone());
                 request
                     .object_count(segment as usize)
                     .map_err(|e| track!(e))
             })
-            .fold(0, |total, objects| -> Result<_> { Ok(total + objects) })
-            .then(|result| match track!(result) {
-                Err(e) => Ok(make_json_response(Status::InternalServerError, Err(e))),
-                Ok(objects) => {
-                    let stats = BucketStatistics { objects };
-                    Ok(make_json_response(Status::Ok, Ok(stats)))
-                }
-            });
+            .fold(0, |total, objects| -> Result<_> { Ok(total + objects) });
+        let future = objects.join(usage).then(|result| match track!(result) {
+            Err(e) => Ok(make_json_response(Status::InternalServerError, Err(e))),
+            Ok((objects, usage_bytes)) => {
+                let stats = BucketStatistics {
+                    objects,
+                    storage_usage_bytes: usage_bytes,
+                };
+                Ok(make_json_response(Status::Ok, Ok(stats)))
+            }
+        });
         Box::new(future)
     }
 }

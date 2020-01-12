@@ -3,6 +3,7 @@ use adler32;
 use byteorder::{BigEndian, ByteOrder};
 use cannyls::deadline::Deadline;
 use cannyls::lump::LumpId;
+use cannyls::storage::StorageUsage;
 use cannyls_rpc::DeviceId;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_raft::NodeId;
@@ -11,6 +12,7 @@ use futures::{self, Async, Future, Poll};
 use libfrugalos::entity::object::{FragmentsSummary, ObjectVersion};
 use rustracing_jaeger::span::SpanHandle;
 use slog::Logger;
+use std::ops::Range;
 use trackable::error::ErrorKindExt;
 
 use client::dispersed_storage::{DispersedClient, ReconstructDispersedFragment};
@@ -66,6 +68,17 @@ impl StorageClient {
             true
         } else {
             false
+        }
+    }
+    pub fn storage_usage(
+        self,
+        range: Range<LumpId>,
+        parent: SpanHandle,
+    ) -> BoxFuture<Vec<StorageUsage>> {
+        match self {
+            StorageClient::Metadata => Box::new(futures::finished(Vec::new())),
+            StorageClient::Replicated(c) => c.storage_usage(range),
+            StorageClient::Dispersed(c) => c.storage_usage(range, parent),
         }
     }
     pub fn get_fragment(self, local_node: NodeId, version: ObjectVersion) -> GetFragment {

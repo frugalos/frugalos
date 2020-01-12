@@ -1,11 +1,13 @@
 use cannyls::deadline::Deadline;
 use cannyls::lump::{LumpData, LumpId};
+use cannyls::storage::StorageUsage;
 use cannyls_rpc::Client as CannyLsClient;
 use cannyls_rpc::DeviceId;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_raft::NodeId;
 use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::{FragmentsSummary, ObjectVersion};
+use std::ops::Range;
 use std::sync::Arc;
 use trackable::error::ErrorKindExt;
 
@@ -40,6 +42,10 @@ impl ReplicatedClient {
             client_config,
             rpc_service,
         }
+    }
+    pub fn storage_usage(self, _range: Range<LumpId>) -> BoxFuture<Vec<StorageUsage>> {
+        // TODO implement
+        Box::new(futures::future::ok(Vec::new()))
     }
     pub fn get_fragment(
         self,

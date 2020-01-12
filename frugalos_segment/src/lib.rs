@@ -31,6 +31,7 @@ extern crate siphasher;
 extern crate slog;
 #[macro_use]
 extern crate trackable;
+extern crate proc_macro;
 
 pub use client::ec::{build_ec, ErasureCoder};
 pub use client::Client;
