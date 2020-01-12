@@ -92,4 +92,7 @@ pub fn not_found() -> Error {
 pub struct BucketStatistics {
     /// バケツ内のオブジェクト数.
     pub objects: u64,
+
+    /// ストレージ使用量の近似値(バイト).
+    pub storage_usage_bytes: u64,
 }

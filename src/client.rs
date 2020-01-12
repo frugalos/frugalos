@@ -2,6 +2,7 @@
 #![allow(clippy::needless_pass_by_value)]
 use atomic_immut::AtomicImmut;
 use cannyls::deadline::Deadline;
+use cannyls::lump::LumpId;
 use frugalos_segment::ObjectValue;
 use futures::{self, Future};
 use libfrugalos::consistency::ReadConsistency;
@@ -9,6 +10,7 @@ use libfrugalos::entity::bucket::BucketId;
 use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, ObjectId, ObjectPrefix, ObjectSummary, ObjectVersion,
 };
+use libfrugalos::entity::segment::SegmentStatistics;
 use libfrugalos::expect::Expect;
 use rustracing_jaeger::span::{Span, SpanHandle};
 use std::collections::HashMap;
@@ -231,6 +233,23 @@ impl<'a> Request<'a> {
         let bucket = try_get_bucket!(buckets, self.bucket_id);
         if segment < bucket.segments().len() {
             let future = bucket.segments()[segment].object_count();
+            Box::new(future.map_err(|e| track!(Error::from(e))))
+        } else {
+            let e = ErrorKind::InvalidInput.cause(format!("Too large segment number: {}", segment));
+            Box::new(futures::failed(e.into()))
+        }
+    }
+    pub fn segment_stats(&self, segment: u16) -> BoxFuture<SegmentStatistics> {
+        let segment = segment as usize;
+        let buckets = self.client.buckets.load();
+        let bucket = try_get_bucket!(buckets, self.bucket_id);
+        // TODO
+        let range = Range {
+            start: LumpId::new(0),
+            end: LumpId::new(1),
+        };
+        if segment < bucket.segments().len() {
+            let future = bucket.segments()[segment].stats(range, self.parent.clone());
             Box::new(future.map_err(|e| track!(Error::from(e))))
         } else {
             let e = ErrorKind::InvalidInput.cause(format!("Too large segment number: {}", segment));

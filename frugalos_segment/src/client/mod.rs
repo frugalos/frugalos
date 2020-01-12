@@ -1,4 +1,5 @@
 use cannyls::deadline::Deadline;
+use cannyls::storage::StorageUsage;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use futures::future::Either;
 use futures::{self, Future};
@@ -6,6 +7,7 @@ use libfrugalos::consistency::ReadConsistency;
 use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, ObjectId, ObjectPrefix, ObjectSummary, ObjectVersion,
 };
+use libfrugalos::entity::segment::SegmentStatistics;
 use libfrugalos::expect::Expect;
 use rustracing_jaeger::span::SpanHandle;
 use slog::Logger;
@@ -15,6 +17,7 @@ use std::ops::Range;
 use self::ec::ErasureCoder;
 use self::mds::MdsClient;
 use self::storage::StorageClient;
+use cannyls::lump::LumpId;
 use config::ClientConfig;
 use {Error, ObjectValue, Result};
 
@@ -222,6 +225,49 @@ impl Client {
     /// セグメント内に保持されているオブジェクトの数を返す.
     pub fn object_count(&self) -> impl Future<Item = u64, Error = Error> {
         self.mds.object_count()
+    }
+
+    /// セグメントの統計情報を返す.
+    pub fn stats(
+        &self,
+        range: Range<LumpId>,
+        parent: SpanHandle,
+    ) -> impl Future<Item = SegmentStatistics, Error = Error> {
+        // TODO remove clone
+        self.storage
+            .clone()
+            .storage_usage(range, parent)
+            .map(|usages| {
+                let max_usage = usages
+                    .iter()
+                    .map(|usage| {
+                        if let StorageUsage::Approximate(n) = usage {
+                            *n
+                        } else {
+                            0
+                        }
+                    })
+                    .max();
+                let max_usage = if let Some(max) = max_usage {
+                    u64::from(max)
+                } else {
+                    0
+                };
+                let storage_usage_bytes = usages
+                    .iter()
+                    .map(|usage| {
+                        if let StorageUsage::Approximate(n) = usage {
+                            u64::from(*n)
+                        } else {
+                            // 取得できなかった場合は使用量が過小評価されないようにする
+                            max_usage
+                        }
+                    })
+                    .sum();
+                SegmentStatistics {
+                    storage_usage_bytes,
+                }
+            })
     }
 }
 
