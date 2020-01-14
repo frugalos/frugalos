@@ -1,3 +1,5 @@
+use cannyls::lump::LumpId;
+use cannyls_rpc::DeviceId;
 use fibers_http_server::{Res, Status};
 use httpcodec::{Header, HeaderField, HeaderFields};
 use libfrugalos::entity::object::ObjectVersion;
@@ -92,4 +94,29 @@ pub fn not_found() -> Error {
 pub struct BucketStatistics {
     /// バケツ内のオブジェクト数.
     pub objects: u64,
+}
+
+#[derive(Serialize, Debug)]
+pub struct DeleteFragmentResponse {
+    pub version: String,
+    /// 実際に削除が実行されたか
+    pub deleted: bool,
+    pub device_id: String,
+    pub lump_id: String,
+}
+
+impl DeleteFragmentResponse {
+    pub fn new(
+        version: ObjectVersion,
+        deleted: bool,
+        device_id: DeviceId,
+        lump_id: LumpId,
+    ) -> Self {
+        Self {
+            version: format!("{:x}", version.0),
+            deleted: deleted,
+            device_id: device_id.into_string(),
+            lump_id: format!("{:>032x}", lump_id.as_u128()),
+        }
+    }
 }

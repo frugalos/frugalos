@@ -29,7 +29,8 @@ use url::Url;
 use client::FrugalosClient;
 use codec::{AsyncEncoder, ObjectResultEncoder};
 use http::{
-    make_json_response, make_object_response, not_found, BucketStatistics, HttpResult, TraceHeader,
+    make_json_response, make_object_response, not_found, BucketStatistics, DeleteFragmentResponse,
+    HttpResult, TraceHeader,
 };
 use many_objects::put_many_objects;
 use {Error, ErrorKind, FrugalosConfig, Result};
@@ -509,9 +510,9 @@ impl HandleRequest for DeleteFragment {
     const PATH: &'static str = "/v1/buckets/*/objects/*/fragments/*";
 
     type ReqBody = ();
-    type ResBody = HttpResult<Vec<u8>>;
+    type ResBody = HttpResult<DeleteFragmentResponse>;
     type Decoder = BodyDecoder<NullDecoder>;
-    type Encoder = BodyEncoder<ObjectResultEncoder>;
+    type Encoder = BodyEncoder<JsonEncoder<Self::ResBody>>;
     type Reply = Reply<Self::ResBody>;
 
     fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
@@ -541,20 +542,32 @@ impl HandleRequest for DeleteFragment {
             .span(&span)
             .delete_fragment(object_id, fragment_index)
             .then(move |result| {
-                let response = match track!(result) {
+                let (status, body) = match track!(result) {
                     Ok(None) => {
                         span.set_tag(|| StdTag::http_status_code(404));
-                        make_object_response(Status::NotFound, None, Err(not_found()))
+                        (Status::NotFound, Err(not_found()))
                     }
-                    Ok(Some(version)) => {
+                    Ok(Some((version, result))) => {
                         span.set_tag(|| Tag::new("object.version", version.0 as i64));
                         span.set_tag(|| StdTag::http_status_code(200));
-                        make_object_response(Status::Ok, Some(version), Ok(Vec::new()))
+                        if let Some((deleted, device_id, lump_id)) = result {
+                            (
+                                Status::Ok,
+                                Ok(DeleteFragmentResponse::new(
+                                    version, deleted, device_id, lump_id,
+                                )),
+                            )
+                        } else {
+                            (Status::NotFound, Err(not_found()))
+                        }
                     }
                     Err(e) => {
-                        if let ErrorKind::Unexpected(version) = *e.kind() {
+                        if let ErrorKind::InvalidInput = *e.kind() {
+                            span.set_tag(|| StdTag::http_status_code(400));
+                            (Status::BadRequest, Err(e))
+                        } else if let ErrorKind::Unexpected(_version) = *e.kind() {
                             span.set_tag(|| StdTag::http_status_code(412));
-                            make_object_response(Status::PreconditionFailed, version, Err(e))
+                            (Status::PreconditionFailed, Err(e))
                         } else {
                             warn!(
                                 logger,
@@ -564,11 +577,11 @@ impl HandleRequest for DeleteFragment {
                                 e
                             );
                             span.set_tag(|| StdTag::http_status_code(500));
-                            make_object_response(Status::InternalServerError, None, Err(e))
+                            (Status::InternalServerError, Err(e))
                         }
                     }
                 };
-                Ok(response)
+                Ok(make_json_response(status, body))
             });
         Box::new(future)
     }

@@ -1,6 +1,6 @@
 #![allow(clippy::needless_pass_by_value)]
 use cannyls::deadline::Deadline;
-use cannyls::lump::{LumpData, LumpHeader};
+use cannyls::lump::{LumpData, LumpHeader, LumpId};
 use cannyls_rpc::Client as CannyLsClient;
 use cannyls_rpc::DeviceId;
 use ecpool::liberasurecode::LibErasureCoderBuilder;
@@ -225,7 +225,7 @@ impl DispersedClient {
         deadline: Deadline,
         parent: SpanHandle,
         index: usize,
-    ) -> BoxFuture<bool> {
+    ) -> BoxFuture<Option<(bool, DeviceId, LumpId)>> {
         let candidates = self
             .cluster
             .candidates(version)
@@ -238,17 +238,42 @@ impl DispersedClient {
                 .start()
         });
         if candidates.len() <= index {
-            return Box::new(futures::future::ok(false));
+            let cause = format!(
+                "index: {} is out of bounds for length: {}",
+                index,
+                candidates.len()
+            );
+            return Box::new(futures::future::err(ErrorKind::Invalid.cause(cause).into()));
         }
         let cluster_member = candidates[index].clone();
-        Box::new(DeleteDispersedFragment::new(
-            deadline,
-            version,
-            cluster_member,
-            self.rpc_service,
-            &self.client_config,
-            span,
-        ))
+        let cannyls_client = CannyLsClient::new(cluster_member.node.addr, self.rpc_service);
+        let lump_id = cluster_member.make_lump_id(version);
+        let mut span = span.child("dispersed_delete_fragment", |span| {
+            span.tag(StdTag::component(module_path!()))
+                .tag(StdTag::span_kind("client"))
+                .tag(StdTag::peer_ip(cluster_member.node.addr.ip()))
+                .tag(StdTag::peer_port(cluster_member.node.addr.port()))
+                .tag(Tag::new("device", cluster_member.device.clone()))
+                .tag(Tag::new("lump", format!("{:?}", lump_id)))
+                .start()
+        });
+        let mut request = cannyls_client.request();
+        request.rpc_options(self.client_config.cannyls.rpc_options());
+        let device = cluster_member.device;
+        let future = request
+            .deadline(deadline)
+            .delete_lump(DeviceId::new(device.clone()), lump_id)
+            .then(move |result| {
+                if let Err(ref e) = result {
+                    span.log_error(e);
+                }
+                result
+            });
+        Box::new(
+            future
+                .map(move |deleted| Some((deleted, DeviceId::new(device), lump_id)))
+                .map_err(|e| track!(Error::from(e))),
+        )
     }
 }
 
@@ -682,58 +707,6 @@ impl Future for DispersedHead {
         if let Ok(Async::Ready(Some(()))) = self.timeout.poll() {
             let cause = "DispersedHead: timeout expired";
             return Err(track!(Error::from(ErrorKind::Busy.cause(cause))));
-        }
-        Ok(Async::NotReady)
-    }
-}
-
-pub struct DeleteDispersedFragment {
-    future: BoxFuture<bool>,
-}
-impl DeleteDispersedFragment {
-    fn new(
-        deadline: Deadline,
-        version: ObjectVersion,
-        cluster_member: ClusterMember,
-        rpc_service: RpcServiceHandle,
-        client_config: &DispersedClientConfig,
-        parent: Span,
-    ) -> Self {
-        let cannyls_client = CannyLsClient::new(cluster_member.node.addr, rpc_service);
-        let lump_id = cluster_member.make_lump_id(version);
-        let mut span = parent.child("dispersed_delete_fragment", |span| {
-            span.tag(StdTag::component(module_path!()))
-                .tag(StdTag::span_kind("client"))
-                .tag(StdTag::peer_ip(cluster_member.node.addr.ip()))
-                .tag(StdTag::peer_port(cluster_member.node.addr.port()))
-                .tag(Tag::new("device", cluster_member.device.clone()))
-                .tag(Tag::new("lump", format!("{:?}", lump_id)))
-                .start()
-        });
-        let mut request = cannyls_client.request();
-        request.rpc_options(client_config.cannyls.rpc_options());
-        let device = cluster_member.device;
-        let future = request
-            .deadline(deadline)
-            .delete_lump(DeviceId::new(device), lump_id)
-            .then(move |result| {
-                if let Err(ref e) = result {
-                    span.log_error(e);
-                }
-                result
-            });
-        let future: BoxFuture<_> = Box::new(future.map_err(|e| track!(Error::from(e))));
-        DeleteDispersedFragment { future }
-    }
-}
-impl Future for DeleteDispersedFragment {
-    type Item = bool;
-    type Error = Error;
-
-    #[allow(clippy::never_loop)]
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        while let Async::Ready(deleted) = track!(self.future.poll().map_err(Error::from))? {
-            return Ok(Async::Ready(deleted));
         }
         Ok(Async::NotReady)
     }

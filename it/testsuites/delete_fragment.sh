@@ -42,7 +42,7 @@ function curl_assert() {
 }
 
 # put
-sleep 30
+sleep 20
 curl_assert "-X PUT -d 'foo' http://${HOST}/v1/buckets/${BUCKET_ID}/objects/foo" "201"
 
 # head/get

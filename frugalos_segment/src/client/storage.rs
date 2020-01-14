@@ -2,6 +2,8 @@
 use adler32;
 use byteorder::{BigEndian, ByteOrder};
 use cannyls::deadline::Deadline;
+use cannyls::lump::LumpId;
+use cannyls_rpc::DeviceId;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_raft::NodeId;
 use futures::future;
@@ -122,9 +124,9 @@ impl StorageClient {
         deadline: Deadline,
         parent: SpanHandle,
         index: usize,
-    ) -> BoxFuture<bool> {
+    ) -> BoxFuture<Option<(bool, DeviceId, LumpId)>> {
         match self {
-            StorageClient::Metadata => Box::new(future::ok(false)),
+            StorageClient::Metadata => Box::new(future::ok(None)),
             StorageClient::Replicated(c) => c.delete_fragment(version, deadline, index),
             StorageClient::Dispersed(c) => c.delete_fragment(version, deadline, parent, index),
         }
