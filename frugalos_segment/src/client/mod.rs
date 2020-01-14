@@ -1,4 +1,6 @@
 use cannyls::deadline::Deadline;
+use cannyls::lump::LumpId;
+use cannyls_rpc::DeviceId;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use futures::future::Either;
 use futures::{self, Future};
@@ -216,7 +218,8 @@ impl Client {
         deadline: Deadline,
         parent: SpanHandle,
         index: usize,
-    ) -> impl Future<Item = Option<ObjectVersion>, Error = Error> {
+    ) -> impl Future<Item = Option<(ObjectVersion, Option<(bool, DeviceId, LumpId)>)>, Error = Error>
+    {
         let storage = self.storage.clone();
         self.mds
             .head(id, ReadConsistency::Consistent, parent.clone())
@@ -224,7 +227,13 @@ impl Client {
                 if let Some(version) = version {
                     let future = storage
                         .delete_fragment(version, deadline, parent, index)
-                        .map(move |deleted| if deleted { Some(version) } else { None });
+                        .map(move |result| {
+                            if let Some((deleted, device_id, lump_id)) = result {
+                                Some((version, Some((deleted, device_id, lump_id))))
+                            } else {
+                                None
+                            }
+                        });
                     Either::A(future)
                 } else {
                     Either::B(futures::future::ok(None))
