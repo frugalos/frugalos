@@ -32,6 +32,16 @@ pub struct FrugalosMdsConfig {
     #[serde(default = "default_leader_waiting_timeout_threshold")]
     pub leader_waiting_timeout_threshold: usize,
 
+    /// true ならリーダー不在状況でログを出す。
+    #[serde(default = "default_log_leader_absence")]
+    pub log_leader_absence: bool,
+
+    /// リーダー不在状況でログを出すまでの閾値。
+    ///
+    /// この設定値の1単位は `node_polling_interval` である点に注意。
+    #[serde(default = "default_log_leader_absence_threshold")]
+    pub log_leader_absence_threshold: usize,
+
     /// node がポーリングする間隔。
     #[serde(
         rename = "node_polling_interval_millis",
@@ -80,6 +90,8 @@ impl Default for FrugalosMdsConfig {
             large_proposal_queue_threshold: default_large_proposal_queue_threshold(),
             large_leader_waiting_queue_threshold: default_large_leader_waiting_queue_threshold(),
             leader_waiting_timeout_threshold: default_leader_waiting_timeout_threshold(),
+            log_leader_absence: default_log_leader_absence(),
+            log_leader_absence_threshold: default_log_leader_absence_threshold(),
             node_polling_interval: default_node_polling_interval(),
             reelection_threshold: default_reelection_threshold(),
             snapshot_threshold_min: default_snapshot_threshold_min(),
@@ -103,6 +115,14 @@ fn default_large_leader_waiting_queue_threshold() -> usize {
 
 fn default_leader_waiting_timeout_threshold() -> usize {
     10
+}
+
+fn default_log_leader_absence() -> bool {
+    false
+}
+
+fn default_log_leader_absence_threshold() -> usize {
+    600 // 5 minutes
 }
 
 fn default_node_polling_interval() -> Duration {

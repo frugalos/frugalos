@@ -14,6 +14,7 @@ use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, ObjectPrefix, ObjectSummary, ObjectVersion,
 };
 use libfrugalos::expect::Expect;
+use prometrics::metrics::MetricBuilder;
 use rustracing::tag::{StdTag, Tag};
 use rustracing_jaeger::reporter::JaegerCompactReporter;
 use rustracing_jaeger::span::{SpanContext, SpanReceiver};
@@ -31,6 +32,7 @@ use codec::{AsyncEncoder, ObjectResultEncoder};
 use http::{
     make_json_response, make_object_response, not_found, BucketStatistics, HttpResult, TraceHeader,
 };
+use many_objects::put_many_objects;
 use {Error, ErrorKind, FrugalosConfig, Result};
 
 // TODO: 冗長化設定等を反映した正確な上限を使用する
@@ -46,6 +48,21 @@ macro_rules! try_badarg {
                 )));
             }
             Ok(v) => v,
+        }
+    };
+}
+
+macro_rules! try_badarg_option {
+    ($e:expr) => {
+        match $e {
+            None => {
+                let error = ErrorKind::InvalidInput.cause("not designated");
+                return Box::new(futures::finished(Res::new(
+                    Status::BadRequest,
+                    HttpResult::Err(error.into()),
+                )));
+            }
+            Some(v) => v,
         }
     };
 }
@@ -77,15 +94,44 @@ impl Server {
     }
     pub fn register(self, builder: &mut HttpServerBuilder) -> Result<()> {
         track!(builder.add_handler(ListSegments(self.clone())))?;
-        track!(builder.add_handler(WithMetrics::new(ListObjects(self.clone()))))?;
-        track!(builder.add_handler(WithMetrics::new(GetObject(self.clone()))))?;
-        track!(builder.add_handler(WithMetrics::new(HeadObject(self.clone()))))?;
-        track!(builder.add_handler(WithMetrics::new(DeleteObject(self.clone()))))?;
-        track!(builder.add_handler(WithMetrics::new(DeleteObjectByPrefix(self.clone()))))?;
-        track!(builder.add_handler(WithMetrics::new(PutObject(self.clone()))))?;
-        track!(builder.add_handler(WithMetrics::new(GetBucketStatistics(self.clone()))))?;
+        self.register_once_with_metrics(ListObjects(self.clone()), builder)?;
+        self.register_once_with_metrics(GetObject(self.clone()), builder)?;
+        self.register_once_with_metrics(HeadObject(self.clone()), builder)?;
+        self.register_once_with_metrics(DeleteObject(self.clone()), builder)?;
+        self.register_once_with_metrics(DeleteObjectByPrefix(self.clone()), builder)?;
+        self.register_once_with_metrics(PutObject(self.clone()), builder)?;
+        self.register_once_with_metrics(PutManyObject(self.clone()), builder)?;
+        self.register_once_with_metrics(GetBucketStatistics(self.clone()), builder)?;
         track!(builder.add_handler(JemallocStats))?;
         track!(builder.add_handler(CurrentConfigurations(self.config)))?;
+        Ok(())
+    }
+
+    /// Add one handler with metrics
+    fn register_once_with_metrics<H>(
+        &self,
+        handle_request: H,
+        builder: &mut HttpServerBuilder,
+    ) -> Result<()>
+    where
+        H: HandleRequest,
+        H::Decoder: Default,
+        H::Encoder: Default,
+    {
+        // Config に書かれたバケツの設定を読む
+        let bucket_config = self
+            .config
+            .fibers_http_server
+            .request_duration_bucket_config
+            .clone()
+            .into();
+        track!(
+            builder.add_handler(WithMetrics::with_metrics_and_bucket_config(
+                handle_request,
+                MetricBuilder::new(),
+                bucket_config
+            ))
+        )?;
         Ok(())
     }
 }
@@ -531,14 +577,6 @@ impl HandleRequest for PutObject {
                 content.len(),
                 req.url()
             );
-            {
-                use std::fs::File;
-                use std::io::Write;
-
-                // TODO: 調査用の一時コード
-                let _ = File::create("/tmp/frugalos.huge.object.dump")
-                    .and_then(|mut f| f.write_all(&content));
-            }
             return Box::new(futures::finished(make_object_response(
                 Status::BadRequest,
                 None,
@@ -597,6 +635,89 @@ impl HandleRequest for PutObject {
                 };
                 Ok(response)
             });
+        Box::new(future)
+    }
+}
+
+struct PutManyObject(Server);
+impl HandleRequest for PutManyObject {
+    const METHOD: &'static str = "PUT";
+    const PATH: &'static str = "/v1/buckets/*/many_objects/*";
+
+    type ReqBody = Vec<u8>;
+    type ResBody = HttpResult<Vec<u8>>;
+    type Decoder = BodyDecoder<RemainingBytesDecoder>;
+    type Encoder = BodyEncoder<ObjectResultEncoder>;
+    type Reply = Reply<Self::ResBody>;
+
+    fn handle_request_head(&self, req: &Req<()>) -> Option<Res<Self::ResBody>> {
+        // TODO: decoderにもチェックを入れる
+        let n: Option<Option<usize>> = req.header().parse_field("content-length").ok();
+        if let Some(Some(n)) = n {
+            if n > MAX_PUT_OBJECT_SIZE {
+                warn!(
+                    self.0.logger,
+                    "Too large body size ({} bytes): {}",
+                    n,
+                    req.url()
+                );
+            }
+        }
+        None
+    }
+
+    fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
+        let bucket_id = get_bucket_id(req.url());
+        let object_id_prefix = get_object_id(req.url());
+        let object_start_index =
+            try_badarg_option!(try_badarg!(get_usize_option(req.url(), "start")));
+        let object_count = try_badarg_option!(try_badarg!(get_usize_option(req.url(), "count")));
+        let concurrency = try_badarg!(get_usize_option(req.url(), "concurrency")).unwrap_or(10);
+        let (req, content) = req.take_body();
+        if content.len() > MAX_PUT_OBJECT_SIZE {
+            warn!(
+                self.0.logger,
+                "Too large body size ({} bytes; dumped): {}",
+                content.len(),
+                req.url()
+            );
+            return Box::new(futures::finished(make_object_response(
+                Status::BadRequest,
+                None,
+                Err(track!(ErrorKind::InvalidInput.cause("Too large body size")).into()),
+            )));
+        }
+
+        let client_span = SpanContext::extract_from_http_header(&TraceHeader(req.header()))
+            .ok()
+            .and_then(|c| c);
+        let mut span = self
+            .0
+            .tracer
+            .span(|t| t.span("put_many_objects").child_of(&client_span).start());
+        span.set_tag(|| StdTag::http_method("PUT"));
+        span.set_tag(|| Tag::new("bucket.id", bucket_id.clone()));
+        span.set_tag(|| Tag::new("object.id_prefix", object_id_prefix.clone()));
+        span.set_tag(|| Tag::new("object.size", content.len().to_string()));
+        span.set_tag(|| Tag::new("object.start", object_start_index as i64));
+        span.set_tag(|| Tag::new("object.count", object_count as i64));
+
+        // TODO: deadline and expect
+        let future = put_many_objects(
+            self.0.client.clone(),
+            span,
+            self.0.logger.clone(),
+            bucket_id,
+            object_id_prefix,
+            object_start_index,
+            object_count,
+            concurrency,
+            content,
+        );
+        // Errors are suppressed. Always return 201 Created.
+        let response = Res::new(Status::Created, HttpResult::Ok(Vec::new()));
+
+        let future = future.map(|_| response);
         Box::new(future)
     }
 }
@@ -777,6 +898,15 @@ fn get_check_storage(url: &Url) -> Result<bool> {
         }
     }
     Ok(false)
+}
+
+fn get_usize_option(url: &Url, option_name: &str) -> Result<Option<usize>> {
+    for (k, v) in url.query_pairs() {
+        if k == option_name {
+            return track!(v.parse::<usize>().map_err(Error::from).map(Some));
+        }
+    }
+    Ok(None)
 }
 
 #[cfg(test)]

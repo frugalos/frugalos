@@ -44,6 +44,8 @@ impl RpcServer {
         builder.add_call_handler::<rpc::DeleteObjectByVersionRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectsByRangeRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectsByPrefixRpc, _>(this.clone());
+        // 上の clone を一つだけ消したくないので、ここで drop する
+        drop(this);
     }
 
     fn span_from_object_request(
@@ -184,7 +186,8 @@ impl HandleCall<rpc::PutObjectRpc> for RpcServer {
     }
 }
 impl HandleCall<rpc::ListObjectsRpc> for RpcServer {
-    fn handle_call(&self, request: rpc::SegmentRequest) -> Reply<rpc::ListObjectsRpc> {
+    fn handle_call(&self, request: rpc::ListObjectsRequest) -> Reply<rpc::ListObjectsRpc> {
+        // TODO: supports consistency levels
         let future = self
             .client
             .request(request.bucket_id)

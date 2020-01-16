@@ -55,3 +55,5 @@ where
 {
     Box::new(future.map_err(Error::from))
 }
+
+pub(crate) type UnitFuture = BoxFuture<()>;

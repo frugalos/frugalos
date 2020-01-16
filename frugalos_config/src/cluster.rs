@@ -73,7 +73,14 @@ pub fn make_rlog<P: AsRef<Path>, S: Spawn + Clone + Send + 'static>(
         100 * 1024 * 1024 // FIXME: パラメータ化
     ))?;
 
+    // Journal region のサイズの指定。デフォルトは 0.01。
+    // TODO: クラスタ構築時に指定できるようにする
+    let ratio: f64 = std::env::var("FRUGALOS_CLUSTER_DEVICE_JOURNAL_REGION_RATIO")
+        .map(|value| value.parse().unwrap())
+        .unwrap_or(0.01);
+
     let mut storage_builder = cannyls::storage::StorageBuilder::new();
+    storage_builder.journal_region_ratio(ratio);
     let metrics = MetricBuilder::new().label("device", "system").clone();
     storage_builder.metrics(metrics.clone());
     let storage = if created {
@@ -82,7 +89,7 @@ pub fn make_rlog<P: AsRef<Path>, S: Spawn + Clone + Send + 'static>(
         track!(storage_builder.open(nvm))?
     };
     let device = cannyls::device::DeviceBuilder::new()
-        .metrics(metrics.clone())
+        .metrics(metrics)
         .spawn(|| Ok(storage));
 
     // FIXME: パラメータ化
@@ -245,7 +252,7 @@ pub fn leave<P: AsRef<Path>>(
     let client = Client::new(contact_server, rpc_service.handle());
     executor.spawn(rpc_service.map_err(|e| panic!("{}", e)));
 
-    let monitor = executor.spawn_monitor(client.delete_server(local.id.clone()));
+    let monitor = executor.spawn_monitor(client.delete_server(local.id));
     let result = track!(executor.run_fiber(monitor).map_err(Error::from))?;
     let left = track!(result.map_err(Error::from))?;
     info!(

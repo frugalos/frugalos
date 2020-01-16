@@ -58,7 +58,7 @@ impl Machine {
                 .map(|(object_id, &version)| {
                     let object_id = String::from_utf8(object_id).unwrap();
                     let data = self.get_data(&object_id);
-                    (object_id.clone(), Metadata { version, data })
+                    (object_id, Metadata { version, data })
                 })
                 .collect();
             Snapshot::Assoc(assoc)
@@ -311,11 +311,7 @@ mod tests {
 
         // バージョンが存在している
         assert!(machine
-            .put(
-                id.clone(),
-                meta.clone(),
-                &Expect::IfNoneMatch(vec![DEFAULT_OBJECT_VERSION])
-            )
+            .put(id, meta, &Expect::IfNoneMatch(vec![DEFAULT_OBJECT_VERSION]))
             .is_err());
 
         Ok(())

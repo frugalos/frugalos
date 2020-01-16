@@ -2,7 +2,7 @@ use cannyls::deadline::Deadline;
 use cannyls::device::DeviceHandle;
 use cannyls::lump::LumpId;
 use fibers_tasque::{DefaultCpuTaskQueue, TaskQueueExt};
-use frugalos_mds::machine::Machine;
+use frugalos_mds::StartSegmentGcReply;
 use frugalos_raft::NodeId;
 use futures::future::{join_all, loop_fn, ok, Either};
 use futures::future::{Future, Loop};
@@ -11,15 +11,19 @@ use libfrugalos::entity::object::ObjectVersion;
 use prometrics::metrics::{Counter, Gauge, MetricBuilder};
 use slog::Logger;
 
-use config;
+use trackable::error::ErrorKindExt;
 use Error;
+use {config, ErrorKind};
 
 #[derive(Clone)]
 pub(crate) struct SegmentGcMetrics {
     segment_gc_count: Counter,
     segment_gc_deleted_objects: Counter,
     // How many objects have to be swept before segment_gc is completed (including non-existent ones)
+    // TODO: 多数のノードがあっても正しく動くように、変更に set 以外を使う
     segment_gc_remaining: Gauge,
+    // How many jobs were aborted till now.
+    pub(crate) segment_gc_aborted: Counter,
 }
 
 impl SegmentGcMetrics {
@@ -35,6 +39,10 @@ impl SegmentGcMetrics {
                 .expect("metric should be well-formed"),
             segment_gc_remaining: metric_builder
                 .gauge("segment_gc_remaining")
+                .finish()
+                .expect("metric should be well-formed"),
+            segment_gc_aborted: metric_builder
+                .counter("segment_gc_aborted")
                 .finish()
                 .expect("metric should be well-formed"),
         }
@@ -54,15 +62,16 @@ impl SegmentGc {
         logger: &Logger,
         node_id: NodeId,
         device: &DeviceHandle,
-        machine: Machine,
+        object_versions: Vec<ObjectVersion>,
         object_version_limit: ObjectVersion,
         segment_gc_metrics: SegmentGcMetrics,
         segment_gc_step: u64,
+        tx: StartSegmentGcReply,
     ) -> Self {
         let logger = logger.clone();
         info!(logger, "Starts segment_gc");
         segment_gc_metrics.segment_gc_count.increment();
-        let create_object_table = make_create_object_table(logger.clone(), machine);
+        let create_object_table = make_create_object_table(logger.clone(), object_versions);
 
         let logger = logger.clone();
         let logger2 = logger.clone();
@@ -81,7 +90,18 @@ impl SegmentGc {
                     segment_gc_metrics.segment_gc_remaining,
                 )
             })
-            .map(move |()| info!(logger2, "SegmentGc objects done"));
+            .then(move |result| {
+                match &result {
+                    Ok(()) => {
+                        info!(logger2, "SegmentGc objects done");
+                        tx.exit(Ok(()));
+                    }
+                    Err(e) => {
+                        tx.exit(Err(Box::new(e.clone())));
+                    }
+                }
+                futures::future::done(result)
+            });
 
         let future = Box::new(combined_future);
         SegmentGc { future }
@@ -123,7 +143,11 @@ pub(self) fn make_list_and_delete_content(
     segment_gc_deleted_objects: Counter,
     segment_gc_remaining: Gauge,
 ) -> impl Future<Item = (), Error = Error> + Send {
-    assert!(step > 0);
+    if step == 0 {
+        return Either::A(futures::future::err(
+            ErrorKind::Invalid.cause("step should be > 0").into(),
+        ));
+    }
     let logger = logger.clone();
     let device = device.clone();
     info!(
@@ -132,7 +156,7 @@ pub(self) fn make_list_and_delete_content(
         object_version_limit,
         step
     );
-    loop_fn(
+    let returned_future = loop_fn(
         (ObjectVersion(0), object_table),
         move |(current_version, object_table)| {
             if current_version >= object_version_limit {
@@ -171,21 +195,21 @@ pub(self) fn make_list_and_delete_content(
                 .map_err(From::from);
             Either::B(future)
         },
-    )
+    );
+    Either::B(returned_future)
 }
 
 pub(self) fn make_create_object_table(
     logger: Logger,
-    machine: Machine,
+    object_versions: Vec<ObjectVersion>,
 ) -> impl Future<Item = ObjectTable, Error = Error> + Send {
     debug!(logger, "Starts segment_gc");
     DefaultCpuTaskQueue
-        .async_call(move || get_object_table(&logger, &machine))
+        .async_call(move || get_object_table(&logger, object_versions))
         .map_err(From::from)
 }
 
-fn get_object_table(logger: &Logger, machine: &Machine) -> ObjectTable {
-    let mut versions = machine.to_versions();
+fn get_object_table(logger: &Logger, mut versions: Vec<ObjectVersion>) -> ObjectTable {
     versions.sort_unstable();
     let objects_count = versions.len();
     debug!(
@@ -241,8 +265,7 @@ mod tests {
     use cannyls::device::DeviceHandle;
     use cannyls::lump::LumpId;
     use futures::future::Future;
-    use libfrugalos::entity::object::{Metadata, ObjectVersion};
-    use libfrugalos::expect::Expect;
+    use libfrugalos::entity::object::ObjectVersion;
     use segment_gc::{
         make_create_object_table, make_list_and_delete_content, ObjectTable, SegmentGc,
     };
@@ -253,7 +276,6 @@ mod tests {
 
     use config::make_lump_id;
     use fibers::executor::Executor;
-    use frugalos_mds::machine::Machine;
     use prometrics::metrics::{Counter, Gauge};
 
     #[test]
@@ -294,7 +316,7 @@ mod tests {
             1,
             object_table,
             segment_gc_deleted_objects.clone(),
-            segment_gc_remaining.clone(),
+            segment_gc_remaining,
         ))?;
 
         // Assert objects are deleted and therefore not found
@@ -317,17 +339,12 @@ mod tests {
     #[test]
     fn create_object_table_lists_objects_correctly() -> TestResult {
         let logger = Logger::root(Discard, o!());
-        let mut machine = Machine::new();
+        let mut object_versions = Vec::new();
         for i in 0..10 {
-            let metadata = Metadata {
-                version: ObjectVersion(i),
-                data: vec![],
-            };
-
-            machine.put(format!("test-object-{}", i), metadata, &Expect::None)?;
+            object_versions.push(ObjectVersion(i));
         }
 
-        let create_object_table = make_create_object_table(logger, machine);
+        let create_object_table = make_create_object_table(logger, object_versions);
         let ObjectTable(result) = wait(create_object_table)?;
         assert_eq!(result.len(), 10);
         for (i, object_version) in result.into_iter().enumerate() {

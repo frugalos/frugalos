@@ -130,7 +130,12 @@ impl MdsClient {
         debug!(self.logger, "Starts LIST");
         let parent = Span::inactive().handle();
         let request = SingleRequestOnce::new(RequestKind::Other, move |client| {
-            Box::new(client.list_objects().map_err(MdsError::from))
+            // TODO: supports consistency levels
+            Box::new(
+                client
+                    .list_objects(ReadConsistency::Consistent)
+                    .map_err(MdsError::from),
+            )
         });
         Request::new(self.clone(), parent, request)
     }
@@ -338,21 +343,23 @@ impl MdsClient {
     pub fn object_count(&self) -> impl Future<Item = u64, Error = Error> {
         let parent = Span::inactive().handle();
         let request = SingleRequestOnce::new(RequestKind::Other, |client| {
-            Box::new(client.object_count().map_err(MdsError::from))
+            // TODO: supports consistency levels
+            Box::new(
+                client
+                    .object_count(ReadConsistency::Consistent)
+                    .map_err(MdsError::from),
+            )
         });
         Request::new(self.clone(), parent, request)
     }
 
-    fn timeout(&self, kind: RequestKind, max_retry: usize) -> RequestTimeout {
+    fn timeout(&self, kind: RequestKind) -> RequestTimeout {
         match self.request_policy(&kind) {
             // for backward compatibility
             MdsRequestPolicy::Conservative => RequestTimeout::Never,
-            MdsRequestPolicy::Speculative { timeout, .. } => {
-                let factor = 2u32.pow((self.member_size().saturating_sub(max_retry)) as u32);
-                RequestTimeout::Speculative {
-                    timer: timer::timeout(*timeout * factor),
-                }
-            }
+            MdsRequestPolicy::Speculative { timeout, .. } => RequestTimeout::Speculative {
+                timer: timer::timeout(*timeout),
+            },
         }
     }
     fn request_policy(&self, kind: &RequestKind) -> &MdsRequestPolicy {
@@ -563,7 +570,7 @@ where
 {
     pub fn new(client: MdsClient, parent: SpanHandle, request: T) -> Self {
         let max_retry = client.member_size();
-        let timeout = client.timeout(request.kind(), max_retry);
+        let timeout = client.timeout(request.kind());
         Request {
             client,
             max_retry,
@@ -579,7 +586,7 @@ where
         self.max_retry -= 1;
         let (peers, future) = track!(self.request.request_once(&self.client, &self.parent))?;
         self.peers = peers;
-        self.timeout = self.client.timeout(self.request.kind(), self.max_retry);
+        self.timeout = self.client.timeout(self.request.kind());
         self.future = Some(future);
         Ok(())
     }

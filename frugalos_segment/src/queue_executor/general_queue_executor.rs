@@ -9,6 +9,7 @@ use slog::Logger;
 use std::cmp::{self, min, Reverse};
 use std::collections::{BTreeSet, BinaryHeap, VecDeque};
 use std::convert::Infallible;
+use std::env;
 use std::time::{Duration, SystemTime};
 
 use delete::DeleteContent;
@@ -17,6 +18,7 @@ use Error;
 
 const MAX_TIMEOUT_SECONDS: u64 = 60;
 const DELETE_CONCURRENCY: usize = 16;
+const REPAIR_PREP_CONCURRENCY: usize = 100;
 
 #[derive(Debug, PartialOrd, Ord, PartialEq, Eq)]
 enum TodoItem {
@@ -45,7 +47,7 @@ impl TodoItem {
                     version,
                 }
             }
-            Event::FullSync { .. } => unreachable!(),
+            Event::StartSegmentGc { .. } | Event::StopSegmentGc { .. } => unreachable!(),
         }
     }
     pub fn wait_time(&self) -> Option<Duration> {
@@ -93,6 +95,7 @@ pub(crate) struct GeneralQueueExecutor {
     delete_queue: DeleteQueue,
     task: Task,
     repair_candidates: BTreeSet<ObjectVersion>,
+    repair_prep_concurrency: usize,
 }
 
 impl GeneralQueueExecutor {
@@ -105,6 +108,12 @@ impl GeneralQueueExecutor {
         dequeued_repair_prep: &Counter,
         dequeued_delete: &Counter,
     ) -> Self {
+        // TODO: 正式に conf ファイルで指定できるようにする
+        let repair_prep_concurrency = env::var("FRUGALOS_REPAIR_PREP_CONCURRENCY")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(REPAIR_PREP_CONCURRENCY);
+
         Self {
             logger: logger.clone(),
             node_id,
@@ -113,6 +122,7 @@ impl GeneralQueueExecutor {
             delete_queue: DeleteQueue::new(enqueued_delete, dequeued_delete),
             task: Task::Idle,
             repair_candidates: BTreeSet::new(),
+            repair_prep_concurrency,
         }
     }
     pub(crate) fn push(&mut self, event: &Event) {
@@ -125,7 +135,7 @@ impl GeneralQueueExecutor {
                 self.repair_candidates.remove(&version);
                 self.delete_queue.push(version);
             }
-            Event::FullSync { .. } => {
+            Event::StartSegmentGc { .. } | Event::StopSegmentGc { .. } => {
                 unreachable!();
             }
         }
@@ -185,9 +195,10 @@ impl GeneralQueueExecutor {
 }
 
 impl Stream for GeneralQueueExecutor {
-    type Item = ObjectVersion;
+    type Item = Vec<ObjectVersion>;
     type Error = Infallible;
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+        let mut popped_versions = vec![];
         while let Async::Ready(result) = self.task.poll().unwrap_or_else(|e| {
             // 同期処理のエラーは致命的ではないので、ログを出すだけに留める
             warn!(self.logger, "Task failure: {}", e);
@@ -195,7 +206,11 @@ impl Stream for GeneralQueueExecutor {
         }) {
             self.task = Task::Idle;
             if let Some(version) = result {
-                return Ok(Async::Ready(Some(version)));
+                popped_versions.push(version);
+            }
+            // REPAIR_PREP_CONCURRENCY 個ごとに repair キューに送信する
+            if popped_versions.len() >= self.repair_prep_concurrency {
+                return Ok(Async::Ready(Some(popped_versions)));
             }
             if let Some(item) = self.pop() {
                 match item {
@@ -220,7 +235,12 @@ impl Stream for GeneralQueueExecutor {
                 break;
             }
         }
-        Ok(Async::NotReady)
+        // REPAIR_PREP_CONCURRENCY 個以下であっても、制御を返す際には popped_version を返す
+        if !popped_versions.is_empty() {
+            Ok(Async::Ready(Some(popped_versions)))
+        } else {
+            Ok(Async::NotReady)
+        }
     }
 }
 

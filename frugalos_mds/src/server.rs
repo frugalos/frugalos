@@ -67,6 +67,8 @@ impl Server {
         builder.add_call_handler::<rpc::DeleteObjectByVersionRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectsByRangeRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectsByPrefixRpc, _>(this.clone());
+        // 上の clone を一つだけ消したくないので、ここで drop する
+        drop(this);
     }
 
     fn get_node(&self, node: LocalNodeId) -> Result<NodeHandle> {
@@ -110,8 +112,9 @@ impl HandleCall<rpc::GetLeaderRpc> for Server {
     }
 }
 impl HandleCall<rpc::ListObjectsRpc> for Server {
-    fn handle_call(&self, node_id: String) -> Reply<rpc::ListObjectsRpc> {
-        let node_id = rpc_try!(node_id.parse().map_err(Error::from));
+    fn handle_call(&self, request: rpc::ListObjectsRequest) -> Reply<rpc::ListObjectsRpc> {
+        // TODO: supports consistency levels
+        let node_id = rpc_try!(request.node_id.parse().map_err(Error::from));
         let node = rpc_try!(self.get_node(node_id));
         Reply::future(node.list_objects().map_err(to_rpc_error).then(Ok))
     }
@@ -126,8 +129,9 @@ impl HandleCall<rpc::GetLatestVersionRpc> for Server {
 }
 
 impl HandleCall<rpc::GetObjectCountRpc> for Server {
-    fn handle_call(&self, node_id: String) -> Reply<rpc::GetObjectCountRpc> {
-        let node_id = rpc_try!(node_id.parse().map_err(Error::from));
+    fn handle_call(&self, request: rpc::ObjectCountRequest) -> Reply<rpc::GetObjectCountRpc> {
+        // TODO: supports consistency levels
+        let node_id = rpc_try!(request.node_id.parse().map_err(Error::from));
         let node = rpc_try!(self.get_node(node_id));
         Reply::future(node.object_count().map_err(to_rpc_error).then(Ok))
     }

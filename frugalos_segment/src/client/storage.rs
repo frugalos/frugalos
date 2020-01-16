@@ -270,7 +270,7 @@ mod tests {
             Box::new(futures::future::ok(())),
             Box::new(futures::future::ok(())),
         ];
-        let put = track!(PutAll::new(metrics.clone(), futures.into_iter(), 2))?;
+        let put = track!(PutAll::new(metrics, futures.into_iter(), 2))?;
         assert!(wait(put).is_ok());
 
         Ok(())
@@ -319,7 +319,7 @@ mod tests {
             Deadline::Infinity,
             Span::inactive().handle(),
         ))?;
-        let actual = wait(storage_client.clone().get(
+        let actual = wait(storage_client.get(
             ObjectValue {
                 version,
                 content: expected.clone(),
@@ -353,7 +353,7 @@ mod tests {
                 system.cluster_config(),
                 ClusterMember {
                     node: node_id,
-                    device: device_id.clone()
+                    device: device_id,
                 },
                 version
             ) < system.fragments() as usize
@@ -361,12 +361,12 @@ mod tests {
 
         wait(storage_client.clone().put(
             version,
-            expected.clone(),
+            expected,
             Deadline::Infinity,
             Span::inactive().handle(),
         ))?;
 
-        let result = wait(storage_client.clone().get_fragment(node_id, version))?;
+        let result = wait(storage_client.get_fragment(node_id, version))?;
 
         if let MaybeFragment::Fragment(content) = result {
             assert!(!content.is_empty());
@@ -400,7 +400,7 @@ mod tests {
                 system.cluster_config(),
                 ClusterMember {
                     node: node_id,
-                    device: device_id.clone()
+                    device: device_id
                 },
                 version
             ) >= system.fragments() as usize
@@ -408,12 +408,12 @@ mod tests {
 
         wait(storage_client.clone().put(
             version,
-            expected.clone(),
+            expected,
             Deadline::Infinity,
             Span::inactive().handle(),
         ))?;
 
-        let result = wait(storage_client.clone().get_fragment(node_id, version))?;
+        let result = wait(storage_client.get_fragment(node_id, version))?;
 
         assert_eq!(result, MaybeFragment::NotParticipant);
 

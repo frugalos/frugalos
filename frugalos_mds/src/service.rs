@@ -13,6 +13,7 @@ use std::sync::Arc;
 use node::NodeHandle;
 use server::Server;
 use {Error, Result};
+use {StartSegmentGcReply, StopSegmentGcReply};
 
 type Nodes = Arc<AtomicImmut<HashMap<LocalNodeId, NodeHandle>>>;
 
@@ -119,7 +120,7 @@ impl Service {
                 }
                 ServiceState::Stopping {
                     logger: self.logger.clone(),
-                    nodes: nodes.clone(),
+                    nodes,
                     future: Box::new(futures::future::join_all(futures)),
                 }
             }
@@ -142,6 +143,34 @@ impl Service {
         }
     }
 
+    /// Performs segment_gc on a single node.
+    /// After this command, mds sends to Synchronizer a command which contains the following:
+    /// - machine
+    /// - next_commit_id
+    pub fn start_segment_gc(&self, local_id: LocalNodeId, tx: StartSegmentGcReply) {
+        if let Some(node) = self.state.nodes().load().get(&local_id) {
+            info!(
+                self.logger,
+                "Sending segment_gc request to a single node: {:?}", local_id
+            );
+            node.start_segment_gc(tx);
+        } else {
+            warn!(
+                self.logger,
+                "Sending segment_gc request failed: local_node_id not found: {:?}", local_id
+            );
+        }
+    }
+    /// Stops segment_gc on a single node.
+    pub fn stop_segment_gc(&self, local_id: LocalNodeId, tx: StopSegmentGcReply) {
+        if let Some(node) = self.state.nodes().load().get(&local_id) {
+            info!(
+                self.logger,
+                "Stopping segment_gc of a single node: {:?}", local_id
+            );
+            node.stop_segment_gc(tx);
+        }
+    }
     fn handle_command(&mut self, command: Command) {
         match command {
             Command::AddNode(id, node) => {

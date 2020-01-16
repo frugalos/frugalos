@@ -12,6 +12,7 @@ use std::ops::Range;
 use std::time::Instant;
 
 use super::{Reply, Request};
+use node::{StartSegmentGcReply, StopSegmentGcReply};
 use Error;
 
 macro_rules! future_try {
@@ -42,6 +43,14 @@ impl NodeHandle {
     }
     pub fn start_reelection(&self) {
         let _ = self.request_tx.send(Request::StartElection);
+    }
+    pub fn start_segment_gc(&self, tx: StartSegmentGcReply) {
+        let request = Request::StartSegmentGc(tx);
+        let _ = self.request_tx.send(request);
+    }
+    pub fn stop_segment_gc(&self, tx: StopSegmentGcReply) {
+        let request = Request::StopSegmentGc(tx);
+        let _ = self.request_tx.send(request);
     }
     pub fn get_leader(
         &self,

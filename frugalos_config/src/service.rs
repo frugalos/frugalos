@@ -118,6 +118,10 @@ impl Service {
         }
     }
 
+    fn is_follower(&self) -> bool {
+        self.rlog.local_node().role == raftlog::election::Role::Follower
+    }
+
     fn handle_raft_event(&mut self, event: RaftEvent) -> Result<()> {
         if let raftlog::Event::Committed { index, .. } = event {
             self.snapshot_reduction = self.snapshot_reduction.saturating_sub(1);
@@ -149,6 +153,15 @@ impl Service {
                 let snapshot = track!(protobuf::snapshot_decoder().decode_from_bytes(&snapshot))?;
                 track!(self.handle_snapshot(snapshot))?;
             }
+            // leader は `LogEntry::Noop` を待つ必要がある。
+            // 詳細は `frugalos_mds::node::Node` のコメントを参照。
+            raftlog::Event::NewLeaderElected if self.is_follower() => {
+                let leader = &self.rlog.local_node().ballot.voted_for;
+                let leader = track!(frugalos_raft::NodeId::from_raft_node_id(leader))?;
+                info!(self.logger, "New leader is elected: {:?}", leader);
+                self.change_leader(leader);
+            }
+            raftlog::Event::NewLeaderElected => {}
             _ => {
                 use raftlog::election::Role;
                 if let raftlog::Event::TermChanged { .. } = event {
@@ -165,10 +178,7 @@ impl Service {
                     info!(self.logger, "New leader is elected: {:?}", leader);
 
                     let leader = track!(frugalos_raft::NodeId::from_raft_node_id(leader))?;
-                    for reply in self.leader_waiters.drain(..) {
-                        reply.exit(Ok(leader.addr));
-                    }
-                    self.leader = Some(leader.addr);
+                    self.change_leader(leader);
                 }
 
                 if let raftlog::Event::RoleChanged {
@@ -189,6 +199,12 @@ impl Service {
             }
         }
         Ok(())
+    }
+    fn change_leader(&mut self, leader: frugalos_raft::NodeId) {
+        for reply in self.leader_waiters.drain(..) {
+            reply.exit(Ok(leader.addr));
+        }
+        self.leader = Some(leader.addr);
     }
     fn handle_command(&mut self, proposal_id: ProposalId, command: Command) -> Result<()> {
         info!(self.logger, "Committed: {}", dump!(proposal_id, command));
@@ -384,7 +400,7 @@ impl Service {
         self.update_segment_table(bucket.id());
 
         if let Some(Proposal::PutBucket { reply, .. }) = self.pop_committed_proposal(proposal_id) {
-            reply.exit(Ok(bucket.clone()));
+            reply.exit(Ok(bucket));
         }
     }
     #[allow(clippy::ptr_arg)]

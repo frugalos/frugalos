@@ -3,7 +3,6 @@
 use fibers::executor::ThreadPoolExecutorHandle;
 use fibers::sync::mpsc;
 use fibers::sync::oneshot;
-use fibers::time::timer;
 use fibers::{Executor, Spawn, ThreadPoolExecutor};
 use fibers_http_server::metrics::{MetricsHandler, WithMetrics};
 use fibers_http_server::{Server as HttpServer, ServerBuilder as HttpServerBuilder};
@@ -16,6 +15,7 @@ use frugalos_raft;
 use futures::{Async, Future, Poll, Stream};
 use libfrugalos;
 use prometrics;
+use prometrics::metrics::MetricBuilder;
 use rustracing::sampler::{PassiveSampler, ProbabilisticSampler, Sampler};
 use rustracing_jaeger;
 use rustracing_jaeger::span::SpanContextState;
@@ -23,7 +23,6 @@ use slog::{self, Drain, Logger};
 use std::mem;
 use std::net::SocketAddr;
 use std::process::Command;
-use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use config_server::ConfigServer;
@@ -32,11 +31,10 @@ use recovery::prepare_recovery;
 use rpc_server::RpcServer;
 use server::{spawn_report_spans_thread, Server};
 use service;
-use {Error, ErrorKind, FrugalosConfig, FrugalosDaemonConfig, Result};
+use {Error, ErrorKind, FrugalosConfig, Result};
 
 /// Frugalosの各種機能を提供するためのデーモン。
 pub struct FrugalosDaemon {
-    logger: Logger,
     service: service::Service<ThreadPoolExecutorHandle>,
     http_server_builder: HttpServerBuilder,
     rpc_server_builder: RpcServerBuilder,
@@ -117,16 +115,26 @@ impl FrugalosDaemon {
             tracer.clone(),
         );
 
-        let server = Server::new(logger.clone(), cloned_config, client, tracer.clone());
+        let server = Server::new(logger.clone(), cloned_config, client, tracer);
         track!(server.register(&mut http_server_builder))?;
 
-        track!(http_server_builder.add_handler(WithMetrics::new(MetricsHandler)))?;
+        let bucket_config = config
+            .fibers_http_server
+            .request_duration_bucket_config
+            .into();
+
+        track!(
+            http_server_builder.add_handler(WithMetrics::with_metrics_and_bucket_config(
+                MetricsHandler,
+                MetricBuilder::new(),
+                bucket_config,
+            ))
+        )?;
 
         let config_server = ConfigServer::new(rpc_service.handle(), rpc_addr);
         track!(config_server.register(&mut http_server_builder))?;
 
         Ok(FrugalosDaemon {
-            logger: logger.clone(),
             service,
             http_server_builder,
             rpc_server_builder,
@@ -166,21 +174,16 @@ impl FrugalosDaemon {
     /// 各種サーバを起動して、処理を実行する。
     ///
     /// この呼び出しはブロッキングするので注意。
-    pub fn run(mut self, config: FrugalosDaemonConfig) -> Result<()> {
+    pub fn run(mut self) -> Result<()> {
         track!(self.register_prometheus_metrics())?;
 
         let runner = DaemonRunner {
-            logger: self.logger.clone(),
-            config,
             service: self.service,
             rpc_server: self.rpc_server_builder.finish(self.executor.handle()),
-            http_server: StoppableHttpServer::new(
-                self.http_server_builder.finish(self.executor.handle()),
-            ),
+            http_server: self.http_server_builder.finish(self.executor.handle()),
             rpc_service: self.rpc_service,
             command_rx: self.command_rx,
             stop_notifications: Vec::new(),
-            do_stop: false,
         };
 
         let monitor = self.executor.handle().spawn_monitor(runner);
@@ -190,25 +193,17 @@ impl FrugalosDaemon {
 }
 
 struct DaemonRunner {
-    logger: Logger,
-    config: FrugalosDaemonConfig,
     service: service::Service<ThreadPoolExecutorHandle>,
-    http_server: StoppableHttpServer,
+    http_server: HttpServer,
     rpc_server: fibers_rpc::server::Server<ThreadPoolExecutorHandle>,
     rpc_service: fibers_rpc::client::ClientService,
     command_rx: mpsc::Receiver<DaemonCommand>,
     stop_notifications: Vec<oneshot::Monitored<(), Error>>,
-    do_stop: bool,
 }
 impl DaemonRunner {
     fn handle_command(&mut self, command: DaemonCommand) {
         match command {
             DaemonCommand::StopDaemon { reply } => {
-                info!(
-                    self.logger,
-                    "Begins stopping and waits for a while({:?})", self.config.stop_waiting_time
-                );
-                self.http_server.stop(self.config.stop_waiting_time);
                 self.service.stop();
                 self.stop_notifications.push(reply);
             }
@@ -223,14 +218,11 @@ impl Future for DaemonRunner {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let do_stop = track!(self.http_server.poll())?.is_ready() && self.do_stop;
-        if do_stop {
-            return Ok(Async::Ready(()));
-        }
+        track!(self.http_server.poll())?;
         track!(self.rpc_server.poll())?;
         track!(self.rpc_service.poll())?;
-        self.do_stop = self.do_stop || track!(self.service.poll())?.is_ready();
-        if self.do_stop {
+        let ready = track!(self.service.poll())?.is_ready();
+        if ready {
             for reply in self.stop_notifications.drain(..) {
                 reply.exit(Ok(()));
             }
@@ -285,36 +277,6 @@ impl Future for StopDaemon {
             .map_err(|e| e.unwrap_or_else(|| ErrorKind::Other
                 .cause("Monitoring channel disconnected")
                 .into())))
-    }
-}
-
-struct StoppableHttpServer {
-    inner: Option<HttpServer>,
-    stop_timer: Option<timer::Timeout>,
-}
-impl StoppableHttpServer {
-    fn new(server: HttpServer) -> Self {
-        Self {
-            inner: Some(server),
-            stop_timer: None,
-        }
-    }
-    fn stop(&mut self, waiting_time: Duration) {
-        self.inner = None;
-        self.stop_timer = Some(timer::timeout(waiting_time));
-    }
-}
-impl Future for StoppableHttpServer {
-    type Item = ();
-    type Error = fibers_http_server::Error;
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        if let Some(inner) = self.inner.as_mut() {
-            inner.poll()
-        } else if self.stop_timer.poll().expect("Broken timer").is_ready() {
-            Ok(Async::Ready(()))
-        } else {
-            Ok(Async::NotReady)
-        }
     }
 }
 
