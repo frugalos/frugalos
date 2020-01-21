@@ -161,7 +161,7 @@ HOST: http://example.com
 
 # Group オブジェクト
 
-## オブジェクト操作 [/v1/buckets/{bucket_id}/objects/{object_id}{?deadline,expect}]
+## オブジェクト操作 [/v1/buckets/{bucket_id}/objects/{object_id}{?deadline,expect,consistency,subset}]
 
 個々のオブジェクトに対する操作。HTTP ヘッダーで `If-None`, `If-None-Match` のいずれも指定しなかった場合はオブジェクトのバージョン確認は**されない**。
 
@@ -185,6 +185,11 @@ HOST: http://example.com
 `object_id`で指定されたオブジェクトの内容を取得する。
 
 ### 注記
+
++ Parameters
+  + consistency: consistent (string, optional) - オブジェクト取得時の整合性の指定。consistent, quorum, stale, subset のいずれかを指定する。
+      + Default: consistent
+  + subset: 2 (number) - 整合性の指定に subset を指定した時にいくつの MDS ノードからオブジェクト取得を試みるかを指定する。
 
 + Response 200 (application/octet-stream)
   以前にPUTされたオブジェクトの内容を取得する。
@@ -223,6 +228,11 @@ HOST: http://example.com
 `object_id`で指定されたオブジェクトが存在するかを確認する。
 
 ### 注記
+
++ Parameters
+  + consistency: consistent (string, optional) - オブジェクト取得時の整合性の指定。consistent, quorum, stale, subset のいずれかを指定する。
+      + Default: consistent
+  + subset: 2 (number) - 整合性の指定に subset を指定した時にいくつの MDS ノードからオブジェクト取得を試みるかを指定する。
 
 + Response 200 (application/octet-stream)
 
