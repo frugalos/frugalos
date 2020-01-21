@@ -114,7 +114,7 @@ impl DeleteFragmentResponse {
     ) -> Self {
         Self {
             version: format!("{:x}", version.0),
-            deleted: deleted,
+            deleted,
             device_id: device_id.into_string(),
             lump_id: format!("{:>032x}", lump_id.as_u128()),
         }

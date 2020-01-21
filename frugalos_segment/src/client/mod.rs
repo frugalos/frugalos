@@ -539,20 +539,25 @@ mod tests {
         ))?;
 
         for index in 0..3 {
-            let result = wait(client.delete_fragment(
+            if let Some((v, Some((b, _, _)))) = wait(client.delete_fragment(
                 object_id.to_owned(),
                 Deadline::Infinity,
                 Span::inactive().handle(),
                 index,
-            ))?;
-            assert_eq!(result, Some(object_version));
-            let result = wait(client.delete_fragment(
+            ))? {
+                assert_eq!(v, object_version);
+                assert_eq!(b, true);
+            }
+
+            if let Some((v, Some((b, _, _)))) = wait(client.delete_fragment(
                 object_id.to_owned(),
                 Deadline::Infinity,
                 Span::inactive().handle(),
                 index,
-            ))?;
-            assert_eq!(result, None);
+            ))? {
+                assert_eq!(v, object_version);
+                assert_eq!(b, false);
+            }
         }
 
         let result = wait(client.head(

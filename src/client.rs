@@ -206,6 +206,7 @@ impl<'a> Request<'a> {
             DeleteObjectsByPrefixSummary { total }
         }))
     }
+    #[allow(clippy::type_complexity)]
     pub fn delete_fragment(
         &self,
         object_id: ObjectId,
