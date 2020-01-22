@@ -116,7 +116,7 @@ impl DeleteFragmentResponse {
             version: format!("{:x}", version.0),
             deleted,
             device_id: device_id.into_string(),
-            lump_id: format!("{:>032x}", lump_id.as_u128()),
+            lump_id: lump_id.to_string(),
         }
     }
 }
