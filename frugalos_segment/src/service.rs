@@ -277,7 +277,12 @@ where
         match manager.poll() {
             Ok(Async::NotReady) => (),
             Ok(Async::Ready(())) => {
-                info!(self.logger, "Segment gc done");
+                // segment node の個数が 0 の時、segment_gc の作成後すぐにここに到達する。
+                // そうなると SegmentService の poll の度にここに到達し、ログが大量に出てしまうことになる。
+                // これを回避するために、segment node の個数が 0 の時はログを出さないようにする。
+                if !self.segment_node_handles.is_empty() {
+                    info!(self.logger, "Segment gc done");
+                }
                 self.segment_gc_manager = None;
             }
             Err(e) => {
