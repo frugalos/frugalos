@@ -427,7 +427,6 @@ impl HandleRequest for HeadFragments {
         span.set_tag(|| StdTag::http_method("HEAD"));
         span.set_tag(|| Tag::new("bucket.id", bucket_id.clone()));
         span.set_tag(|| Tag::new("object.id", object_id.clone()));
-        // TODO: deadline and expect
 
         let logger = self.0.logger.clone();
         let expect = try_badarg!(get_expect(&req.header()));
