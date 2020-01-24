@@ -743,8 +743,12 @@ impl Future for DispersedCountFragments {
                     self.summary.lost_total += 1;
                     remainings
                 }
-                Ok(Async::Ready((lump_header, _, remainings))) => {
-                    self.summary.found_total += lump_header.map_or(0, |_| 1);
+                Ok(Async::Ready((Some(_), _, remainings))) => {
+                    self.summary.found_total += 1;
+                    remainings
+                }
+                Ok(Async::Ready((None, _, remainings))) => {
+                    self.summary.lost_total += 1;
                     remainings
                 }
             };
