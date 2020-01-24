@@ -64,7 +64,7 @@ pub fn make_object_response(
     version: Option<ObjectVersion>,
     body: Result<Vec<u8>>,
 ) -> Res<HttpResult<Vec<u8>>> {
-    // TODO `make_object_response` を `ObjectResponse` に置き換える
+    // TODO `make_object_response` の利用箇所を `ObjectResponse:new` を使うように変更する
     ObjectResponse::new(status, body)
         .version(version)
         .into_response()
