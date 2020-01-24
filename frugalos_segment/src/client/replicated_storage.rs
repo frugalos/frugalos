@@ -5,7 +5,7 @@ use cannyls_rpc::DeviceId;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_raft::NodeId;
 use futures::{Async, Future, Poll};
-use libfrugalos::entity::object::ObjectVersion;
+use libfrugalos::entity::object::{FragmentsSummary, ObjectVersion};
 use std::sync::Arc;
 use trackable::error::ErrorKindExt;
 
@@ -72,6 +72,19 @@ impl ReplicatedClient {
     /// TODO 実装
     pub fn head(self, _version: ObjectVersion, _deadline: Deadline) -> BoxFuture<()> {
         Box::new(futures::future::ok(()))
+    }
+    /// TODO 実装
+    pub fn count_fragments(
+        self,
+        _version: ObjectVersion,
+        _deadline: Deadline,
+    ) -> BoxFuture<FragmentsSummary> {
+        let summary = FragmentsSummary {
+            is_corrupted: false,
+            found_total: 0,
+            lost_total: 0,
+        };
+        Box::new(futures::future::ok(summary))
     }
     pub fn put(
         self,

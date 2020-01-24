@@ -34,6 +34,7 @@ impl RpcServer {
         };
         builder.add_call_handler::<rpc::DeleteObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::GetObjectRpc, _>(this.clone());
+        builder.add_call_handler::<rpc::CountFragmentsRpc, _>(this.clone());
         builder.add_call_handler::<rpc::HeadObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::PutObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::ListObjectsRpc, _>(this.clone());
@@ -151,6 +152,17 @@ impl HandleCall<rpc::GetObjectRpc> for RpcServer {
                 })
                 .then(Ok),
         )
+    }
+}
+impl HandleCall<rpc::CountFragmentsRpc> for RpcServer {
+    fn handle_call(&self, request: rpc::CountFragmentsRequest) -> Reply<rpc::CountFragmentsRpc> {
+        let future = self
+            .client
+            .request(request.bucket_id)
+            .deadline(into_cannyls_deadline(request.deadline))
+            .expect(request.expect)
+            .count_fragments(request.object_id, request.consistency);
+        Reply::future(future.map_err(into_rpc_error).then(Ok))
     }
 }
 impl HandleCall<rpc::HeadObjectRpc> for RpcServer {

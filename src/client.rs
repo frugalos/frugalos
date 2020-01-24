@@ -9,7 +9,8 @@ use futures::{self, Future};
 use libfrugalos::consistency::ReadConsistency;
 use libfrugalos::entity::bucket::BucketId;
 use libfrugalos::entity::object::{
-    DeleteObjectsByPrefixSummary, ObjectId, ObjectPrefix, ObjectSummary, ObjectVersion,
+    DeleteObjectsByPrefixSummary, FragmentsSummary, ObjectId, ObjectPrefix, ObjectSummary,
+    ObjectVersion,
 };
 use libfrugalos::expect::Expect;
 use rustracing_jaeger::span::{Span, SpanHandle};
@@ -123,6 +124,18 @@ impl<'a> Request<'a> {
         let segment = bucket.get_segment(&object_id);
         let future =
             segment.head_storage(object_id, self.deadline, consistency, self.parent.clone());
+        Box::new(future.map_err(|e| track!(Error::from(e))))
+    }
+    pub fn count_fragments(
+        &self,
+        object_id: ObjectId,
+        consistency: ReadConsistency,
+    ) -> BoxFuture<Option<FragmentsSummary>> {
+        let buckets = self.client.buckets.load();
+        let bucket = try_get_bucket!(buckets, self.bucket_id);
+        let segment = bucket.get_segment(&object_id);
+        let future =
+            segment.count_fragments(object_id, self.deadline, consistency, self.parent.clone());
         Box::new(future.map_err(|e| track!(Error::from(e))))
     }
     pub fn put(&self, object_id: ObjectId, content: Vec<u8>) -> BoxFuture<(ObjectVersion, bool)> {

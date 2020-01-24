@@ -8,7 +8,7 @@ use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_raft::NodeId;
 use futures::future;
 use futures::{self, Async, Future, Poll};
-use libfrugalos::entity::object::ObjectVersion;
+use libfrugalos::entity::object::{FragmentsSummary, ObjectVersion};
 use rustracing_jaeger::span::SpanHandle;
 use slog::Logger;
 use trackable::error::ErrorKindExt;
@@ -103,6 +103,22 @@ impl StorageClient {
             StorageClient::Metadata => Box::new(future::ok(())),
             StorageClient::Replicated(c) => c.head(version, deadline),
             StorageClient::Dispersed(c) => c.head(version, deadline, parent),
+        }
+    }
+    pub fn count_fragments(
+        self,
+        version: ObjectVersion,
+        deadline: Deadline,
+        parent: SpanHandle,
+    ) -> BoxFuture<FragmentsSummary> {
+        match self {
+            StorageClient::Metadata => Box::new(future::ok(FragmentsSummary {
+                is_corrupted: false,
+                found_total: 0,
+                lost_total: 0,
+            })),
+            StorageClient::Replicated(c) => c.count_fragments(version, deadline),
+            StorageClient::Dispersed(c) => c.count_fragments(version, deadline, parent),
         }
     }
     pub fn put(

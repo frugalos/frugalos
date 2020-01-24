@@ -187,6 +187,14 @@ pub struct DispersedClientConfig {
     )]
     pub head_timeout: Duration,
 
+    /// How long to wait before aborting a count_fragments operation.
+    #[serde(
+        rename = "count_fragments_timeout_millis",
+        default = "default_dispersed_client_count_fragments_timeout",
+        with = "frugalos_core::serde_ext::duration_millis"
+    )]
+    pub count_fragments_timeout: Duration,
+
     /// Configuration for `CannyLsClient`.
     #[serde(flatten)]
     pub cannyls: CannyLsClientConfig,
@@ -197,6 +205,7 @@ impl Default for DispersedClientConfig {
         DispersedClientConfig {
             get_timeout: default_dispersed_client_get_timeout(),
             head_timeout: default_dispersed_client_head_timeout(),
+            count_fragments_timeout: default_dispersed_client_count_fragments_timeout(),
             cannyls: Default::default(),
         }
     }
@@ -207,6 +216,10 @@ fn default_dispersed_client_get_timeout() -> Duration {
 }
 
 fn default_dispersed_client_head_timeout() -> Duration {
+    Duration::from_secs(2)
+}
+
+fn default_dispersed_client_count_fragments_timeout() -> Duration {
     Duration::from_secs(2)
 }
 
