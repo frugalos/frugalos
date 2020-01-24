@@ -1,6 +1,6 @@
 [package]
 name = "frugalos"
-version = "0.16.1"
+version = "0.17.0"
 authors = ["The FrugalOS Developers"]
 description = "Frugal Object Storage"
 homepage = "https://github.com/frugalos/frugalos"
@@ -24,10 +24,10 @@ fibers_http_server = "0.1.12"
 fibers_rpc = "0.2"
 fibers_tasque = "0.1"
 frugalos_core = { version = "0.1", path = "frugalos_core" }
-frugalos_config = { version = "0.8", path = "frugalos_config" }
-frugalos_mds = { version = "0.12", path = "frugalos_mds" }
-frugalos_raft = { version = "0.9", path = "frugalos_raft" }
-frugalos_segment = { version = "0.12", path = "frugalos_segment" }
+frugalos_config = { version = "0.9", path = "frugalos_config" }
+frugalos_mds = { version = "0.13", path = "frugalos_mds" }
+frugalos_raft = { version = "0.10", path = "frugalos_raft" }
+frugalos_segment = { version = "0.13", path = "frugalos_segment" }
 futures = "0.1"
 jemallocator = "0.1.8"
 jemalloc-ctl = "0.2"

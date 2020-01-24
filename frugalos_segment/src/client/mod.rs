@@ -1,4 +1,6 @@
 use cannyls::deadline::Deadline;
+use cannyls::lump::LumpId;
+use cannyls_rpc::DeviceId;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use futures::future::Either;
 use futures::{self, Future};
@@ -228,6 +230,36 @@ impl Client {
         parent: SpanHandle,
     ) -> impl Future<Item = DeleteObjectsByPrefixSummary, Error = Error> {
         self.mds.delete_by_prefix(prefix, parent)
+    }
+
+    /// オブジェクトのフラグメントのみを削除する
+    pub fn delete_fragment(
+        &self,
+        id: ObjectId,
+        deadline: Deadline,
+        parent: SpanHandle,
+        index: usize,
+    ) -> impl Future<Item = Option<(ObjectVersion, Option<(bool, DeviceId, LumpId)>)>, Error = Error>
+    {
+        let storage = self.storage.clone();
+        self.mds
+            .head(id, ReadConsistency::Consistent, parent.clone())
+            .and_then(move |version| {
+                if let Some(version) = version {
+                    let future = storage
+                        .delete_fragment(version, deadline, parent, index)
+                        .map(move |result| {
+                            if let Some((deleted, device_id, lump_id)) = result {
+                                Some((version, Some((deleted, device_id, lump_id))))
+                            } else {
+                                None
+                            }
+                        });
+                    Either::A(future)
+                } else {
+                    Either::B(futures::future::ok(None))
+                }
+            })
     }
 
     /// 保存済みのオブジェクト一覧を取得する。
@@ -490,6 +522,72 @@ mod tests {
             Span::inactive().handle(),
         ))?;
         assert_eq!(result, Some(object_version));
+        let result = wait(client.head_storage(
+            object_id,
+            Deadline::Infinity,
+            ReadConsistency::Consistent,
+            Span::inactive().handle(),
+        ));
+        assert!(result.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn delete_fragment_works() -> TestResult {
+        let data_fragments = 2;
+        let parity_fragments = 1;
+        let cluster_size = 3;
+        let mut system = System::new(data_fragments, parity_fragments)?;
+        let (_members, client) = setup_system(&mut system, cluster_size)?;
+
+        thread::spawn(move || loop {
+            system.executor.run_once().unwrap();
+            thread::sleep(time::Duration::from_micros(100));
+        });
+
+        let blob = vec![0x03];
+        let object_id = "test_data".to_owned();
+
+        thread::sleep(time::Duration::from_secs(5));
+
+        let (object_version, _) = wait(client.put(
+            object_id.to_owned(),
+            blob,
+            Deadline::Infinity,
+            Expect::Any,
+            Span::inactive().handle(),
+        ))?;
+
+        for index in 0..3 {
+            if let Some((v, Some((b, _, _)))) = wait(client.delete_fragment(
+                object_id.to_owned(),
+                Deadline::Infinity,
+                Span::inactive().handle(),
+                index,
+            ))? {
+                assert_eq!(v, object_version);
+                assert_eq!(b, true);
+            }
+
+            if let Some((v, Some((b, _, _)))) = wait(client.delete_fragment(
+                object_id.to_owned(),
+                Deadline::Infinity,
+                Span::inactive().handle(),
+                index,
+            ))? {
+                assert_eq!(v, object_version);
+                assert_eq!(b, false);
+            }
+        }
+
+        let result = wait(client.head(
+            object_id.to_owned(),
+            ReadConsistency::Consistent,
+            Span::inactive().handle(),
+        ))?;
+        assert_eq!(result, Some(object_version));
+
         let result = wait(client.head_storage(
             object_id,
             Deadline::Infinity,

@@ -249,6 +249,62 @@ impl DispersedClient {
             parent: span,
         })
     }
+    pub fn delete_fragment(
+        self,
+        version: ObjectVersion,
+        deadline: Deadline,
+        parent: SpanHandle,
+        index: usize,
+    ) -> BoxFuture<Option<(bool, DeviceId, LumpId)>> {
+        let candidates = self
+            .cluster
+            .candidates(version)
+            .cloned()
+            .collect::<Vec<_>>();
+        let span = parent.child("delete_fragment", |span| {
+            span.tag(StdTag::component(module_path!()))
+                .tag(Tag::new("object.version", version.0 as i64))
+                .tag(Tag::new("storage.type", "dispersed"))
+                .start()
+        });
+        if candidates.len() <= index {
+            let cause = format!(
+                "index: {} is out of bounds for length: {}",
+                index,
+                candidates.len()
+            );
+            return Box::new(futures::future::err(ErrorKind::Invalid.cause(cause).into()));
+        }
+        let cluster_member = candidates[index].clone();
+        let cannyls_client = CannyLsClient::new(cluster_member.node.addr, self.rpc_service);
+        let lump_id = cluster_member.make_lump_id(version);
+        let mut span = span.child("dispersed_delete_fragment", |span| {
+            span.tag(StdTag::component(module_path!()))
+                .tag(StdTag::span_kind("client"))
+                .tag(StdTag::peer_ip(cluster_member.node.addr.ip()))
+                .tag(StdTag::peer_port(cluster_member.node.addr.port()))
+                .tag(Tag::new("device", cluster_member.device.clone()))
+                .tag(Tag::new("lump", format!("{:?}", lump_id)))
+                .start()
+        });
+        let mut request = cannyls_client.request();
+        request.rpc_options(self.client_config.cannyls.rpc_options());
+        let device = cluster_member.device;
+        let future = request
+            .deadline(deadline)
+            .delete_lump(DeviceId::new(device.clone()), lump_id)
+            .then(move |result| {
+                if let Err(ref e) = result {
+                    span.log_error(e);
+                }
+                result
+            });
+        Box::new(
+            future
+                .map(move |deleted| Some((deleted, DeviceId::new(device), lump_id)))
+                .map_err(|e| track!(Error::from(e))),
+        )
+    }
 }
 
 pub struct DispersedPut {

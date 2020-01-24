@@ -1,3 +1,5 @@
+use cannyls::lump::LumpId;
+use cannyls_rpc::DeviceId;
 use fibers_http_server::{Res, Status};
 use httpcodec::{Header, HeaderField, HeaderFields};
 use libfrugalos::entity::object::{FragmentsSummary, ObjectVersion};
@@ -139,5 +141,30 @@ impl ObjectResponse {
     /// HTTP のレスポンスへと変換する.
     pub fn into_response(self) -> Res<HttpResult<Vec<u8>>> {
         self.inner
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct DeleteFragmentResponse {
+    pub version: String,
+    /// 実際に削除が実行されたか
+    pub deleted: bool,
+    pub device_id: String,
+    pub lump_id: String,
+}
+
+impl DeleteFragmentResponse {
+    pub fn new(
+        version: ObjectVersion,
+        deleted: bool,
+        device_id: DeviceId,
+        lump_id: LumpId,
+    ) -> Self {
+        Self {
+            version: format!("{:x}", version.0),
+            deleted,
+            device_id: device_id.into_string(),
+            lump_id: lump_id.to_string(),
+        }
     }
 }

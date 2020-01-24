@@ -2,6 +2,8 @@
 #![allow(clippy::needless_pass_by_value)]
 use atomic_immut::AtomicImmut;
 use cannyls::deadline::Deadline;
+use cannyls::lump::LumpId;
+use cannyls_rpc::DeviceId;
 use frugalos_segment::ObjectValue;
 use futures::{self, Future};
 use libfrugalos::consistency::ReadConsistency;
@@ -217,6 +219,19 @@ impl<'a> Request<'a> {
             DeleteObjectsByPrefixSummary { total }
         }))
     }
+    #[allow(clippy::type_complexity)]
+    pub fn delete_fragment(
+        &self,
+        object_id: ObjectId,
+        index: usize,
+    ) -> BoxFuture<Option<(ObjectVersion, Option<(bool, DeviceId, LumpId)>)>> {
+        let buckets = self.client.buckets.load();
+        let bucket = try_get_bucket!(buckets, self.bucket_id);
+        let segment = bucket.get_segment(&object_id);
+        let future = segment.delete_fragment(object_id, self.deadline, self.parent.clone(), index);
+        Box::new(future.map_err(|e| track!(Error::from(e))))
+    }
+
     pub fn list(&self, segment: usize) -> BoxFuture<Vec<ObjectSummary>> {
         let buckets = self.client.buckets.load();
         let bucket = try_get_bucket!(buckets, self.bucket_id);

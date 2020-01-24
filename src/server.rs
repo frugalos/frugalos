@@ -31,8 +31,8 @@ use url::Url;
 use client::FrugalosClient;
 use codec::{AsyncEncoder, ObjectResultEncoder};
 use http::{
-    make_json_response, make_object_response, not_found, BucketStatistics, HttpResult,
-    ObjectResponse, TraceHeader,
+    make_json_response, make_object_response, not_found, BucketStatistics, DeleteFragmentResponse,
+    HttpResult, ObjectResponse, TraceHeader,
 };
 use many_objects::put_many_objects;
 use {Error, ErrorKind, FrugalosConfig, Result};
@@ -102,6 +102,7 @@ impl Server {
         self.register_once_with_metrics(HeadFragments(self.clone()), builder)?;
         self.register_once_with_metrics(DeleteObject(self.clone()), builder)?;
         self.register_once_with_metrics(DeleteObjectByPrefix(self.clone()), builder)?;
+        self.register_once_with_metrics(DeleteFragment(self.clone()), builder)?;
         self.register_once_with_metrics(PutObject(self.clone()), builder)?;
         self.register_once_with_metrics(PutManyObject(self.clone()), builder)?;
         self.register_once_with_metrics(GetBucketStatistics(self.clone()), builder)?;
@@ -507,6 +508,7 @@ impl HandleRequest for DeleteObject {
         let logger = self.0.logger.clone();
         let expect = try_badarg!(get_expect(&req.header()));
         let deadline = try_badarg!(get_deadline(&req.url()));
+
         let future = self
             .0
             .client
@@ -609,6 +611,89 @@ impl HandleRequest for DeleteObjectByPrefix {
                     }
                 };
                 Ok(response)
+            });
+        Box::new(future)
+    }
+}
+
+struct DeleteFragment(Server);
+impl HandleRequest for DeleteFragment {
+    const METHOD: &'static str = "DELETE";
+    const PATH: &'static str = "/v1/buckets/*/objects/*/fragments/*";
+
+    type ReqBody = ();
+    type ResBody = HttpResult<DeleteFragmentResponse>;
+    type Decoder = BodyDecoder<NullDecoder>;
+    type Encoder = BodyEncoder<JsonEncoder<Self::ResBody>>;
+    type Reply = Reply<Self::ResBody>;
+
+    fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
+        let bucket_id = get_bucket_id(req.url());
+        let object_id = get_object_id(req.url());
+        let fragment_index = try_badarg_option!(try_badarg!(get_fragment_index(req.url())));
+
+        let client_span = SpanContext::extract_from_http_header(&TraceHeader(req.header()))
+            .ok()
+            .and_then(|c| c);
+        let mut span = self
+            .0
+            .tracer
+            .span(|t| t.span("delete_fragment").child_of(&client_span).start());
+        span.set_tag(|| StdTag::http_method("DELETE"));
+        span.set_tag(|| Tag::new("bucket.id", bucket_id.clone()));
+        span.set_tag(|| Tag::new("object.id", object_id.clone()));
+
+        let logger = self.0.logger.clone();
+        let deadline = try_badarg!(get_deadline(&req.url()));
+
+        let future = self
+            .0
+            .client
+            .request(bucket_id)
+            .deadline(deadline)
+            .span(&span)
+            .delete_fragment(object_id, fragment_index)
+            .then(move |result| {
+                let (status, body) = match track!(result) {
+                    Ok(None) => {
+                        span.set_tag(|| StdTag::http_status_code(404));
+                        (Status::NotFound, Err(not_found()))
+                    }
+                    Ok(Some((version, result))) => {
+                        span.set_tag(|| Tag::new("object.version", version.0 as i64));
+                        span.set_tag(|| StdTag::http_status_code(200));
+                        if let Some((deleted, device_id, lump_id)) = result {
+                            (
+                                Status::Ok,
+                                Ok(DeleteFragmentResponse::new(
+                                    version, deleted, device_id, lump_id,
+                                )),
+                            )
+                        } else {
+                            (Status::NotFound, Err(not_found()))
+                        }
+                    }
+                    Err(e) => {
+                        if let ErrorKind::InvalidInput = *e.kind() {
+                            span.set_tag(|| StdTag::http_status_code(400));
+                            (Status::BadRequest, Err(e))
+                        } else if let ErrorKind::Unexpected(_version) = *e.kind() {
+                            span.set_tag(|| StdTag::http_status_code(412));
+                            (Status::PreconditionFailed, Err(e))
+                        } else {
+                            warn!(
+                                logger,
+                                "Cannot delete object fragment (bucket={:?}, object={:?}): {}",
+                                get_bucket_id(req.url()),
+                                get_object_id(req.url()),
+                                e
+                            );
+                            span.set_tag(|| StdTag::http_status_code(500));
+                            (Status::InternalServerError, Err(e))
+                        }
+                    }
+                };
+                Ok(make_json_response(status, body))
             });
         Box::new(future)
     }
@@ -991,6 +1076,15 @@ fn get_usize_option(url: &Url, option_name: &str) -> Result<Option<usize>> {
         }
     }
     Ok(None)
+}
+
+fn get_fragment_index(url: &Url) -> Result<Option<usize>> {
+    let fragment_index = url.path_segments().expect("Never fails").nth(6);
+    if let Some(v) = fragment_index {
+        return track!(v.parse::<usize>().map_err(Error::from).map(Some));
+    } else {
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

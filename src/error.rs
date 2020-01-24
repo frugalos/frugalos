@@ -27,6 +27,8 @@ impl From<frugalos_segment::Error> for Error {
     fn from(f: frugalos_segment::Error) -> Self {
         if let frugalos_segment::ErrorKind::UnexpectedVersion { current } = *f.kind() {
             ErrorKind::Unexpected(current).takes_over(f).into()
+        } else if let frugalos_segment::ErrorKind::Invalid = *f.kind() {
+            ErrorKind::InvalidInput.takes_over(f).into()
         } else {
             ErrorKind::Other.takes_over(f).into()
         }
