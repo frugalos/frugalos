@@ -1,5 +1,5 @@
 use cannyls::deadline::Deadline;
-use cannyls::lump::LumpData;
+use cannyls::lump::{LumpData, LumpId};
 use cannyls_rpc::Client as CannyLsClient;
 use cannyls_rpc::DeviceId;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
@@ -115,6 +115,40 @@ impl ReplicatedClient {
             Err(error) => return Box::new(futures::failed(error)),
         };
         Box::new(put_all)
+    }
+    pub fn delete_fragment(
+        self,
+        version: ObjectVersion,
+        deadline: Deadline,
+        index: usize,
+    ) -> BoxFuture<Option<(bool, DeviceId, LumpId)>> {
+        let candidates = self
+            .cluster
+            .candidates(version)
+            .cloned()
+            .collect::<Vec<_>>();
+        if candidates.len() <= index {
+            let cause = format!(
+                "index: {} is out of bounds for length: {}",
+                index,
+                candidates.len()
+            );
+            return Box::new(futures::future::err(ErrorKind::Invalid.cause(cause).into()));
+        }
+        let cluster_member = candidates[index].clone();
+        let cannyls_client = CannyLsClient::new(cluster_member.node.addr, self.rpc_service.clone());
+        let lump_id = cluster_member.make_lump_id(version);
+        let mut request = cannyls_client.request();
+        request.rpc_options(self.client_config.cannyls.rpc_options());
+        let device = cluster_member.device;
+        let future = request
+            .deadline(deadline)
+            .delete_lump(DeviceId::new(device.clone()), lump_id);
+        Box::new(
+            future
+                .map(move |deleted| Some((deleted, DeviceId::new(device), lump_id)))
+                .map_err(|e| track!(Error::from(e))),
+        )
     }
 }
 
