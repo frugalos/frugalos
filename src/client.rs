@@ -2,12 +2,15 @@
 #![allow(clippy::needless_pass_by_value)]
 use atomic_immut::AtomicImmut;
 use cannyls::deadline::Deadline;
+use cannyls::lump::LumpId;
+use cannyls_rpc::DeviceId;
 use frugalos_segment::ObjectValue;
 use futures::{self, Future};
 use libfrugalos::consistency::ReadConsistency;
 use libfrugalos::entity::bucket::BucketId;
 use libfrugalos::entity::object::{
-    DeleteObjectsByPrefixSummary, ObjectId, ObjectPrefix, ObjectSummary, ObjectVersion,
+    DeleteObjectsByPrefixSummary, FragmentsSummary, ObjectId, ObjectPrefix, ObjectSummary,
+    ObjectVersion,
 };
 use libfrugalos::expect::Expect;
 use rustracing_jaeger::span::{Span, SpanHandle};
@@ -123,6 +126,18 @@ impl<'a> Request<'a> {
             segment.head_storage(object_id, self.deadline, consistency, self.parent.clone());
         Box::new(future.map_err(|e| track!(Error::from(e))))
     }
+    pub fn count_fragments(
+        &self,
+        object_id: ObjectId,
+        consistency: ReadConsistency,
+    ) -> BoxFuture<Option<FragmentsSummary>> {
+        let buckets = self.client.buckets.load();
+        let bucket = try_get_bucket!(buckets, self.bucket_id);
+        let segment = bucket.get_segment(&object_id);
+        let future =
+            segment.count_fragments(object_id, self.deadline, consistency, self.parent.clone());
+        Box::new(future.map_err(|e| track!(Error::from(e))))
+    }
     pub fn put(&self, object_id: ObjectId, content: Vec<u8>) -> BoxFuture<(ObjectVersion, bool)> {
         let buckets = self.client.buckets.load();
         let bucket = try_get_bucket!(buckets, self.bucket_id);
@@ -204,6 +219,19 @@ impl<'a> Request<'a> {
             DeleteObjectsByPrefixSummary { total }
         }))
     }
+    #[allow(clippy::type_complexity)]
+    pub fn delete_fragment(
+        &self,
+        object_id: ObjectId,
+        index: usize,
+    ) -> BoxFuture<Option<(ObjectVersion, Option<(bool, DeviceId, LumpId)>)>> {
+        let buckets = self.client.buckets.load();
+        let bucket = try_get_bucket!(buckets, self.bucket_id);
+        let segment = bucket.get_segment(&object_id);
+        let future = segment.delete_fragment(object_id, self.deadline, self.parent.clone(), index);
+        Box::new(future.map_err(|e| track!(Error::from(e))))
+    }
+
     pub fn list(&self, segment: usize) -> BoxFuture<Vec<ObjectSummary>> {
         let buckets = self.client.buckets.load();
         let bucket = try_get_bucket!(buckets, self.bucket_id);

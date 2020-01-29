@@ -2,11 +2,13 @@
 use adler32;
 use byteorder::{BigEndian, ByteOrder};
 use cannyls::deadline::Deadline;
+use cannyls::lump::LumpId;
+use cannyls_rpc::DeviceId;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_raft::NodeId;
 use futures::future;
 use futures::{self, Async, Future, Poll};
-use libfrugalos::entity::object::ObjectVersion;
+use libfrugalos::entity::object::{FragmentsSummary, ObjectVersion};
 use rustracing_jaeger::span::SpanHandle;
 use slog::Logger;
 use trackable::error::ErrorKindExt;
@@ -103,6 +105,22 @@ impl StorageClient {
             StorageClient::Dispersed(c) => c.head(version, deadline, parent),
         }
     }
+    pub fn count_fragments(
+        self,
+        version: ObjectVersion,
+        deadline: Deadline,
+        parent: SpanHandle,
+    ) -> BoxFuture<FragmentsSummary> {
+        match self {
+            StorageClient::Metadata => Box::new(future::ok(FragmentsSummary {
+                is_corrupted: false,
+                found_total: 0,
+                lost_total: 0,
+            })),
+            StorageClient::Replicated(c) => c.count_fragments(version, deadline),
+            StorageClient::Dispersed(c) => c.count_fragments(version, deadline, parent),
+        }
+    }
     pub fn put(
         self,
         version: ObjectVersion,
@@ -114,6 +132,19 @@ impl StorageClient {
             StorageClient::Metadata => Box::new(futures::finished(())),
             StorageClient::Replicated(c) => c.put(version, content, deadline),
             StorageClient::Dispersed(c) => c.put(version, content, deadline, parent),
+        }
+    }
+    pub fn delete_fragment(
+        self,
+        version: ObjectVersion,
+        deadline: Deadline,
+        parent: SpanHandle,
+        index: usize,
+    ) -> BoxFuture<Option<(bool, DeviceId, LumpId)>> {
+        match self {
+            StorageClient::Metadata => Box::new(future::ok(None)),
+            StorageClient::Replicated(c) => c.delete_fragment(version, deadline, index),
+            StorageClient::Dispersed(c) => c.delete_fragment(version, deadline, parent, index),
         }
     }
 }
