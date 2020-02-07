@@ -64,7 +64,5 @@ members = ["frugalos_core", "frugalos_config", "frugalos_mds", "frugalos_raft", 
 cannyls = { path = "../cannyls" }
 # feature/disk-usage
 cannyls_rpc = { path = "../cannyls_rpc" }
-# feature/disk-usage
-liberasurecode = { path = "../liberasurecode" }
 # feature/segment-stats
 libfrugalos = { path = "../libfrugalos" }

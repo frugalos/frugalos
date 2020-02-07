@@ -43,7 +43,7 @@ impl ReplicatedClient {
             rpc_service,
         }
     }
-    pub fn storage_usage(self, _range: Range<LumpId>) -> BoxFuture<Vec<StorageUsage>> {
+    pub fn storage_usage(self) -> BoxFuture<Vec<StorageUsage>> {
         // TODO implement
         Box::new(futures::future::ok(Vec::new()))
     }

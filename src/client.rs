@@ -7,7 +7,7 @@ use cannyls_rpc::DeviceId;
 use frugalos_segment::ObjectValue;
 use futures::{self, Future};
 use libfrugalos::consistency::ReadConsistency;
-use libfrugalos::entity::bucket::BucketId;
+use libfrugalos::entity::bucket::{BucketId, BucketKind};
 use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, FragmentsSummary, ObjectId, ObjectPrefix, ObjectSummary,
     ObjectVersion,
@@ -43,6 +43,18 @@ impl FrugalosClient {
             .load()
             .get(bucket_id)
             .map(|b| b.segments().len() as u16)
+    }
+    pub fn tolerable_faults(&self, bucket_id: &BucketId) -> Option<u8> {
+        self.buckets
+            .load()
+            .get(bucket_id)
+            .map(|b| b.tolerable_faults())
+    }
+    pub fn fragments(&self, bucket_id: &BucketId) -> Option<u8> {
+        self.buckets.load().get(bucket_id).map(|b| b.fragments())
+    }
+    pub fn kind(&self, bucket_id: &BucketId) -> Option<BucketKind> {
+        self.buckets.load().get(bucket_id).map(|b| b.kind())
     }
 }
 impl fmt::Debug for FrugalosClient {
@@ -270,13 +282,8 @@ impl<'a> Request<'a> {
         let segment = segment as usize;
         let buckets = self.client.buckets.load();
         let bucket = try_get_bucket!(buckets, self.bucket_id);
-        // TODO
-        let range = Range {
-            start: LumpId::new(0),
-            end: LumpId::new(1),
-        };
         if segment < bucket.segments().len() {
-            let future = bucket.segments()[segment].stats(range, self.parent.clone());
+            let future = bucket.segments()[segment].stats(self.parent.clone());
             Box::new(future.map_err(|e| track!(Error::from(e))))
         } else {
             let e = ErrorKind::InvalidInput.cause(format!("Too large segment number: {}", segment));

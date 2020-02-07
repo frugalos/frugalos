@@ -3,7 +3,7 @@ use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_segment::config::ClusterMember;
 use frugalos_segment::Client as Segment;
 use frugalos_segment::{self, ErasureCoder, FrugalosSegmentConfig};
-use libfrugalos::entity::bucket::Bucket as BucketConfig;
+use libfrugalos::entity::bucket::{Bucket as BucketConfig, BucketKind};
 use libfrugalos::entity::object::ObjectId;
 use siphasher;
 use slog::Logger;
@@ -106,5 +106,26 @@ impl Bucket {
     }
     pub fn segments(&self) -> &[Segment] {
         &self.segments
+    }
+    pub fn tolerable_faults(&self) -> u8 {
+        match self.storage_config {
+            frugalos_segment::config::Storage::Metadata => 0,
+            frugalos_segment::config::Storage::Replicated(ref c) => c.tolerable_faults,
+            frugalos_segment::config::Storage::Dispersed(ref c) => c.tolerable_faults,
+        }
+    }
+    pub fn fragments(&self) -> u8 {
+        match self.storage_config {
+            frugalos_segment::config::Storage::Metadata => 0,
+            frugalos_segment::config::Storage::Replicated(ref c) => c.tolerable_faults + 1,
+            frugalos_segment::config::Storage::Dispersed(ref c) => c.fragments,
+        }
+    }
+    pub fn kind(&self) -> BucketKind {
+        match self.storage_config {
+            frugalos_segment::config::Storage::Metadata => BucketKind::Metadata,
+            frugalos_segment::config::Storage::Replicated(_) => BucketKind::Replicated,
+            frugalos_segment::config::Storage::Dispersed(_) => BucketKind::Dispersed,
+        }
     }
 }

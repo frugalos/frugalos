@@ -88,7 +88,7 @@ pub fn make_rlog<P: AsRef<Path>, S: Spawn + Clone + Send + 'static>(
     } else {
         track!(storage_builder.open(nvm))?
     };
-    let device = cannyls::device::DeviceBuilder::new()
+    let device = cannyls::device::DeviceBuilder::<S>::new()
         .metrics(metrics)
         .spawn(|| Ok(storage));
 

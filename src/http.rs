@@ -80,9 +80,24 @@ pub fn not_found() -> Error {
 pub struct BucketStatistics {
     /// バケツ内のオブジェクト数.
     pub objects: u64,
-
-    /// ストレージ使用量の近似値(バイト).
-    pub storage_usage_bytes: u64,
+    /// 推定値と実測値を含めた全体ストレージ使用量.
+    pub storage_usage_bytes_sum_overall: u64,
+    /// storage_usage_bytes_sum_overal における実効ストレージ使用量.
+    pub storage_usage_bytes_sum_effectiveness: u64,
+    /// storage_usage_bytes_sum_overal における冗長 (パリティ分) ストレージ使用量.
+    pub storage_usage_bytes_sum_redundance: u64,
+    /// 確認されたストレージ使用量
+    pub storage_usage_bytes_real_overall: u64,
+    /// storage_usage_bytes_real_overall における実効ストレージ使用量.
+    pub storage_usage_bytes_real_effectiveness: u64,
+    /// storage_usage_bytes_real_overall における冗長 (パリティ分) ストレージ使用量.
+    pub storage_usage_bytes_real_redundance: u64,
+    /// 確認されない推定のストレージ使用量
+    pub storage_usage_bytes_approximation_overall: u64,
+    /// storage_usage_bytes_approximation_overall における実効ストレージ使用量.
+    pub storage_usage_bytes_approximation_effectiveness: u64,
+    /// storage_usage_bytes_approximation_overall における冗長 (パリティ分) ストレージ使用量.
+    pub storage_usage_bytes_approximation_redundance: u64,
 }
 
 #[derive(Debug)]

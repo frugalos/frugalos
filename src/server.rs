@@ -11,6 +11,7 @@ use futures::future::Either;
 use futures::{self, Future, Stream};
 use httpcodec::{BodyDecoder, BodyEncoder, HeadBodyEncoder, Header};
 use libfrugalos::consistency::ReadConsistency;
+use libfrugalos::entity::bucket::BucketKind;
 use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, ObjectPrefix, ObjectSummary, ObjectVersion,
 };
@@ -20,6 +21,7 @@ use rustracing::tag::{StdTag, Tag};
 use rustracing_jaeger::reporter::JaegerCompactReporter;
 use rustracing_jaeger::span::{SpanContext, SpanReceiver};
 use slog::Logger;
+use std::cmp;
 use std::str;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -225,11 +227,19 @@ impl HandleRequest for GetBucketStatistics {
                 let request = client.request(bucket_id.clone());
                 request.segment_stats(segment).map_err(|e| track!(e))
             })
-            .fold(0, |total, stats| -> Result<_> {
-                Ok(total + stats.storage_usage_bytes)
-            });
+            .fold(
+                (0, 0),
+                |(sum_real, sum_approximation), stats| -> Result<_> {
+                    Ok((
+                        sum_real + stats.storage_usage_bytes_real,
+                        sum_approximation + stats.storage_usage_bytes_approximation,
+                    ))
+                },
+            );
         let bucket_id = get_bucket_id(req.url());
         let client = self.0.client.clone();
+        let client2 = self.0.client.clone();
+        let bucket_id2 = bucket_id.clone();
         let objects = futures::stream::iter_ok(0..segments)
             .and_then(move |segment| {
                 let request = client.request(bucket_id.clone());
@@ -238,16 +248,77 @@ impl HandleRequest for GetBucketStatistics {
                     .map_err(|e| track!(e))
             })
             .fold(0, |total, objects| -> Result<_> { Ok(total + objects) });
-        let future = objects.join(usage).then(|result| match track!(result) {
-            Err(e) => Ok(make_json_response(Status::InternalServerError, Err(e))),
-            Ok((objects, usage_bytes)) => {
-                let stats = BucketStatistics {
-                    objects,
-                    storage_usage_bytes: usage_bytes,
-                };
-                Ok(make_json_response(Status::Ok, Ok(stats)))
-            }
-        });
+        let future = objects
+            .join(usage)
+            .then(move |result| match track!(result) {
+                Err(e) => Ok(make_json_response(Status::InternalServerError, Err(e))),
+                Ok((objects, (usage_real, usage_approximation))) => {
+                    let tolerable_faults =
+                        client2.tolerable_faults(&bucket_id2).expect("Never fail");
+                    let fragments = client2.fragments(&bucket_id2).expect("Never fail");
+                    let kind = client2.kind(&bucket_id2).expect("Never fail");
+                    let usage_sum_overall = usage_real + usage_approximation;
+                    let usage_sum_overall_f32 = usage_sum_overall as f32;
+                    let effectiveness_ratio =
+                        (fragments - tolerable_faults) as f32 / fragments as f32;
+                    let redundance_ratio = tolerable_faults as f32 / fragments as f32;
+
+                    let (
+                        usage_sum_effectiveness,
+                        usage_sum_redundance,
+                        usage_real_effectiveness,
+                        usage_real_redundance,
+                        usage_approximation_effectiveness,
+                        usage_approximation_redundance,
+                    ) = match kind {
+                        BucketKind::Metadata => (
+                            usage_sum_overall,
+                            usage_sum_overall,
+                            usage_sum_overall,
+                            usage_sum_overall,
+                            usage_sum_overall,
+                            usage_sum_overall,
+                        ),
+                        _ => {
+                            let usage_sum_effectiveness =
+                                (usage_sum_overall_f32 * effectiveness_ratio) as u64;
+                            let usage_sum_redundance =
+                                (usage_sum_overall_f32 * redundance_ratio) as u64;
+                            let usage_real_effectiveness =
+                                cmp::min(usage_sum_effectiveness, usage_real);
+                            let usage_real_redundance = usage_real - usage_real_effectiveness;
+                            let usage_approximation_effectiveness =
+                                usage_sum_effectiveness - usage_real_effectiveness;
+                            let usage_approximation_redundance =
+                                usage_sum_redundance - usage_real_redundance;
+                            (
+                                usage_sum_effectiveness,
+                                usage_sum_redundance,
+                                usage_real_effectiveness,
+                                usage_real_redundance,
+                                usage_approximation_effectiveness,
+                                usage_approximation_redundance,
+                            )
+                        }
+                    };
+                    let stats = BucketStatistics {
+                        objects,
+                        storage_usage_bytes_sum_overall: usage_sum_overall,
+                        storage_usage_bytes_sum_effectiveness: usage_sum_effectiveness,
+                        storage_usage_bytes_sum_redundance: usage_sum_redundance,
+                        storage_usage_bytes_real_overall: usage_real,
+                        storage_usage_bytes_real_effectiveness: usage_real_effectiveness,
+                        storage_usage_bytes_real_redundance: usage_real_redundance,
+                        storage_usage_bytes_approximation_overall: usage_approximation,
+                        storage_usage_bytes_approximation_effectiveness:
+                            usage_approximation_effectiveness,
+                        storage_usage_bytes_approximation_redundance:
+                            usage_approximation_redundance,
+                    };
+
+                    Ok(make_json_response(Status::Ok, Ok(stats)))
+                }
+            });
         Box::new(future)
     }
 }

@@ -283,44 +283,40 @@ impl Client {
     /// セグメントの統計情報を返す.
     pub fn stats(
         &self,
-        range: Range<LumpId>,
         parent: SpanHandle,
     ) -> impl Future<Item = SegmentStatistics, Error = Error> {
         // TODO remove clone
-        self.storage
-            .clone()
-            .storage_usage(range, parent)
-            .map(|usages| {
-                let max_usage = usages
+        self.storage.clone().storage_usage(parent).map(|usages| {
+            let max_usage = usages
+                .iter()
+                .map(|usage| {
+                    if let StorageUsage::Approximate(n) = usage {
+                        *n
+                    } else {
+                        0
+                    }
+                })
+                .max();
+            let max_usage = if let Some(max) = max_usage {
+                u64::from(max)
+            } else {
+                0
+            };
+            let (storage_usage_bytes_real, storage_usage_bytes_approximation) =
+                usages
                     .iter()
-                    .map(|usage| {
+                    .fold((0, 0), |(sum_real, sum_approximation), usage| {
                         if let StorageUsage::Approximate(n) = usage {
-                            *n
+                            (sum_real + u64::from(*n), sum_approximation)
                         } else {
-                            0
+                            (sum_real, sum_approximation + max_usage)
                         }
-                    })
-                    .max();
-                let max_usage = if let Some(max) = max_usage {
-                    u64::from(max)
-                } else {
-                    0
-                };
-                let storage_usage_bytes = usages
-                    .iter()
-                    .map(|usage| {
-                        if let StorageUsage::Approximate(n) = usage {
-                            u64::from(*n)
-                        } else {
-                            // 取得できなかった場合は使用量が過小評価されないようにする
-                            max_usage
-                        }
-                    })
-                    .sum();
-                SegmentStatistics {
-                    storage_usage_bytes,
-                }
-            })
+                    });
+            SegmentStatistics {
+                storage_usage_bytes_real,
+                storage_usage_bytes_approximation,
+            }
+        })
     }
 }
 

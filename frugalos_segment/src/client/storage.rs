@@ -70,15 +70,11 @@ impl StorageClient {
             false
         }
     }
-    pub fn storage_usage(
-        self,
-        range: Range<LumpId>,
-        parent: SpanHandle,
-    ) -> BoxFuture<Vec<StorageUsage>> {
+    pub fn storage_usage(self, parent: SpanHandle) -> BoxFuture<Vec<StorageUsage>> {
         match self {
             StorageClient::Metadata => Box::new(futures::finished(Vec::new())),
-            StorageClient::Replicated(c) => c.storage_usage(range),
-            StorageClient::Dispersed(c) => c.storage_usage(range, parent),
+            StorageClient::Replicated(c) => c.storage_usage(),
+            StorageClient::Dispersed(c) => c.storage_usage(parent),
         }
     }
     pub fn get_fragment(self, local_node: NodeId, version: ObjectVersion) -> GetFragment {

@@ -66,16 +66,25 @@ impl DispersedClient {
             rpc_service,
         }
     }
-    pub fn storage_usage(
-        self,
-        range: Range<LumpId>,
-        _parent: SpanHandle,
-    ) -> BoxFuture<Vec<StorageUsage>> {
+    pub fn storage_usage(self, parent: SpanHandle) -> BoxFuture<Vec<StorageUsage>> {
         let cannyls_config = self.client_config.cannyls.clone();
         let rpc_service = self.rpc_service.clone();
         let members = self.cluster.members.iter().cloned().collect::<Vec<_>>();
         let future = futures::stream::iter_ok(members)
             .and_then(move |member| {
+                let device_id = member.device.clone();
+                let mut span = parent.child("storage_usage", |span| {
+                    span.tag(StdTag::component(module_path!()))
+                        .tag(StdTag::span_kind("client"))
+                        .tag(StdTag::peer_ip(member.node.addr.ip()))
+                        .tag(StdTag::peer_port(member.node.addr.port()))
+                        .tag(Tag::new("node", member.node.local_id.to_string()))
+                        .tag(Tag::new("device.id", device_id.clone()))
+                        .start()
+                });
+                let mut range = member.node.local_id.to_available_lump_id_range();
+                range.start = LumpId::new(range.start.as_u128() | (1u128 << 120));
+                range.end = LumpId::new(range.end.as_u128() | (1u128 << 120));
                 let client = CannyLsClient::new(member.node.addr, rpc_service.clone());
                 let device_id = DeviceId::new(member.device);
                 let mut request = client.request();
@@ -83,9 +92,9 @@ impl DispersedClient {
                 Box::new(
                     request
                         .usage_range(device_id, range.clone())
-                        .then(|result| {
-                            // TODO メトリクス取得
-                            if let Err(_) = result {
+                        .then(move |result| {
+                            if let Err(ref e) = result {
+                                span.log_error(e);
                                 Ok(StorageUsage::Unknown)
                             } else {
                                 result
@@ -251,7 +260,6 @@ impl DispersedClient {
                 .tag(Tag::new("storage.type", "dispersed"))
                 .start()
         });
-
         let mut child = span.child("ec_encode", |span| {
             span.tag(StdTag::component(module_path!())).start()
         });
@@ -382,7 +390,6 @@ impl Future for DispersedPut {
                                     return future;
                                 }
                             };
-
                             let mut span = parent.child("put_fragment", |span| {
                                 span.tag(StdTag::component(module_path!()))
                                     .tag(StdTag::span_kind("client"))
