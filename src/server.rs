@@ -15,6 +15,7 @@ use libfrugalos::entity::bucket::BucketKind;
 use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, ObjectPrefix, ObjectSummary, ObjectVersion,
 };
+use libfrugalos::entity::segment::SegmentStatistics;
 use libfrugalos::expect::Expect;
 use prometrics::metrics::MetricBuilder;
 use rustracing::tag::{StdTag, Tag};
@@ -222,24 +223,41 @@ impl HandleRequest for GetBucketStatistics {
         };
 
         let client = self.0.client.clone();
-        let usage = futures::stream::iter_ok(0..segments.clone())
-            .and_then(move |segment| {
-                let request = client.request(bucket_id.clone());
-                request.segment_stats(segment).map_err(|e| track!(e))
+        let client_span = SpanContext::extract_from_http_header(&TraceHeader(req.header()))
+            .ok()
+            .and_then(|c| c);
+        let mut span = self
+            .0
+            .tracer
+            .span(|t| t.span("get_bucket").child_of(&client_span).start());
+        span.set_tag(|| StdTag::http_method("GET"));
+        span.set_tag(|| Tag::new("bucket.id", bucket_id.clone()));
+
+        let futures: Vec<_> = (0..segments)
+            .map(|segment_id| {
+                client
+                    .request(bucket_id.clone())
+                    .span(&span)
+                    .segment_stats(segment_id)
+                    .map_err(|e| track!(e))
             })
-            .fold(
+            .collect();
+        let usage = futures::future::join_all(futures).map(|x| {
+            x.into_iter().fold(
                 (0, 0),
-                |(sum_real, sum_approximation), stats| -> Result<_> {
-                    Ok((
+                |(sum_real, sum_approximation), stats: SegmentStatistics| {
+                    (
                         sum_real + stats.storage_usage_bytes_real,
                         sum_approximation + stats.storage_usage_bytes_approximation,
-                    ))
+                    )
                 },
-            );
+            )
+        });
+
         let bucket_id = get_bucket_id(req.url());
         let client = self.0.client.clone();
-        let client2 = self.0.client.clone();
         let bucket_id2 = bucket_id.clone();
+        let client2 = self.0.client.clone();
         let objects = futures::stream::iter_ok(0..segments)
             .and_then(move |segment| {
                 let request = client.request(bucket_id.clone());

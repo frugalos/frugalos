@@ -16,7 +16,6 @@ use rustracing::tag::{StdTag, Tag};
 use rustracing_jaeger::span::{Span, SpanHandle};
 use slog::Logger;
 use std::mem;
-use std::ops::Range;
 use std::sync::Arc;
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
@@ -69,7 +68,7 @@ impl DispersedClient {
     pub fn storage_usage(self, parent: SpanHandle) -> BoxFuture<Vec<StorageUsage>> {
         let cannyls_config = self.client_config.cannyls.clone();
         let rpc_service = self.rpc_service.clone();
-        let members = self.cluster.members.iter().cloned().collect::<Vec<_>>();
+        let members = self.cluster.members.to_vec();
         let future = futures::stream::iter_ok(members)
             .and_then(move |member| {
                 let device_id = member.device.clone();
@@ -89,18 +88,14 @@ impl DispersedClient {
                 let device_id = DeviceId::new(member.device);
                 let mut request = client.request();
                 request.rpc_options(cannyls_config.rpc_options());
-                Box::new(
-                    request
-                        .usage_range(device_id, range.clone())
-                        .then(move |result| {
-                            if let Err(ref e) = result {
-                                span.log_error(e);
-                                Ok(StorageUsage::Unknown)
-                            } else {
-                                result
-                            }
-                        }),
-                )
+                Box::new(request.usage_range(device_id, range).then(move |result| {
+                    if let Err(ref e) = result {
+                        span.log_error(e);
+                        Ok(StorageUsage::Unknown)
+                    } else {
+                        result
+                    }
+                }))
             })
             .collect();
         Box::new(future.map_err(|e| track!(Error::from(e))))

@@ -20,7 +20,6 @@ use std::ops::Range;
 use self::ec::ErasureCoder;
 use self::mds::MdsClient;
 use self::storage::StorageClient;
-use cannyls::lump::LumpId;
 use config::ClientConfig;
 use {Error, ObjectValue, Result};
 
@@ -297,17 +296,13 @@ impl Client {
                     }
                 })
                 .max();
-            let max_usage = if let Some(max) = max_usage {
-                u64::from(max)
-            } else {
-                0
-            };
+            let max_usage = if let Some(max) = max_usage { max } else { 0 };
             let (storage_usage_bytes_real, storage_usage_bytes_approximation) =
                 usages
                     .iter()
                     .fold((0, 0), |(sum_real, sum_approximation), usage| {
                         if let StorageUsage::Approximate(n) = usage {
-                            (sum_real + u64::from(*n), sum_approximation)
+                            (sum_real + *n, sum_approximation)
                         } else {
                             (sum_real, sum_approximation + max_usage)
                         }

@@ -26,7 +26,6 @@ use libfrugalos::entity::server::{Server, ServerId};
 use prometrics::metrics::MetricBuilder;
 use slog::Logger;
 use std::collections::{HashMap, HashSet};
-use std::marker::PhantomData;
 use std::sync::Arc;
 use trackable::error::ErrorKindExt;
 
@@ -66,7 +65,6 @@ pub struct Service<S> {
     spawned_nodes: HashSet<NodeId>,
 
     recovery_request: Option<RecoveryRequest>,
-    spawner: S,
 }
 impl<S> Service<S>
 where
@@ -88,7 +86,7 @@ where
     ) -> Result<Self> {
         let frugalos_segment_service = track!(SegmentService::new(
             logger.clone(),
-            spawner.clone(),
+            spawner,
             rpc_service.clone(),
             rpc,
             raft_service.handle(),
@@ -111,7 +109,6 @@ where
             spawned_nodes: HashSet::new(),
             recovery_request,
             segment_config,
-            spawner: spawner,
         })
     }
     pub fn client(&self) -> FrugalosClient {
@@ -274,7 +271,6 @@ where
             self.logger.clone(),
             &device_config,
             self.frugalos_segment_service.device_registry().handle(),
-            self.spawner.clone(),
         );
         self.local_devices.insert(device_config.seqno(), device);
         Ok(())
@@ -318,23 +314,14 @@ struct LocalDevice {
     watches: Vec<oneshot::Monitored<DeviceHandle, Error>>,
 }
 impl LocalDevice {
-    fn new<S>(
-        logger: Logger,
-        config: &DeviceConfig,
-        device_registry: DeviceRegistryHandle,
-        spawner: S,
-    ) -> Self
-    where
-        S: Spawn + Send + Clone + 'static,
-    {
+    fn new(logger: Logger, config: &DeviceConfig, device_registry: DeviceRegistryHandle) -> Self {
         info!(logger, "Starts spawning new device: {:?}", config);
-        let l = logger.clone();
         LocalDevice {
             logger,
             config: config.clone(),
             device_registry,
             handle: None,
-            future: spawn_device(config, l, spawner).fuse(),
+            future: spawn_device(config).fuse(),
             watches: Vec::new(),
         }
     }
@@ -385,32 +372,19 @@ impl Future for WatchDeviceHandle {
     }
 }
 
-fn spawn_device<S>(
-    device: &DeviceConfig,
-    l: Logger,
-    spawner: S,
-) -> fibers_tasque::AsyncCall<Result<Device>>
-where
-    S: Spawn + Send + Clone + 'static,
-{
+fn spawn_device(device: &DeviceConfig) -> fibers_tasque::AsyncCall<Result<Device>> {
     use libfrugalos::entity::device::Device;
 
     match *device {
         Device::Virtual(_) => {
             fibers_tasque::DefaultIoTaskQueue.async_call(|| track_panic!(ErrorKind::Other))
         }
-        Device::Memory(ref d) => spawn_memory_device(d, spawner),
-        Device::File(ref d) => spawn_file_device(d, l, spawner),
+        Device::Memory(ref d) => spawn_memory_device(d),
+        Device::File(ref d) => spawn_file_device(d),
     }
 }
 
-fn spawn_memory_device<S>(
-    device: &MemoryDeviceConfig,
-    spawner: S,
-) -> fibers_tasque::AsyncCall<Result<Device>>
-where
-    S: Spawn + Send + Clone + 'static,
-{
+fn spawn_memory_device(device: &MemoryDeviceConfig) -> fibers_tasque::AsyncCall<Result<Device>> {
     let metrics = MetricBuilder::new()
         .label("device", device.id.as_ref())
         .clone();
@@ -419,21 +393,14 @@ where
     storage.metrics(metrics.clone());
     fibers_tasque::DefaultIoTaskQueue.async_call(move || {
         let storage = track!(storage.create(nvm).map_err(Error::from))?;
-        let device = cannyls::device::DeviceBuilder::<S>::new()
+        let device = cannyls::device::DeviceBuilder::new()
             .metrics(metrics)
             .spawn(|| Ok(storage)); // TODO: taskqueは止める
         Ok(device)
     })
 }
 
-fn spawn_file_device<S>(
-    device: &FileDeviceConfig,
-    logger: Logger,
-    spawner: S,
-) -> fibers_tasque::AsyncCall<Result<Device>>
-where
-    S: Spawn + Send + Clone + 'static,
-{
+fn spawn_file_device(device: &FileDeviceConfig) -> fibers_tasque::AsyncCall<Result<Device>> {
     use cannyls::nvm::FileNvm;
     let metrics = MetricBuilder::new()
         .label("device", device.id.as_ref())
@@ -460,8 +427,6 @@ where
         };
         let device = cannyls::device::DeviceBuilder::new()
             .metrics(metrics)
-            .logger(logger)
-            .spawner(spawner)
             .spawn(|| Ok(storage)); // TODO: taskqueは止める
         Ok(device)
     })

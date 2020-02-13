@@ -1,5 +1,5 @@
 use cannyls::deadline::Deadline;
-use cannyls::lump::{LumpData, LumpId};
+use cannyls::lump::LumpData;
 use cannyls::storage::StorageUsage;
 use cannyls_rpc::Client as CannyLsClient;
 use cannyls_rpc::DeviceId;

@@ -2,7 +2,6 @@
 use adler32;
 use byteorder::{BigEndian, ByteOrder};
 use cannyls::deadline::Deadline;
-use cannyls::lump::LumpId;
 use cannyls::storage::StorageUsage;
 use cannyls_rpc::DeviceId;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
@@ -12,7 +11,6 @@ use futures::{self, Async, Future, Poll};
 use libfrugalos::entity::object::{FragmentsSummary, ObjectVersion};
 use rustracing_jaeger::span::SpanHandle;
 use slog::Logger;
-use std::ops::Range;
 use trackable::error::ErrorKindExt;
 
 use client::dispersed_storage::{DispersedClient, ReconstructDispersedFragment};
