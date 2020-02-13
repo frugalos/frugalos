@@ -4,7 +4,7 @@ use atomic_immut::AtomicImmut;
 use cannyls::deadline::Deadline;
 use cannyls::lump::LumpId;
 use cannyls_rpc::DeviceId;
-use frugalos_segment::ObjectValue;
+use frugalos_segment::{ObjectValue, SegmentStatistics};
 use futures::{self, Future};
 use libfrugalos::consistency::ReadConsistency;
 use libfrugalos::entity::bucket::{BucketId, BucketKind};
@@ -12,7 +12,6 @@ use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, FragmentsSummary, ObjectId, ObjectPrefix, ObjectSummary,
     ObjectVersion,
 };
-use libfrugalos::entity::segment::SegmentStatistics;
 use libfrugalos::expect::Expect;
 use rustracing_jaeger::span::{Span, SpanHandle};
 use std::collections::HashMap;

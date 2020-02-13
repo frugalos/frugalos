@@ -7,6 +7,7 @@ use fibers_http_server::{
     HandleRequest, Reply, Req, Res, ServerBuilder as HttpServerBuilder, Status,
 };
 use frugalos_core::tracer::ThreadLocalTracer;
+use frugalos_segment::SegmentStatistics;
 use futures::future::Either;
 use futures::{self, Future, Stream};
 use httpcodec::{BodyDecoder, BodyEncoder, HeadBodyEncoder, Header};
@@ -15,7 +16,6 @@ use libfrugalos::entity::bucket::BucketKind;
 use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, ObjectPrefix, ObjectSummary, ObjectVersion,
 };
-use libfrugalos::entity::segment::SegmentStatistics;
 use libfrugalos::expect::Expect;
 use prometrics::metrics::MetricBuilder;
 use rustracing::tag::{StdTag, Tag};

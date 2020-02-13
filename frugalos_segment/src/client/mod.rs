@@ -10,12 +10,12 @@ use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, FragmentsSummary, ObjectId, ObjectPrefix, ObjectSummary,
     ObjectVersion,
 };
-use libfrugalos::entity::segment::SegmentStatistics;
 use libfrugalos::expect::Expect;
 use rustracing_jaeger::span::SpanHandle;
 use slog::Logger;
 use std::mem;
 use std::ops::Range;
+use SegmentStatistics;
 
 use self::ec::ErasureCoder;
 use self::mds::MdsClient;
