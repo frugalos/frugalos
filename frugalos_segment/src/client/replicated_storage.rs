@@ -1,5 +1,5 @@
 use cannyls::deadline::Deadline;
-use cannyls::lump::LumpData;
+use cannyls::lump::{LumpData, LumpId};
 use cannyls::storage::StorageUsage;
 use cannyls_rpc::Client as CannyLsClient;
 use cannyls_rpc::DeviceId;
@@ -7,7 +7,6 @@ use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_raft::NodeId;
 use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::{FragmentsSummary, ObjectVersion};
-use std::ops::Range;
 use std::sync::Arc;
 use trackable::error::ErrorKindExt;
 

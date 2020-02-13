@@ -1,7 +1,7 @@
 use cannyls::deadline::Deadline;
 use cannyls::lump::LumpId;
-use cannyls_rpc::DeviceId;
 use cannyls::storage::StorageUsage;
+use cannyls_rpc::DeviceId;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use futures::future::Either;
 use futures::{self, Future};
@@ -284,8 +284,8 @@ impl Client {
         &self,
         parent: SpanHandle,
     ) -> impl Future<Item = SegmentStatistics, Error = Error> {
-        // TODO remove clone
-        self.storage.clone().storage_usage(parent).map(|usages| {
+        let storage = self.storage.clone();
+        storage.storage_usage(parent).map(|usages| {
             let max_usage = usages
                 .iter()
                 .map(|usage| {

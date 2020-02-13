@@ -2,6 +2,7 @@
 use adler32;
 use byteorder::{BigEndian, ByteOrder};
 use cannyls::deadline::Deadline;
+use cannyls::lump::LumpId;
 use cannyls::storage::StorageUsage;
 use cannyls_rpc::DeviceId;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
