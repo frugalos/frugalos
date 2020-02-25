@@ -61,8 +61,4 @@ members = ["frugalos_core", "frugalos_config", "frugalos_mds", "frugalos_raft", 
 
 [patch.crates-io]
 # feature/disk-usage
-cannyls = { path = "../cannyls" }
-# feature/disk-usage
 cannyls_rpc = { path = "../cannyls_rpc" }
-# feature/segment-stats
-libfrugalos = { path = "../libfrugalos" }

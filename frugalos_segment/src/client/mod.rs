@@ -21,7 +21,8 @@ use self::ec::ErasureCoder;
 use self::mds::MdsClient;
 use self::storage::StorageClient;
 use config::ClientConfig;
-use {Error, ObjectValue, Result};
+use trackable::error::ErrorKindExt;
+use {Error, ErrorKind, ObjectValue, Result};
 
 mod dispersed_storage;
 pub mod ec; // to re-export in frugalos_segment/src/lib.rs
@@ -285,20 +286,37 @@ impl Client {
         parent: SpanHandle,
     ) -> impl Future<Item = SegmentStatistics, Error = Error> {
         let storage = self.storage.clone();
-        storage.storage_usage(parent).map(|usages| {
-            let max_usage = usages
-                .iter()
-                .map(|usage| {
-                    if let StorageUsage::Approximate(n) = usage {
-                        *n
+        storage
+            .storage_usage(parent)
+            .and_then(|usages| {
+                let f = |e: &StorageUsage| -> bool {
+                    if let StorageUsage::Unknown = e {
+                        true
                     } else {
-                        0
+                        false
                     }
-                })
-                .max();
-            let max_usage = if let Some(max) = max_usage { max } else { 0 };
-            let (storage_usage_bytes_real, storage_usage_bytes_approximation) =
-                usages
+                };
+                if usages.iter().all(f) {
+                    Err(ErrorKind::Invalid
+                        .cause("TODO: all segments node disk-usage unavailable")
+                        .into())
+                } else {
+                    Ok(usages)
+                }
+            })
+            .map(|usages| {
+                let max_usage = usages
+                    .iter()
+                    .map(|usage| {
+                        if let StorageUsage::Approximate(n) = usage {
+                            *n
+                        } else {
+                            0
+                        }
+                    })
+                    .max();
+                let max_usage = if let Some(max) = max_usage { max } else { 0 };
+                let (storage_usage_bytes_real, storage_usage_bytes_approximation) = usages
                     .iter()
                     .fold((0, 0), |(sum_real, sum_approximation), usage| {
                         if let StorageUsage::Approximate(n) = usage {
@@ -307,11 +325,11 @@ impl Client {
                             (sum_real, sum_approximation + max_usage)
                         }
                     });
-            SegmentStatistics {
-                storage_usage_bytes_real,
-                storage_usage_bytes_approximation,
-            }
-        })
+                SegmentStatistics {
+                    storage_usage_bytes_real,
+                    storage_usage_bytes_approximation,
+                }
+            })
     }
 }
 
@@ -632,6 +650,44 @@ mod tests {
             Span::inactive().handle(),
         ));
         assert!(result.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn storage_usage_works() -> TestResult {
+        let data_fragments = 2;
+        let parity_fragments = 1;
+        let cluster_size = 3;
+        let mut system = System::new(data_fragments, parity_fragments)?;
+        let (_members, client) = setup_system(&mut system, cluster_size)?;
+
+        thread::spawn(move || loop {
+            system.executor.run_once().unwrap();
+            thread::sleep(time::Duration::from_micros(100));
+        });
+
+        let blob = vec![0x03];
+        let object_id = "test_data".to_owned();
+
+        thread::sleep(time::Duration::from_secs(5));
+
+        let _ = wait(client.put(
+            object_id.to_owned(),
+            blob,
+            Deadline::Infinity,
+            Expect::Any,
+            Span::inactive().handle(),
+        ))?;
+
+        let result = wait(client.stats(Span::inactive().handle()))?;
+        assert_eq!(
+            result,
+            SegmentStatistics {
+                storage_usage_bytes_approximation: 0,
+                storage_usage_bytes_real: 99840
+            }
+        );
 
         Ok(())
     }

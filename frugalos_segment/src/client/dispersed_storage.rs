@@ -81,9 +81,7 @@ impl DispersedClient {
                         .tag(Tag::new("device.id", device_id.clone()))
                         .start()
                 });
-                let mut range = member.node.local_id.to_available_lump_id_range();
-                range.start = LumpId::new(range.start.as_u128() | (1u128 << 120));
-                range.end = LumpId::new(range.end.as_u128() | (1u128 << 120));
+                let range = member.make_available_object_lump_id_range();
                 let client = CannyLsClient::new(member.node.addr, rpc_service.clone());
                 let device_id = DeviceId::new(member.device);
                 let mut request = client.request();

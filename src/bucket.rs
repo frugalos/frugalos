@@ -107,18 +107,27 @@ impl Bucket {
     pub fn segments(&self) -> &[Segment] {
         &self.segments
     }
-    pub fn tolerable_faults(&self) -> u8 {
+
+    pub fn effectiveness_ratio(&self) -> f32 {
         match self.storage_config {
-            frugalos_segment::config::Storage::Metadata => 0,
-            frugalos_segment::config::Storage::Replicated(ref c) => c.tolerable_faults,
-            frugalos_segment::config::Storage::Dispersed(ref c) => c.tolerable_faults,
+            frugalos_segment::config::Storage::Metadata => 0.0,
+            frugalos_segment::config::Storage::Replicated(ref c) => {
+                1f32 / (c.tolerable_faults + 1) as f32
+            }
+            frugalos_segment::config::Storage::Dispersed(ref c) => {
+                (c.fragments - c.tolerable_faults) as f32 / c.fragments as f32
+            }
         }
     }
-    pub fn fragments(&self) -> u8 {
+    pub fn redundance_ratio(&self) -> f32 {
         match self.storage_config {
-            frugalos_segment::config::Storage::Metadata => 0,
-            frugalos_segment::config::Storage::Replicated(ref c) => c.tolerable_faults + 1,
-            frugalos_segment::config::Storage::Dispersed(ref c) => c.fragments,
+            frugalos_segment::config::Storage::Metadata => 0.0,
+            frugalos_segment::config::Storage::Replicated(ref c) => {
+                c.tolerable_faults as f32 / (c.tolerable_faults + 1) as f32
+            }
+            frugalos_segment::config::Storage::Dispersed(ref c) => {
+                c.tolerable_faults as f32 / c.fragments as f32
+            }
         }
     }
     pub fn kind(&self) -> BucketKind {

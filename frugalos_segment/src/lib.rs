@@ -92,7 +92,7 @@ impl Default for FrugalosSegmentConfig {
 }
 
 /// セグメント統計情報。
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct SegmentStatistics {
     /// 実際に計測されたストレージ使用量。
     pub storage_usage_bytes_real: u64,

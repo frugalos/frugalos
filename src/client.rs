@@ -43,14 +43,17 @@ impl FrugalosClient {
             .get(bucket_id)
             .map(|b| b.segments().len() as u16)
     }
-    pub fn tolerable_faults(&self, bucket_id: &BucketId) -> Option<u8> {
+    pub fn effectiveness_ratio(&self, bucket_id: &BucketId) -> Option<f32> {
         self.buckets
             .load()
             .get(bucket_id)
-            .map(|b| b.tolerable_faults())
+            .map(|b| b.effectiveness_ratio())
     }
-    pub fn fragments(&self, bucket_id: &BucketId) -> Option<u8> {
-        self.buckets.load().get(bucket_id).map(|b| b.fragments())
+    pub fn redundance_ratio(&self, bucket_id: &BucketId) -> Option<f32> {
+        self.buckets
+            .load()
+            .get(bucket_id)
+            .map(|b| b.redundance_ratio())
     }
     pub fn kind(&self, bucket_id: &BucketId) -> Option<BucketKind> {
         self.buckets.load().get(bucket_id).map(|b| b.kind())

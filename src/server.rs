@@ -271,15 +271,14 @@ impl HandleRequest for GetBucketStatistics {
             .then(move |result| match track!(result) {
                 Err(e) => Ok(make_json_response(Status::InternalServerError, Err(e))),
                 Ok((objects, (usage_real, usage_approximation))) => {
-                    let tolerable_faults =
-                        client2.tolerable_faults(&bucket_id2).expect("Never fail");
-                    let fragments = client2.fragments(&bucket_id2).expect("Never fail");
                     let kind = client2.kind(&bucket_id2).expect("Never fail");
                     let usage_sum_overall = usage_real + usage_approximation;
                     let usage_sum_overall_f32 = usage_sum_overall as f32;
-                    let effectiveness_ratio =
-                        (fragments - tolerable_faults) as f32 / fragments as f32;
-                    let redundance_ratio = tolerable_faults as f32 / fragments as f32;
+                    let effectiveness_ratio = client2
+                        .effectiveness_ratio(&bucket_id2)
+                        .expect("Never fail");
+                    let redundance_ratio =
+                        client2.redundance_ratio(&bucket_id2).expect("Never fail");
 
                     let (
                         usage_sum_effectiveness,
