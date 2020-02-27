@@ -673,7 +673,7 @@ mod tests {
         thread::sleep(time::Duration::from_secs(5));
 
         let _ = wait(client.put(
-            object_id.to_owned(),
+            object_id,
             blob,
             Deadline::Infinity,
             Expect::Any,
