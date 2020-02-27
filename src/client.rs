@@ -7,7 +7,7 @@ use cannyls_rpc::DeviceId;
 use frugalos_segment::{ObjectValue, SegmentStatistics};
 use futures::{self, Future};
 use libfrugalos::consistency::ReadConsistency;
-use libfrugalos::entity::bucket::{BucketId, BucketKind};
+use libfrugalos::entity::bucket::BucketId;
 use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, FragmentsSummary, ObjectId, ObjectPrefix, ObjectSummary,
     ObjectVersion,
@@ -43,20 +43,17 @@ impl FrugalosClient {
             .get(bucket_id)
             .map(|b| b.segments().len() as u16)
     }
-    pub fn effectiveness_ratio(&self, bucket_id: &BucketId) -> Option<f32> {
+    pub fn effectiveness_ratio(&self, bucket_id: &BucketId) -> Option<f64> {
         self.buckets
             .load()
             .get(bucket_id)
             .map(|b| b.effectiveness_ratio())
     }
-    pub fn redundance_ratio(&self, bucket_id: &BucketId) -> Option<f32> {
+    pub fn redundance_ratio(&self, bucket_id: &BucketId) -> Option<f64> {
         self.buckets
             .load()
             .get(bucket_id)
             .map(|b| b.redundance_ratio())
-    }
-    pub fn kind(&self, bucket_id: &BucketId) -> Option<BucketKind> {
-        self.buckets.load().get(bucket_id).map(|b| b.kind())
     }
 }
 impl fmt::Debug for FrugalosClient {

@@ -81,10 +81,14 @@ pub struct BucketStatistics {
     /// バケツ内のオブジェクト数.
     pub objects: u64,
     /// 推定値と実測値を含めた全体ストレージ使用量.
+    /// DispersedBucket の場合 data_fragment_count:tolerable_faults = k:m の時
+    /// `overall : effectiveness : redundance = (k+m) : k : m` となる.
+    /// 任意のバケツで `overall = effectiveness + redundance` となる.
     pub storage_usage_bytes_sum_overall: u64,
-    /// storage_usage_bytes_sum_overal における実効ストレージ使用量.
+    /// storage_usage_bytes_sum_overall における実効ストレージ使用量.
+    /// 冗長分を加味せず保存されているオブジェクトから計上されるストレージ使用量を示す.
     pub storage_usage_bytes_sum_effectiveness: u64,
-    /// storage_usage_bytes_sum_overal における冗長 (パリティ分) ストレージ使用量.
+    /// storage_usage_bytes_sum_overall における冗長 (パリティ分) ストレージ使用量.
     pub storage_usage_bytes_sum_redundance: u64,
     /// 確認されたストレージ使用量
     pub storage_usage_bytes_real_overall: u64,
@@ -92,7 +96,10 @@ pub struct BucketStatistics {
     pub storage_usage_bytes_real_effectiveness: u64,
     /// storage_usage_bytes_real_overall における冗長 (パリティ分) ストレージ使用量.
     pub storage_usage_bytes_real_redundance: u64,
-    /// 確認されない推定のストレージ使用量
+    /// 確認されない推定のストレージ使用量.
+    /// デバイス不調等で起動していないセグメントノードのストレージ使用量が含まれる.
+    /// 同セグメント中の最大のストレージ使用量となるセグメントノードの値で補完される.
+    /// 詳細は frugalos_segment::client::stats の実装を参照
     pub storage_usage_bytes_approximation_overall: u64,
     /// storage_usage_bytes_approximation_overall における実効ストレージ使用量.
     pub storage_usage_bytes_approximation_effectiveness: u64,

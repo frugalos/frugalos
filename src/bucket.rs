@@ -3,7 +3,7 @@ use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_segment::config::ClusterMember;
 use frugalos_segment::Client as Segment;
 use frugalos_segment::{self, ErasureCoder, FrugalosSegmentConfig};
-use libfrugalos::entity::bucket::{Bucket as BucketConfig, BucketKind};
+use libfrugalos::entity::bucket::Bucket as BucketConfig;
 use libfrugalos::entity::object::ObjectId;
 use siphasher;
 use slog::Logger;
@@ -108,33 +108,21 @@ impl Bucket {
         &self.segments
     }
 
-    pub fn effectiveness_ratio(&self) -> f32 {
+    pub fn effectiveness_ratio(&self) -> f64 {
         match self.storage_config {
             frugalos_segment::config::Storage::Metadata => 0.0,
             frugalos_segment::config::Storage::Replicated(ref c) => {
-                1f32 / (c.tolerable_faults + 1) as f32
+                1f64 / (2 * c.tolerable_faults + 1) as f64
             }
             frugalos_segment::config::Storage::Dispersed(ref c) => {
-                (c.fragments - c.tolerable_faults) as f32 / c.fragments as f32
+                (c.fragments - c.tolerable_faults) as f64 / c.fragments as f64
             }
         }
     }
-    pub fn redundance_ratio(&self) -> f32 {
+    pub fn redundance_ratio(&self) -> f64 {
         match self.storage_config {
             frugalos_segment::config::Storage::Metadata => 0.0,
-            frugalos_segment::config::Storage::Replicated(ref c) => {
-                c.tolerable_faults as f32 / (c.tolerable_faults + 1) as f32
-            }
-            frugalos_segment::config::Storage::Dispersed(ref c) => {
-                c.tolerable_faults as f32 / c.fragments as f32
-            }
-        }
-    }
-    pub fn kind(&self) -> BucketKind {
-        match self.storage_config {
-            frugalos_segment::config::Storage::Metadata => BucketKind::Metadata,
-            frugalos_segment::config::Storage::Replicated(_) => BucketKind::Replicated,
-            frugalos_segment::config::Storage::Dispersed(_) => BucketKind::Dispersed,
+            _ => 1.0 - self.effectiveness_ratio(),
         }
     }
 }

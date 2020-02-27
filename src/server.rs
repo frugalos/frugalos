@@ -12,7 +12,6 @@ use futures::future::Either;
 use futures::{self, Future, Stream};
 use httpcodec::{BodyDecoder, BodyEncoder, HeadBodyEncoder, Header};
 use libfrugalos::consistency::ReadConsistency;
-use libfrugalos::entity::bucket::BucketKind;
 use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, ObjectPrefix, ObjectSummary, ObjectVersion,
 };
@@ -256,8 +255,8 @@ impl HandleRequest for GetBucketStatistics {
 
         let bucket_id = get_bucket_id(req.url());
         let client = self.0.client.clone();
-        let bucket_id2 = bucket_id.clone();
-        let client2 = self.0.client.clone();
+        let effectiveness_ratio = client.effectiveness_ratio(&bucket_id).expect("Never fail");
+        let redundance_ratio = client.redundance_ratio(&bucket_id).expect("Never fail");
         let objects = futures::stream::iter_ok(0..segments)
             .and_then(move |segment| {
                 let request = client.request(bucket_id.clone());
@@ -271,53 +270,21 @@ impl HandleRequest for GetBucketStatistics {
             .then(move |result| match track!(result) {
                 Err(e) => Ok(make_json_response(Status::InternalServerError, Err(e))),
                 Ok((objects, (usage_real, usage_approximation))) => {
-                    let kind = client2.kind(&bucket_id2).expect("Never fail");
                     let usage_sum_overall = usage_real + usage_approximation;
-                    let usage_sum_overall_f32 = usage_sum_overall as f32;
-                    let effectiveness_ratio = client2
-                        .effectiveness_ratio(&bucket_id2)
-                        .expect("Never fail");
-                    let redundance_ratio =
-                        client2.redundance_ratio(&bucket_id2).expect("Never fail");
-
-                    let (
-                        usage_sum_effectiveness,
-                        usage_sum_redundance,
-                        usage_real_effectiveness,
-                        usage_real_redundance,
-                        usage_approximation_effectiveness,
-                        usage_approximation_redundance,
-                    ) = match kind {
-                        BucketKind::Metadata => (
-                            usage_sum_overall,
-                            usage_sum_overall,
-                            usage_sum_overall,
-                            usage_sum_overall,
-                            usage_sum_overall,
-                            usage_sum_overall,
-                        ),
-                        _ => {
-                            let usage_sum_effectiveness =
-                                (usage_sum_overall_f32 * effectiveness_ratio) as u64;
-                            let usage_sum_redundance =
-                                (usage_sum_overall_f32 * redundance_ratio) as u64;
-                            let usage_real_effectiveness =
-                                cmp::min(usage_sum_effectiveness, usage_real);
-                            let usage_real_redundance = usage_real - usage_real_effectiveness;
-                            let usage_approximation_effectiveness =
-                                usage_sum_effectiveness - usage_real_effectiveness;
-                            let usage_approximation_redundance =
-                                usage_sum_redundance - usage_real_redundance;
-                            (
-                                usage_sum_effectiveness,
-                                usage_sum_redundance,
-                                usage_real_effectiveness,
-                                usage_real_redundance,
-                                usage_approximation_effectiveness,
-                                usage_approximation_redundance,
-                            )
-                        }
-                    };
+                    let usage_sum_overall_f64 = usage_sum_overall as f64;
+                    let usage_sum_effectiveness =
+                        (usage_sum_overall_f64 * effectiveness_ratio) as u64;
+                    let usage_sum_redundance = (usage_sum_overall_f64 * redundance_ratio) as u64;
+                    let usage_real_effectiveness = cmp::min(usage_sum_effectiveness, usage_real);
+                    let usage_real_redundance = usage_real
+                        .checked_sub(usage_real_effectiveness)
+                        .unwrap_or(0);
+                    let usage_approximation_effectiveness = usage_sum_effectiveness
+                        .checked_sub(usage_real_effectiveness)
+                        .unwrap_or(0);
+                    let usage_approximation_redundance = usage_sum_redundance
+                        .checked_sub(usage_real_redundance)
+                        .unwrap_or(0);
                     let stats = BucketStatistics {
                         objects,
                         storage_usage_bytes_sum_overall: usage_sum_overall,
