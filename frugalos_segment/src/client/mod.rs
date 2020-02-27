@@ -298,7 +298,7 @@ impl Client {
                 };
                 if usages.iter().all(f) {
                     Err(ErrorKind::Invalid
-                        .cause("TODO: all segments node disk-usage unavailable")
+                        .cause("All segment-nodes disk-usage unavailable")
                         .into())
                 } else {
                     Ok(usages)
