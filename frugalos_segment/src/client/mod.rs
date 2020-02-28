@@ -286,9 +286,10 @@ impl Client {
         parent: SpanHandle,
     ) -> impl Future<Item = SegmentStatistics, Error = Error> {
         let storage = self.storage.clone();
+        let is_metadata = self.storage.is_metadata();
         storage
             .storage_usage(parent)
-            .and_then(|usages| {
+            .and_then(move |usages| {
                 let f = |e: &StorageUsage| -> bool {
                     if let StorageUsage::Unknown = e {
                         true
@@ -296,7 +297,7 @@ impl Client {
                         false
                     }
                 };
-                if usages.iter().all(f) {
+                if !is_metadata && usages.iter().all(f) {
                     Err(ErrorKind::Invalid
                         .cause("All segment-nodes disk-usage unavailable")
                         .into())
