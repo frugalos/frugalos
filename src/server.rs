@@ -276,15 +276,11 @@ impl HandleRequest for GetBucketStatistics {
                         (usage_sum_overall_f64 * effectiveness_ratio) as u64;
                     let usage_sum_redundance = (usage_sum_overall_f64 * redundance_ratio) as u64;
                     let usage_real_effectiveness = cmp::min(usage_sum_effectiveness, usage_real);
-                    let usage_real_redundance = usage_real
-                        .checked_sub(usage_real_effectiveness)
-                        .unwrap_or(0);
-                    let usage_approximation_effectiveness = usage_sum_effectiveness
-                        .checked_sub(usage_real_effectiveness)
-                        .unwrap_or(0);
-                    let usage_approximation_redundance = usage_sum_redundance
-                        .checked_sub(usage_real_redundance)
-                        .unwrap_or(0);
+                    let usage_real_redundance = usage_real.saturating_sub(usage_real_effectiveness);
+                    let usage_approximation_effectiveness =
+                        usage_sum_effectiveness.saturating_sub(usage_real_effectiveness);
+                    let usage_approximation_redundance =
+                        usage_sum_redundance.saturating_sub(usage_real_redundance);
                     let stats = BucketStatistics {
                         objects,
                         storage_usage_bytes_sum_overall: usage_sum_overall,
