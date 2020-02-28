@@ -8,6 +8,7 @@ use libfrugalos::time::Seconds;
 use raftlog::cluster::ClusterMembers;
 use siphasher::sip::SipHasher;
 use std::hash::{Hash, Hasher};
+use std::ops::Range;
 use std::time::Duration;
 
 // TODO: LumpIdの名前空間の使い方に関してWikiに記載する
@@ -25,6 +26,9 @@ pub struct ClusterMember {
 impl ClusterMember {
     pub(crate) fn make_lump_id(&self, version: ObjectVersion) -> LumpId {
         make_lump_id(&self.node, version)
+    }
+    pub(crate) fn make_available_object_lump_id_range(&self) -> Range<LumpId> {
+        make_available_object_lump_id_range(&self.node)
     }
 }
 
@@ -44,6 +48,18 @@ pub(crate) fn get_object_version_from_lump_id(lump_id: LumpId) -> ObjectVersion 
     let mut id = [0; 16];
     BigEndian::write_u128(&mut id, lump_id.as_u128());
     ObjectVersion(BigEndian::read_u64(&id[8..]))
+}
+
+pub(crate) fn make_available_object_lump_id_range(node: &NodeId) -> Range<LumpId> {
+    let range = node.local_id.to_available_lump_id_range();
+    let mut id = [0; 16];
+    BigEndian::write_u128(&mut id, range.start.as_u128());
+    id[0] = LUMP_NAMESPACE_CONTENT;
+    let start = LumpId::new(BigEndian::read_u128(&id[..]));
+    BigEndian::write_u128(&mut id, range.end.as_u128());
+    id[0] = LUMP_NAMESPACE_CONTENT;
+    let end = LumpId::new(BigEndian::read_u128(&id[..]));
+    Range { start, end }
 }
 
 /// Configuration for CannyLS.

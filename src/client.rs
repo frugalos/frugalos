@@ -4,7 +4,7 @@ use atomic_immut::AtomicImmut;
 use cannyls::deadline::Deadline;
 use cannyls::lump::LumpId;
 use cannyls_rpc::DeviceId;
-use frugalos_segment::ObjectValue;
+use frugalos_segment::{ObjectValue, SegmentStatistics};
 use futures::{self, Future};
 use libfrugalos::consistency::ReadConsistency;
 use libfrugalos::entity::bucket::BucketId;
@@ -42,6 +42,18 @@ impl FrugalosClient {
             .load()
             .get(bucket_id)
             .map(|b| b.segments().len() as u16)
+    }
+    pub fn effectiveness_ratio(&self, bucket_id: &BucketId) -> Option<f64> {
+        self.buckets
+            .load()
+            .get(bucket_id)
+            .map(|b| b.effectiveness_ratio())
+    }
+    pub fn redundance_ratio(&self, bucket_id: &BucketId) -> Option<f64> {
+        self.buckets
+            .load()
+            .get(bucket_id)
+            .map(|b| b.redundance_ratio())
     }
 }
 impl fmt::Debug for FrugalosClient {
@@ -259,6 +271,18 @@ impl<'a> Request<'a> {
         let bucket = try_get_bucket!(buckets, self.bucket_id);
         if segment < bucket.segments().len() {
             let future = bucket.segments()[segment].object_count();
+            Box::new(future.map_err(|e| track!(Error::from(e))))
+        } else {
+            let e = ErrorKind::InvalidInput.cause(format!("Too large segment number: {}", segment));
+            Box::new(futures::failed(e.into()))
+        }
+    }
+    pub fn segment_stats(&self, segment: u16) -> BoxFuture<SegmentStatistics> {
+        let segment = segment as usize;
+        let buckets = self.client.buckets.load();
+        let bucket = try_get_bucket!(buckets, self.bucket_id);
+        if segment < bucket.segments().len() {
+            let future = bucket.segments()[segment].stats(self.parent.clone());
             Box::new(future.map_err(|e| track!(Error::from(e))))
         } else {
             let e = ErrorKind::InvalidInput.cause(format!("Too large segment number: {}", segment));

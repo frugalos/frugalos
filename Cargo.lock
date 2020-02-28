@@ -95,7 +95,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "cannyls"
-version = "0.9.0"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "adler32 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -104,18 +104,19 @@ dependencies = [
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.43 (registry+https://github.com/rust-lang/crates.io-index)",
  "prometrics 0.1.11 (registry+https://github.com/rust-lang/crates.io-index)",
+ "slog 2.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "trackable 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
  "uuid 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "cannyls_rpc"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "atomic_immut 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytecodec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
- "cannyls 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cannyls 0.9.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "factory 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_rpc 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -275,8 +276,8 @@ version = "0.18.0"
 dependencies = [
  "atomic_immut 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytecodec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
- "cannyls 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "cannyls_rpc 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cannyls 0.9.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cannyls_rpc 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_http_server 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -316,7 +317,7 @@ version = "0.9.0"
 dependencies = [
  "bytecodec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "cannyls 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cannyls 0.9.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_rpc 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_tasque 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -350,7 +351,7 @@ dependencies = [
  "atomic_immut 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytecodec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "cannyls 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cannyls 0.9.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_global 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_rpc 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -380,7 +381,7 @@ dependencies = [
  "atomic_immut 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytecodec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "cannyls 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cannyls 0.9.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_global 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_rpc 0.2.17 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -402,8 +403,8 @@ version = "0.14.0"
 dependencies = [
  "adler32 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "cannyls 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "cannyls_rpc 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cannyls 0.9.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cannyls_rpc 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ecpool 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "fibers_global 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1310,8 +1311,8 @@ dependencies = [
 "checksum build_const 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "39092a32794787acd8525ee150305ff051b0aa6cc2abaf193924f5ab05425f39"
 "checksum bytecodec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)" = "599c561412645564bcfaaacf31368ddf074d7350097f1252565aa88680c9c3c2"
 "checksum byteorder 1.2.6 (registry+https://github.com/rust-lang/crates.io-index)" = "90492c5858dd7d2e78691cfb89f90d273a2800fc11d98f60786e5d87e2f83781"
-"checksum cannyls 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "2e57e3c054daa28d8447b1416f68760bbf9d6a07e4f083021a7d3e41e2f9c2c6"
-"checksum cannyls_rpc 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "637a86ac6110573d654e67ffe7ff4a8f4f635c8c30c61ae1a5297333d601843b"
+"checksum cannyls 0.9.4 (registry+https://github.com/rust-lang/crates.io-index)" = "f74afae91f53ee8df17570a43675f370c1813b9a156be4008879febb1c709b6c"
+"checksum cannyls_rpc 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "842b71599060f7761ea39cd1fe38ecc3ce7f7c102165ede625a957940c01ec4d"
 "checksum cc 1.0.25 (registry+https://github.com/rust-lang/crates.io-index)" = "f159dfd43363c4d08055a07703eb7a3406b0dac4d0584d96965a3262db3c9d16"
 "checksum cfg-if 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "082bb9b28e00d3c9d39cc03e64ce4cea0f1bb9b3fde493f0cbc008472d22bdf4"
 "checksum chrono 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)" = "45912881121cb26fad7c38c17ba7daa18764771836b34fab7d3fbd93ed633878"

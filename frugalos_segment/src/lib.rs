@@ -31,6 +31,7 @@ extern crate siphasher;
 extern crate slog;
 #[macro_use]
 extern crate trackable;
+extern crate proc_macro;
 
 pub use client::ec::{build_ec, ErasureCoder};
 pub use client::Client;
@@ -88,4 +89,13 @@ impl Default for FrugalosSegmentConfig {
             mds_client: Default::default(),
         }
     }
+}
+
+/// セグメント統計情報。
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+pub struct SegmentStatistics {
+    /// 実際に計測されたストレージ使用量。
+    pub storage_usage_bytes_real: u64,
+    /// 推定されるストレージ使用量。
+    pub storage_usage_bytes_approximation: u64,
 }

@@ -107,4 +107,22 @@ impl Bucket {
     pub fn segments(&self) -> &[Segment] {
         &self.segments
     }
+
+    pub fn effectiveness_ratio(&self) -> f64 {
+        match self.storage_config {
+            frugalos_segment::config::Storage::Metadata => 0.0,
+            frugalos_segment::config::Storage::Replicated(ref c) => {
+                1f64 / (2 * c.tolerable_faults + 1) as f64
+            }
+            frugalos_segment::config::Storage::Dispersed(ref c) => {
+                (c.fragments - c.tolerable_faults) as f64 / c.fragments as f64
+            }
+        }
+    }
+    pub fn redundance_ratio(&self) -> f64 {
+        match self.storage_config {
+            frugalos_segment::config::Storage::Metadata => 0.0,
+            _ => 1.0 - self.effectiveness_ratio(),
+        }
+    }
 }

@@ -171,7 +171,6 @@ where
         let id = bucket_config.id().clone();
         self.bucket_no_to_id
             .insert(bucket_config.seqno(), id.clone());
-
         let bucket = track!(Bucket::new(
             self.logger.clone(),
             self.rpc_service.clone(),

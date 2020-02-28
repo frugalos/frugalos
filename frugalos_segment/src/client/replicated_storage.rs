@@ -1,5 +1,6 @@
 use cannyls::deadline::Deadline;
 use cannyls::lump::{LumpData, LumpId};
+use cannyls::storage::StorageUsage;
 use cannyls_rpc::Client as CannyLsClient;
 use cannyls_rpc::DeviceId;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
@@ -40,6 +41,10 @@ impl ReplicatedClient {
             client_config,
             rpc_service,
         }
+    }
+    pub fn storage_usage(self) -> BoxFuture<Vec<StorageUsage>> {
+        // TODO implement
+        Box::new(futures::future::ok(Vec::new()))
     }
     pub fn get_fragment(
         self,
