@@ -3,6 +3,7 @@ use adler32;
 use byteorder::{BigEndian, ByteOrder};
 use cannyls::deadline::Deadline;
 use cannyls::lump::LumpId;
+use cannyls::storage::StorageUsage;
 use cannyls_rpc::DeviceId;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_raft::NodeId;
@@ -66,6 +67,13 @@ impl StorageClient {
             true
         } else {
             false
+        }
+    }
+    pub fn storage_usage(self, parent: SpanHandle) -> BoxFuture<Vec<StorageUsage>> {
+        match self {
+            StorageClient::Metadata => Box::new(futures::finished(Vec::new())),
+            StorageClient::Replicated(c) => c.storage_usage(),
+            StorageClient::Dispersed(c) => c.storage_usage(parent),
         }
     }
     pub fn get_fragment(self, local_node: NodeId, version: ObjectVersion) -> GetFragment {

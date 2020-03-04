@@ -1,6 +1,7 @@
 #![allow(clippy::needless_pass_by_value)]
 use cannyls::deadline::Deadline;
 use cannyls::lump::{LumpData, LumpHeader, LumpId};
+use cannyls::storage::StorageUsage;
 use cannyls_rpc::Client as CannyLsClient;
 use cannyls_rpc::DeviceId;
 use ecpool::liberasurecode::LibErasureCoderBuilder;
@@ -9,7 +10,7 @@ use fibers::time::timer;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_core::tracer::SpanExt;
 use frugalos_raft::NodeId;
-use futures::{self, Async, Future, Poll};
+use futures::{self, Async, Future, Poll, Stream};
 use libfrugalos::entity::object::{FragmentsSummary, ObjectVersion};
 use rustracing::tag::{StdTag, Tag};
 use rustracing_jaeger::span::{Span, SpanHandle};
@@ -63,6 +64,39 @@ impl DispersedClient {
             data_fragments,
             rpc_service,
         }
+    }
+    pub fn storage_usage(self, parent: SpanHandle) -> BoxFuture<Vec<StorageUsage>> {
+        let cannyls_config = self.client_config.cannyls.clone();
+        let rpc_service = self.rpc_service.clone();
+        let members = self.cluster.members.to_vec();
+        let future = futures::stream::iter_ok(members)
+            .and_then(move |member| {
+                let device_id = member.device.clone();
+                let mut span = parent.child("storage_usage", |span| {
+                    span.tag(StdTag::component(module_path!()))
+                        .tag(StdTag::span_kind("client"))
+                        .tag(StdTag::peer_ip(member.node.addr.ip()))
+                        .tag(StdTag::peer_port(member.node.addr.port()))
+                        .tag(Tag::new("node", member.node.local_id.to_string()))
+                        .tag(Tag::new("device.id", device_id.clone()))
+                        .start()
+                });
+                let range = member.make_available_object_lump_id_range();
+                let client = CannyLsClient::new(member.node.addr, rpc_service.clone());
+                let device_id = DeviceId::new(member.device);
+                let mut request = client.request();
+                request.rpc_options(cannyls_config.rpc_options());
+                Box::new(request.usage_range(device_id, range).then(move |result| {
+                    if let Err(ref e) = result {
+                        span.log_error(e);
+                        Ok(StorageUsage::Unknown)
+                    } else {
+                        result
+                    }
+                }))
+            })
+            .collect();
+        Box::new(future.map_err(|e| track!(Error::from(e))))
     }
     pub fn get_fragment(
         self,
@@ -219,7 +253,6 @@ impl DispersedClient {
                 .tag(Tag::new("storage.type", "dispersed"))
                 .start()
         });
-
         let mut child = span.child("ec_encode", |span| {
             span.tag(StdTag::component(module_path!())).start()
         });
@@ -350,7 +383,6 @@ impl Future for DispersedPut {
                                     return future;
                                 }
                             };
-
                             let mut span = parent.child("put_fragment", |span| {
                                 span.tag(StdTag::component(module_path!()))
                                     .tag(StdTag::span_kind("client"))

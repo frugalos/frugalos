@@ -7,6 +7,7 @@ use fibers_http_server::{
     HandleRequest, Reply, Req, Res, ServerBuilder as HttpServerBuilder, Status,
 };
 use frugalos_core::tracer::ThreadLocalTracer;
+use frugalos_segment::SegmentStatistics;
 use futures::future::Either;
 use futures::{self, Future, Stream};
 use httpcodec::{BodyDecoder, BodyEncoder, HeadBodyEncoder, Header};
@@ -20,6 +21,7 @@ use rustracing::tag::{StdTag, Tag};
 use rustracing_jaeger::reporter::JaegerCompactReporter;
 use rustracing_jaeger::span::{SpanContext, SpanReceiver};
 use slog::Logger;
+use std::cmp;
 use std::str;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -220,18 +222,80 @@ impl HandleRequest for GetBucketStatistics {
         };
 
         let client = self.0.client.clone();
-        let future = futures::stream::iter_ok(0..segments)
+        let client_span = SpanContext::extract_from_http_header(&TraceHeader(req.header()))
+            .ok()
+            .and_then(|c| c);
+        let mut span = self
+            .0
+            .tracer
+            .span(|t| t.span("get_bucket").child_of(&client_span).start());
+        span.set_tag(|| StdTag::http_method("GET"));
+        span.set_tag(|| Tag::new("bucket.id", bucket_id.clone()));
+
+        let futures: Vec<_> = (0..segments)
+            .map(|segment_id| {
+                client
+                    .request(bucket_id.clone())
+                    .span(&span)
+                    .segment_stats(segment_id)
+                    .map_err(|e| track!(e))
+            })
+            .collect();
+        let usage = futures::future::join_all(futures).map(|x| {
+            x.into_iter().fold(
+                (0, 0),
+                |(sum_real, sum_approximation), stats: SegmentStatistics| {
+                    (
+                        sum_real + stats.storage_usage_bytes_real,
+                        sum_approximation + stats.storage_usage_bytes_approximation,
+                    )
+                },
+            )
+        });
+
+        let bucket_id = get_bucket_id(req.url());
+        let client = self.0.client.clone();
+        let effectiveness_ratio = client.effectiveness_ratio(&bucket_id).expect("Never fail");
+        let redundance_ratio = client.redundance_ratio(&bucket_id).expect("Never fail");
+        let objects = futures::stream::iter_ok(0..segments)
             .and_then(move |segment| {
                 let request = client.request(bucket_id.clone());
                 request
                     .object_count(segment as usize)
                     .map_err(|e| track!(e))
             })
-            .fold(0, |total, objects| -> Result<_> { Ok(total + objects) })
-            .then(|result| match track!(result) {
+            .fold(0, |total, objects| -> Result<_> { Ok(total + objects) });
+        let future = objects
+            .join(usage)
+            .then(move |result| match track!(result) {
                 Err(e) => Ok(make_json_response(Status::InternalServerError, Err(e))),
-                Ok(objects) => {
-                    let stats = BucketStatistics { objects };
+                Ok((objects, (usage_real, usage_approximation))) => {
+                    let usage_sum_overall = usage_real + usage_approximation;
+                    let usage_sum_overall_f64 = usage_sum_overall as f64;
+                    let usage_sum_effectiveness =
+                        (usage_sum_overall_f64 * effectiveness_ratio) as u64;
+                    let usage_sum_redundance = (usage_sum_overall_f64 * redundance_ratio) as u64;
+                    let usage_real_effectiveness = cmp::min(usage_sum_effectiveness, usage_real);
+                    let usage_real_redundance = usage_real.saturating_sub(usage_real_effectiveness);
+                    let usage_approximation_effectiveness =
+                        usage_sum_effectiveness.saturating_sub(usage_real_effectiveness);
+                    let usage_approximation_redundance =
+                        usage_sum_redundance.saturating_sub(usage_real_redundance);
+                    let stats = BucketStatistics {
+                        objects,
+                        storage_usage_bytes_sum_overall: usage_sum_overall,
+                        storage_usage_bytes_sum_effectiveness: usage_sum_effectiveness,
+                        storage_usage_bytes_sum_redundance: usage_sum_redundance,
+                        storage_usage_bytes_real_overall: usage_real,
+                        storage_usage_bytes_real_effectiveness: usage_real_effectiveness,
+                        storage_usage_bytes_real_redundance: usage_real_redundance,
+                        storage_usage_bytes_approximation_overall: usage_approximation,
+                        storage_usage_bytes_approximation_effectiveness:
+                            usage_approximation_effectiveness,
+                        storage_usage_bytes_approximation_redundance:
+                            usage_approximation_redundance,
+                    };
+
                     Ok(make_json_response(Status::Ok, Ok(stats)))
                 }
             });
