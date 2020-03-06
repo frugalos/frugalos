@@ -30,6 +30,8 @@ type RaftEvent = raftlog::Event;
 
 const SNAPSHOT_THRESHOLD: usize = 128;
 
+const LEADER_WAITERS_THRESHOLD: usize = 10000;
+
 /// 構成管理用のサービス。
 pub struct Service {
     logger: Logger,
@@ -37,6 +39,7 @@ pub struct Service {
 
     leader: Option<SocketAddr>,
     leader_waiters: Vec<Reply<SocketAddr>>,
+    leader_waiters_threshold: usize,
 
     local_server: Server,
 
@@ -86,6 +89,7 @@ impl Service {
             local_server: server,
             leader: None,
             leader_waiters: Vec::new(),
+            leader_waiters_threshold: LEADER_WAITERS_THRESHOLD,
 
             request_tx,
             request_rx,
@@ -544,8 +548,11 @@ impl Service {
                 if let Some(leader) = self.leader {
                     reply.exit(Ok(leader));
                 } else {
-                    // TODO: add length limit
                     self.leader_waiters.push(reply);
+                    if self.leader_waiters.len() > self.leader_waiters_threshold {
+                        warn!(self.logger, "Too many waitings (cleared)");
+                        self.clear_leader_waiters();
+                    }
                 }
             }
             Request::ListServers { reply } => {
@@ -744,6 +751,15 @@ impl Service {
             ErrorKind::NotLeader
         );
         Ok(())
+    }
+
+    fn clear_leader_waiters(&mut self) {
+        for x in self.leader_waiters.drain(..) {
+            let e = track!(Error::from(
+                ErrorKind::Other.cause("Leader waiting timeout")
+            ));
+            x.exit(Err(e));
+        }
     }
 }
 impl Stream for Service {
