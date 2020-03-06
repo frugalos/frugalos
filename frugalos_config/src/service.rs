@@ -513,6 +513,15 @@ impl Service {
     fn handle_request(&mut self, request: Request) -> Result<()> {
         info!(self.logger, "Request: {:?}", request);
         match request {
+            Request::GetLeader { .. } => {}
+            _ => {
+                if let Err(e) = self.check_leader() {
+                    request.failed(e);
+                    return Ok(());
+                }
+            }
+        }
+        match request {
             Request::GetLeader { reply } => {
                 info!(self.logger, "Leader is {:?}", self.leader);
                 if let Some(leader) = self.leader {
@@ -709,6 +718,16 @@ impl Service {
             false
         }
     }
+
+    fn check_leader(&self) -> Result<()> {
+        use raftlog::election::Role;
+        track_assert_eq!(
+            self.rlog.local_node().role,
+            Role::Leader,
+            ErrorKind::NotLeader
+        );
+        Ok(())
+    }
 }
 impl Stream for Service {
     type Item = Event;
@@ -796,6 +815,25 @@ enum Request {
         id: BucketId,
         reply: Reply<Option<Bucket>>,
     },
+}
+impl Request {
+    pub fn failed(self, e: Error) {
+        match self {
+            Request::GetLeader { reply } => reply.exit(Err(track!(e))),
+            Request::ListServers { reply } => reply.exit(Err(track!(e))),
+            Request::GetServer { reply, .. } => reply.exit(Err(track!(e))),
+            Request::PutServer { reply, .. } => reply.exit(Err(track!(e))),
+            Request::DeleteServer { reply, .. } => reply.exit(Err(track!(e))),
+            Request::ListDevices { reply } => reply.exit(Err(track!(e))),
+            Request::GetDevice { reply, .. } => reply.exit(Err(track!(e))),
+            Request::PutDevice { reply, .. } => reply.exit(Err(track!(e))),
+            Request::DeleteDevice { reply, .. } => reply.exit(Err(track!(e))),
+            Request::ListBuckets { reply } => reply.exit(Err(track!(e))),
+            Request::GetBucket { reply, .. } => reply.exit(Err(track!(e))),
+            Request::PutBucket { reply, .. } => reply.exit(Err(track!(e))),
+            Request::DeleteBucket { reply, .. } => reply.exit(Err(track!(e))),
+        }
+    }
 }
 type Reply<T> = oneshot::Monitored<T, Error>;
 
