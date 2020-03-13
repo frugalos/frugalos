@@ -118,7 +118,7 @@ impl Future for LoadLogInner {
                     return Ok(track!(f.poll())?.map(Log::Suffix));
                 }
                 LoadLogInner::CopyLogSuffix(ref mut f) => {
-                    let suffix = mem::replace(f, Default::default());
+                    let suffix = mem::take(f);
                     return Ok(Async::Ready(Log::Suffix(suffix)));
                 }
                 LoadLogInner::LoadLogPrefix {
