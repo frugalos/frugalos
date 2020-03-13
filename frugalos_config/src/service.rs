@@ -425,9 +425,9 @@ impl Service {
 
         self.next_seqno = snapshot.next_seqno;
 
-        let old_buckets = mem::replace(&mut self.buckets, Default::default());
-        let old_devices = mem::replace(&mut self.devices, Default::default());
-        let old_servers = mem::replace(&mut self.servers, Default::default());
+        let old_buckets = mem::take(&mut self.buckets);
+        let old_devices = mem::take(&mut self.devices);
+        let old_servers = mem::take(&mut self.servers);
         self.buckets = snapshot
             .buckets
             .into_iter()

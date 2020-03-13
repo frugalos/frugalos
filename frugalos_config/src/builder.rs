@@ -171,7 +171,7 @@ impl<'a> SegmentsBuilder<'a> {
         } else {
             // NOTE: gather経由の場合等にここに来ることがある
             // FIXME: この場合の割当方式を少し検討したいかも
-            *ring.calc_candidates(&key).nth(0).expect("Never fails").node
+            *ring.calc_candidates(&key).next().expect("Never fails").node
         }
     }
     fn select_gather_slot(&mut self, key: SlotKey, parent: &VirtualDevice) -> DeviceNo {

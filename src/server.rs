@@ -1070,7 +1070,7 @@ fn parse_etag_values(s: &str) -> Result<Vec<ObjectVersion>> {
     for token in s.split(',') {
         let token = token.trim();
         track_assert!(
-            token.bytes().nth(0) == Some(b'"') && token.bytes().last() == Some(b'"'),
+            token.bytes().next() == Some(b'"') && token.bytes().last() == Some(b'"'),
             ErrorKind::InvalidInput,
             "Malformed ETag value: {:?}",
             token
