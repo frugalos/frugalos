@@ -20,6 +20,7 @@ use trackable::error::ErrorKindExt;
 
 use builder::SegmentTableBuilder;
 use cluster;
+use config;
 use config::server_to_frugalos_raft_node;
 use machine::{Command, DeviceGroup, NextSeqNo, SegmentTable, Snapshot};
 use protobuf;
@@ -29,8 +30,6 @@ use {Error, ErrorKind, Result};
 type RaftEvent = raftlog::Event;
 
 const SNAPSHOT_THRESHOLD: usize = 128;
-
-const LEADER_WAITERS_THRESHOLD: usize = 10000;
 
 /// 構成管理用のサービス。
 pub struct Service {
@@ -66,6 +65,7 @@ impl Service {
         rpc_builder: &mut RpcServerBuilder,
         rpc_service: RpcServiceHandle,
         raft_service: frugalos_raft::ServiceHandle,
+        config: config::FrugalosConfigConfig,
         spawner: S,
     ) -> Result<Self> {
         let server = track!(cluster::load_local_server_info(&data_dir))?;
@@ -89,7 +89,7 @@ impl Service {
             local_server: server,
             leader: None,
             leader_waiters: Vec::new(),
-            leader_waiters_threshold: LEADER_WAITERS_THRESHOLD,
+            leader_waiters_threshold: config.leader_waiters_threshold,
 
             request_tx,
             request_rx,

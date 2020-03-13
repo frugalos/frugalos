@@ -80,6 +80,7 @@ impl FrugalosDaemon {
             &mut rpc_server_builder,
             rpc_service.handle(),
             raft_service.handle(),
+            config.config,
             executor.handle(),
         ))?;
 

@@ -114,6 +114,9 @@ pub struct FrugalosConfig {
     /// fibers_http_server 向けの設定。
     #[serde(default)]
     pub fibers_http_server: FibersHttpServerConfig,
+    /// frugalos_config 向けの設定。
+    #[serde(default)]
+    pub config: frugalos_config::FrugalosConfigConfig,
 }
 
 impl FrugalosConfig {
@@ -148,6 +151,7 @@ impl Default for FrugalosConfig {
             mds: Default::default(),
             segment: Default::default(),
             fibers_http_server: Default::default(),
+            config: Default::default(),
         }
     }
 }
@@ -320,6 +324,8 @@ frugalos:
     snapshot_threshold_min: 100
     snapshot_threshold_max: 200
     staled_object_threshold: 5000
+  config:
+    leader_waiters_threshold: 20000
   segment:
     dispersed_client:
       get_timeout_millis: 4000
@@ -364,6 +370,7 @@ frugalos:
         expected.mds.snapshot_threshold_min = 100;
         expected.mds.snapshot_threshold_max = 200;
         expected.mds.staled_object_threshold = 5000;
+        expected.config.leader_waiters_threshold = 20000;
         expected.segment.dispersed_client.get_timeout = Duration::from_secs(4);
         expected
             .segment

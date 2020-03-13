@@ -328,6 +328,8 @@ dependencies = [
  "protobuf_codec 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "raftlog 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rendezvous_hash 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.80 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_derive 1.0.80 (registry+https://github.com/rust-lang/crates.io-index)",
  "slog 2.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "trackable 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
