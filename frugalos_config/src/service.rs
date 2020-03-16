@@ -16,6 +16,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::mem;
 use std::net::SocketAddr;
 use std::path::Path;
+use trackable::error::ErrorKindExt;
 
 use builder::SegmentTableBuilder;
 use cluster;
@@ -220,7 +221,6 @@ impl Service {
         Ok(())
     }
     fn handle_put_server(&mut self, proposal_id: ProposalId, mut server: Server) {
-        // TODO: `SocketAddr`の重複を禁止する(?)
         // TODO: 新規作成と更新は明確に区別できた方が良いかも(事故防止のため)
         if let Some(old) = self.servers.remove(&server.id) {
             server.seqno = old.seqno;
@@ -229,6 +229,23 @@ impl Service {
             server.seqno = self.next_seqno.server;
             self.next_seqno.server += 1;
             info!(self.logger, "New server is added: {:?}", server);
+        }
+
+        // SocketAddr の重複を禁止する
+        if self.servers.iter().any(|(_, s)| s.addr() == server.addr()) {
+            warn!(
+                self.logger,
+                "Server addr:{} already registered",
+                server.addr()
+            );
+            if let Some(Proposal::PutServer { reply, .. }) =
+                self.pop_committed_proposal(proposal_id)
+            {
+                let e = ErrorKind::InvalidInput
+                    .cause(format!("Server addr:{} already registered", server.addr()));
+                reply.exit(Err(Error::from(e)));
+            }
+            return;
         }
 
         if let Some(Proposal::PutServer { reply, .. }) = self.pop_committed_proposal(proposal_id) {
