@@ -20,6 +20,7 @@ use trackable::error::ErrorKindExt;
 
 use builder::SegmentTableBuilder;
 use cluster;
+use config;
 use config::server_to_frugalos_raft_node;
 use machine::{Command, DeviceGroup, NextSeqNo, SegmentTable, Snapshot};
 use protobuf;
@@ -37,6 +38,7 @@ pub struct Service {
 
     leader: Option<SocketAddr>,
     leader_waiters: Vec<Reply<SocketAddr>>,
+    leader_waiters_threshold: usize,
 
     local_server: Server,
 
@@ -63,6 +65,7 @@ impl Service {
         rpc_builder: &mut RpcServerBuilder,
         rpc_service: RpcServiceHandle,
         raft_service: frugalos_raft::ServiceHandle,
+        config: config::FrugalosConfigConfig,
         spawner: S,
     ) -> Result<Self> {
         let server = track!(cluster::load_local_server_info(&data_dir))?;
@@ -86,6 +89,7 @@ impl Service {
             local_server: server,
             leader: None,
             leader_waiters: Vec::new(),
+            leader_waiters_threshold: config.leader_waiters_threshold,
 
             request_tx,
             request_rx,
@@ -544,8 +548,11 @@ impl Service {
                 if let Some(leader) = self.leader {
                     reply.exit(Ok(leader));
                 } else {
-                    // TODO: add length limit
                     self.leader_waiters.push(reply);
+                    if self.leader_waiters.len() > self.leader_waiters_threshold {
+                        warn!(self.logger, "Too many waitings (cleared)");
+                        self.clear_leader_waiters();
+                    }
                 }
             }
             Request::ListServers { reply } => {
@@ -744,6 +751,15 @@ impl Service {
             ErrorKind::NotLeader
         );
         Ok(())
+    }
+
+    fn clear_leader_waiters(&mut self) {
+        for x in self.leader_waiters.drain(..) {
+            let e = track!(Error::from(
+                ErrorKind::Other.cause("Leader waiting timeout")
+            ));
+            x.exit(Err(e));
+        }
     }
 }
 impl Stream for Service {

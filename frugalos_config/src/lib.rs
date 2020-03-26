@@ -21,6 +21,9 @@ extern crate rendezvous_hash;
 extern crate slog;
 #[macro_use]
 extern crate trackable;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 
 macro_rules! dump {
     ($($e:expr),*) => {
@@ -29,6 +32,7 @@ macro_rules! dump {
 }
 
 pub use self::error::{Error, ErrorKind};
+pub use config::FrugalosConfigConfig;
 pub use machine::DeviceGroup;
 pub use rpc::RpcServer;
 pub use service::{Event, Service, ServiceHandle};
