@@ -338,6 +338,46 @@ impl DispersedClient {
                 .map_err(|e| track!(Error::from(e))),
         )
     }
+    pub fn delete_all_objects(self, parent: SpanHandle) -> BoxFuture<Vec<Vec<LumpId>>> {
+        let cannyls_config = self.client_config.cannyls.clone();
+        let rpc_service = self.rpc_service.clone();
+        let members = self.cluster.members.to_vec();
+        let logger = self.logger.clone();
+        let future = futures::stream::iter_ok(members)
+            .and_then(move |member| {
+                let device_id = member.device.clone();
+                let mut span = parent.child("delete_all_objects", |span| {
+                    span.tag(StdTag::component(module_path!()))
+                        .tag(StdTag::span_kind("client"))
+                        .tag(StdTag::peer_ip(member.node.addr.ip()))
+                        .tag(StdTag::peer_port(member.node.addr.port()))
+                        .tag(Tag::new("node", member.node.local_id.to_string()))
+                        .tag(Tag::new("device.id", device_id.clone()))
+                        .start()
+                });
+                let range = member.make_available_object_lump_id_range();
+                let client = CannyLsClient::new(member.node.addr, rpc_service.clone());
+                let device_id = DeviceId::new(member.device);
+                let mut request = client.request();
+                request.rpc_options(cannyls_config.rpc_options());
+                let logger = logger.clone();
+                Box::new(
+                    request
+                        .delete_range(device_id, range.clone())
+                        .map_err(|e| track!(Error::from(e)))
+                        .then(move |result| {
+                            if let Err(ref e) = result {
+                                span.log_error(e);
+                                warn!(logger, "delete_range ({:?}) failed: {}", range, e);
+                                return Ok(Vec::new());
+                            }
+                            result
+                        }),
+                )
+            })
+            .collect();
+        Box::new(future.map_err(|e| track!(e)))
+    }
 }
 
 pub struct DispersedPut {

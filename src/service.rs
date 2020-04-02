@@ -65,6 +65,8 @@ pub struct Service<S> {
     spawned_nodes: HashSet<NodeId>,
 
     recovery_request: Option<RecoveryRequest>,
+    tracer: ThreadLocalTracer,
+    spawner: S,
 }
 impl<S> Service<S>
 where
@@ -86,12 +88,12 @@ where
     ) -> Result<Self> {
         let frugalos_segment_service = track!(SegmentService::new(
             logger.clone(),
-            spawner,
+            spawner.clone(),
             rpc_service.clone(),
             rpc,
             raft_service.handle(),
             mds_config,
-            tracer
+            tracer.clone()
         ))?;
         Ok(Service {
             logger,
@@ -109,6 +111,8 @@ where
             spawned_nodes: HashSet::new(),
             recovery_request,
             segment_config,
+            tracer,
+            spawner,
         })
     }
     pub fn client(&self) -> FrugalosClient {
@@ -147,8 +151,7 @@ where
                 track!(self.handle_put_bucket(&bucket))?;
             }
             ConfigEvent::DeleteBucket(bucket) => {
-                // TODO
-                track_panic!(ErrorKind::Other, "Unimplemented: {:?}", bucket);
+                track!(self.handle_delete_bucket(&bucket))?;
             }
             ConfigEvent::PatchSegment {
                 bucket_no,
@@ -157,6 +160,14 @@ where
             } => {
                 track_assert_eq!(groups.len(), 1, ErrorKind::Other, "Unimplemented");
                 track!(self.handle_patch_segment(bucket_no, segment_no, &groups[0]))?;
+            }
+            ConfigEvent::DeleteSegment {
+                bucket_no,
+                segment_no,
+                groups,
+            } => {
+                track_assert_eq!(groups.len(), 1, ErrorKind::Other, "Unimplemented");
+                track!(self.handle_delete_segment(bucket_no, segment_no, &groups[0]))?;
             }
             ConfigEvent::PutServer(server) => {
                 self.servers.insert(server.id.clone(), server);
@@ -180,6 +191,16 @@ where
         let mut buckets = (&*self.buckets.load()).clone();
         buckets.insert(id, bucket);
         self.buckets.store(buckets);
+        Ok(())
+    }
+    fn handle_delete_bucket(&mut self, bucket_config: &BucketConfig) -> Result<()> {
+        let seqno = bucket_config.seqno();
+        let id = bucket_config.id().clone();
+        self.bucket_no_to_id.remove(&seqno);
+        let mut buckets = (&*self.buckets.load()).clone();
+        if buckets.remove(&id).is_some() {
+            self.buckets.store(buckets);
+        }
         Ok(())
     }
     fn handle_patch_segment(
@@ -266,6 +287,64 @@ where
 
         Ok(())
     }
+
+    fn handle_delete_segment(
+        &mut self,
+        bucket_no: u32,
+        segment_no: u16,
+        group: &DeviceGroup,
+    ) -> Result<()> {
+        // このセグメントに対応するRaftクラスタのメンバ群を用意
+        let mut members = Vec::new();
+        for (member_no, device_no) in (0..group.members.len()).zip(group.members.iter()) {
+            let owner = &self.servers[&self.seqno_to_device[device_no].server];
+            let node: NodeId = track!(format!(
+                "00{:06x}{:04x}{:02x}.{:x}@{}:{}",
+                bucket_no, segment_no, member_no, device_no, owner.host, owner.port
+            )
+            .parse())?;
+            members.push(node);
+        }
+        // セグメントに所属するオブジェクトを全て削除
+        if let Some(bucket_id) = self.bucket_no_to_id.get(&bucket_no) {
+            let buckets = (&*self.buckets.load()).clone();
+            let bucket = buckets.get(bucket_id).expect("Never fails");
+            let segment = bucket.segments()[segment_no as usize].clone();
+            let span = self.tracer.span(|t| t.span("delete_bucket").start());
+            let logger1 = self.logger.clone();
+            let logger2 = self.logger.clone();
+            let future = segment
+                .delete_all_objects(span.handle())
+                .map(move |vecs| {
+                    // セグメント内で最大の lump 削除数をセグメント上のオブジェクト削除数としてログ出力する
+                    info!(
+                        logger1,
+                        "Delete all objects: {}, segment_no: {}",
+                        vecs.iter().map(|vec| vec.len()).max().unwrap_or(0),
+                        segment_no.clone()
+                    );
+                })
+                .map_err(move |e| error!(logger2, "Error: {}", e));
+            self.spawner.spawn(future);
+        }
+        // 起動している raft ノードを停止する
+        for (node, device_no) in members.iter().zip(group.members.iter()) {
+            if !self.spawned_nodes.contains(node) {
+                continue;
+            }
+            let device_handle = self.local_devices.get_mut(&device_no).unwrap().watch();
+            track!(self.frugalos_segment_service.handle().remove_node(
+                node.clone(),
+                Box::new(
+                    device_handle
+                        .map_err(|e| frugalos_segment::ErrorKind::Other.takes_over(e).into())
+                )
+            ))?;
+            self.spawned_nodes.remove(node);
+        }
+        Ok(())
+    }
+
     fn spawn_device(&mut self, device_config: &DeviceConfig) -> Result<()> {
         let device = LocalDevice::new(
             self.logger.clone(),

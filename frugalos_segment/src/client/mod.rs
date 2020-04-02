@@ -264,6 +264,14 @@ impl Client {
                 }
             })
     }
+    /// オブジェクトを全て削除する
+    pub fn delete_all_objects(
+        &self,
+        parent: SpanHandle,
+    ) -> impl Future<Item = Vec<Vec<LumpId>>, Error = Error> {
+        let storage = self.storage.clone();
+        storage.delete_all_objects(parent)
+    }
 
     /// 保存済みのオブジェクト一覧を取得する。
     pub fn list(&self) -> impl Future<Item = Vec<ObjectSummary>, Error = Error> {

@@ -223,6 +223,30 @@ where
                     .and_then(|node| node);
                 self.spawner.spawn(future);
             }
+            Command::RemoveNode(node_id, device) => {
+                if let Some(handle) = self.segment_node_handles.remove(&node_id.local_id) {
+                    let command = SegmentNodeCommand::Stop;
+                    handle.send(command);
+                    // raftlog を削除
+                    let logger = self.logger.clone();
+                    let logger1 = logger.new(o!("node" => node_id.local_id.to_string()));
+                    let logger2 = logger1.clone();
+                    let future = device
+                        .map_err(|e| track!(e))
+                        .and_then(move |device| {
+                            let storage = frugalos_raft::Storage::new(
+                                logger1,
+                                node_id.local_id,
+                                device,
+                                frugalos_raft::StorageMetrics::new(),
+                            );
+                            let future = frugalos_raft::ClearLog::new(storage);
+                            future.map_err(|e| track!(Error::from(e)))
+                        })
+                        .map_err(move |e| error!(logger2, "Error: {}", e));
+                    self.spawner.spawn(future);
+                }
+            }
             Command::SetRepairConfig(repair_config) => {
                 self.set_repair_config(repair_config);
             }
@@ -325,6 +349,16 @@ impl ServiceHandle {
             .map_err(|_| ErrorKind::Other.error(),))?;
         Ok(())
     }
+    /// サービスからノードを取り除く
+    pub fn remove_node(&self, node_id: NodeId, device: CreateDeviceHandle) -> Result<()> {
+        let command = Command::RemoveNode(node_id, device);
+        track!(self
+            .command_tx
+            .send(command)
+            .map_err(|_| ErrorKind::Other.error()))?;
+        Ok(())
+    }
+
     /// repair_config の変更要求を発行する。
     pub fn set_repair_config(&self, repair_config: RepairConfig) {
         let command = Command::SetRepairConfig(repair_config);
@@ -408,6 +442,7 @@ enum Command {
         ClusterMembers,
         RaftConfig,
     ),
+    RemoveNode(NodeId, CreateDeviceHandle),
     SetRepairConfig(RepairConfig),
     StartSegmentGc(LocalNodeId, StartSegmentGcReply),
     StopSegmentGc(LocalNodeId, StopSegmentGcReply),
@@ -505,6 +540,9 @@ impl SegmentNode {
         if let Async::Ready(command) = self.segment_node_command_rx.poll().expect("Never fails") {
             // If the channel becomes disconnected, it returns None. This is the case especially on `frugalos stop.`
             // If that happens, it is suppressed.
+            if let Some(SegmentNodeCommand::Stop) = command {
+                return Ok(false);
+            }
             if let Some(command) = command {
                 self.handle_command(command);
             }
@@ -521,11 +559,9 @@ impl SegmentNode {
     }
     #[allow(clippy::needless_pass_by_value)]
     fn handle_command(&mut self, command: SegmentNodeCommand) {
-        match command {
-            SegmentNodeCommand::SetRepairIdlenessThreshold(idleness_threshold) => {
-                self.synchronizer
-                    .set_repair_idleness_threshold(idleness_threshold);
-            }
+        if let SegmentNodeCommand::SetRepairIdlenessThreshold(idleness_threshold) = command {
+            self.synchronizer
+                .set_repair_idleness_threshold(idleness_threshold);
         }
     }
 }
@@ -557,6 +593,7 @@ impl SegmentNodeHandle {
 }
 
 enum SegmentNodeCommand {
+    Stop,
     SetRepairIdlenessThreshold(RepairIdleness),
 }
 

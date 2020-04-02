@@ -38,6 +38,7 @@ impl ConfigServer {
         track!(builder.add_handler(ListBuckets(self.clone())))?;
         track!(builder.add_handler(PutBucket(self.clone())))?;
         track!(builder.add_handler(GetBucket(self.clone())))?;
+        track!(builder.add_handler(DeleteBucket(self.clone())))?;
 
         // 上の clone を一つだけ消したくないので、ここで drop する
         drop(self);
@@ -257,6 +258,30 @@ impl HandleRequest for GetBucket {
                 Err(e) => (Status::InternalServerError, Err(Error::from(e))),
                 Ok(None) => (Status::NotFound, Err(track!(not_found()))),
                 Ok(Some(v)) => (Status::Ok, Ok(v)),
+            };
+            Ok(make_json_response(status, body))
+        });
+        Box::new(future)
+    }
+}
+
+struct DeleteBucket(ConfigServer);
+impl HandleRequest for DeleteBucket {
+    const METHOD: &'static str = "DELETE";
+    const PATH: &'static str = "/v1/buckets/*";
+
+    type ReqBody = ();
+    type ResBody = HttpResult<Option<Bucket>>;
+    type Decoder = BodyDecoder<NullDecoder>;
+    type Encoder = BodyEncoder<JsonEncoder<Self::ResBody>>;
+    type Reply = Reply<Self::ResBody>;
+
+    fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
+        let bucket_id = get_id(&req.url());
+        let future = self.0.client().delete_bucket(bucket_id).then(|result| {
+            let (status, body) = match track!(result) {
+                Err(e) => (Status::InternalServerError, Err(Error::from(e))),
+                Ok(v) => (Status::Ok, Ok(v)),
             };
             Ok(make_json_response(status, body))
         });
