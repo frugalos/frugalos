@@ -516,7 +516,7 @@ impl Service {
                 continue;
             }
             let bucket = b.clone();
-            info!(self.logger, "Bucket is deleted: {}", dump!(id, bucket));
+            info!(self.logger, "Bucket is deleted: {}", dump!(b.id(), bucket));
             self.delete_segment_table(&bucket);
             self.events.push_back(Event::DeleteBucket(bucket.clone()));
         }

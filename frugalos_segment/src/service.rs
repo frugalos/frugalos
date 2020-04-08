@@ -2,6 +2,8 @@ use cannyls::device::DeviceHandle;
 use cannyls_rpc::Server as CannyLsRpcServer;
 use cannyls_rpc::{DeviceRegistry, DeviceRegistryHandle};
 use fibers::sync::mpsc;
+use fibers::sync::oneshot;
+use fibers::sync::oneshot::Monitored;
 use fibers::Spawn;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
@@ -27,6 +29,8 @@ use segment_gc_manager::{GcTask, SegmentGcManager};
 use synchronizer::Synchronizer;
 use util::UnitFuture;
 use {Client, Error, ErrorKind, Result};
+
+pub(crate) type Reply<T> = Monitored<T, Error>;
 
 /// セグメント群を管理するためのサービス。
 pub struct Service<S> {
@@ -223,28 +227,10 @@ where
                     .and_then(|node| node);
                 self.spawner.spawn(future);
             }
-            Command::RemoveNode(node_id, device) => {
+            Command::RemoveNode(node_id, reply) => {
                 if let Some(handle) = self.segment_node_handles.remove(&node_id.local_id) {
-                    let command = SegmentNodeCommand::Stop;
+                    let command = SegmentNodeCommand::Stop(reply);
                     handle.send(command);
-                    // raftlog を削除
-                    let logger = self.logger.clone();
-                    let logger1 = logger.new(o!("node" => node_id.local_id.to_string()));
-                    let logger2 = logger1.clone();
-                    let future = device
-                        .map_err(|e| track!(e))
-                        .and_then(move |device| {
-                            let storage = frugalos_raft::Storage::new(
-                                logger1,
-                                node_id.local_id,
-                                device,
-                                frugalos_raft::StorageMetrics::new(),
-                            );
-                            let future = frugalos_raft::ClearLog::new(storage);
-                            future.map_err(|e| track!(Error::from(e)))
-                        })
-                        .map_err(move |e| error!(logger2, "Error: {}", e));
-                    self.spawner.spawn(future);
                 }
             }
             Command::SetRepairConfig(repair_config) => {
@@ -350,13 +336,18 @@ impl ServiceHandle {
         Ok(())
     }
     /// サービスからノードを取り除く
-    pub fn remove_node(&self, node_id: NodeId, device: CreateDeviceHandle) -> Result<()> {
-        let command = Command::RemoveNode(node_id, device);
+    /// ノードが停止したことを通知するための future を返す
+    pub fn remove_node(
+        &self,
+        node_id: NodeId,
+    ) -> Result<Box<dyn Future<Item = (), Error = Error> + Send + 'static>> {
+        let (reply_tx, reply_rx) = oneshot::monitor();
+        let command = Command::RemoveNode(node_id, reply_tx);
         track!(self
             .command_tx
             .send(command)
             .map_err(|_| ErrorKind::Other.error()))?;
-        Ok(())
+        Ok(Box::new(StopSegmentNode(reply_rx)))
     }
 
     /// repair_config の変更要求を発行する。
@@ -442,7 +433,7 @@ enum Command {
         ClusterMembers,
         RaftConfig,
     ),
-    RemoveNode(NodeId, CreateDeviceHandle),
+    RemoveNode(NodeId, Reply<()>),
     SetRepairConfig(RepairConfig),
     StartSegmentGc(LocalNodeId, StartSegmentGcReply),
     StopSegmentGc(LocalNodeId, StopSegmentGcReply),
@@ -540,7 +531,8 @@ impl SegmentNode {
         if let Async::Ready(command) = self.segment_node_command_rx.poll().expect("Never fails") {
             // If the channel becomes disconnected, it returns None. This is the case especially on `frugalos stop.`
             // If that happens, it is suppressed.
-            if let Some(SegmentNodeCommand::Stop) = command {
+            if let Some(SegmentNodeCommand::Stop(reply)) = command {
+                reply.exit(Ok(()));
                 return Ok(false);
             }
             if let Some(command) = command {
@@ -593,7 +585,7 @@ impl SegmentNodeHandle {
 }
 
 enum SegmentNodeCommand {
-    Stop,
+    Stop(Reply<()>),
     SetRepairIdlenessThreshold(RepairIdleness),
 }
 
@@ -612,5 +604,21 @@ impl GcTask for SegmentGcToggle {
         let (tx, rx) = fibers::sync::oneshot::monitor();
         self.0.stop_segment_gc(self.1, tx);
         Box::new(rx.map_err(Into::into))
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct StopSegmentNode(oneshot::Monitor<(), Error>);
+impl Future for StopSegmentNode {
+    type Item = ();
+    type Error = Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        track!(self
+            .0
+            .poll()
+            .map_err(|e| e.unwrap_or_else(|| ErrorKind::Other
+                .cause("Monitoring channel disconnected")
+                .into())))
     }
 }

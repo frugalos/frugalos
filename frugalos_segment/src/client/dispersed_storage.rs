@@ -343,8 +343,9 @@ impl DispersedClient {
         let rpc_service = self.rpc_service.clone();
         let members = self.cluster.members.to_vec();
         let logger = self.logger.clone();
-        let future = futures::stream::iter_ok(members)
-            .and_then(move |member| {
+        let futures: Vec<_> = members
+            .iter()
+            .map(move |member| {
                 let device_id = member.device.clone();
                 let mut span = parent.child("delete_all_objects", |span| {
                     span.tag(StdTag::component(module_path!()))
@@ -357,7 +358,8 @@ impl DispersedClient {
                 });
                 let range = member.make_available_object_lump_id_range();
                 let client = CannyLsClient::new(member.node.addr, rpc_service.clone());
-                let device_id = DeviceId::new(member.device);
+                let device = member.device.clone();
+                let device_id = DeviceId::new(device);
                 let mut request = client.request();
                 request.rpc_options(cannyls_config.rpc_options());
                 let logger = logger.clone();
@@ -376,6 +378,7 @@ impl DispersedClient {
                 )
             })
             .collect();
+        let future = futures::future::join_all(futures);
         Box::new(future.map_err(|e| track!(e)))
     }
 }
