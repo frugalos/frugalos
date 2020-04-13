@@ -30,7 +30,7 @@ use synchronizer::Synchronizer;
 use util::UnitFuture;
 use {Client, Error, ErrorKind, Result};
 
-pub(crate) type Reply<T> = Monitored<T, Error>;
+type Reply<T> = Monitored<T, Error>;
 
 /// セグメント群を管理するためのサービス。
 pub struct Service<S> {

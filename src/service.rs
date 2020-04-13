@@ -36,6 +36,7 @@ use trackable::error::ErrorKindExt;
 
 use bucket::Bucket;
 use client::FrugalosClient;
+use frugalos_core::{LUMP_ID_NAMESPACE_OBJECT, LUMP_ID_NAMESPACE_RAFTLOG};
 use recovery::RecoveryRequest;
 use {Error, ErrorKind, Result};
 
@@ -128,26 +129,39 @@ where
         self.frugalos_segment_service.take_snapshot();
     }
     pub fn truncate_bucket(&mut self, bucket_seqno: u32) {
-        // TODO: namespace 定義をまとめる
-        // - frugalos_segment/src/config.rs にも存在する
-        let lump_id_namespace_raftlog: u8 = 0;
-        let lump_id_namespace_object: u8 = 1;
+        // バケツが存在する場合はデータ削除処理を実施しない
+        if self.bucket_no_to_id.contains_key(&bucket_seqno) {
+            return;
+        }
+        let raftlog_delete_range =
+            make_truncate_bucket_range(LUMP_ID_NAMESPACE_RAFTLOG, bucket_seqno);
+        let object_delete_range =
+            make_truncate_bucket_range(LUMP_ID_NAMESPACE_OBJECT, bucket_seqno);
+        let logger = self.logger.clone();
+        let logger1 = logger.new(o!(
+            "bucket_seqno" => format!("{}", bucket_seqno),
+            "raftlog_delete_range" => format!("{:?}", raftlog_delete_range),
+            "object_delete_range" => format!("{:?}", object_delete_range),
+        ));
+        let logger2 = logger1.clone();
+
         let futures: Vec<_> = self
             .local_devices
             .values_mut()
             .map(|local_device| local_device.watch())
             .map(|device_handle| {
                 let future = Box::new(device_handle.map_err(|e| track!(e)));
+                let raftlog_delete_range =
+                    make_truncate_bucket_range(LUMP_ID_NAMESPACE_RAFTLOG, bucket_seqno);
+                let object_delete_range =
+                    make_truncate_bucket_range(LUMP_ID_NAMESPACE_OBJECT, bucket_seqno);
                 future
                     .and_then(move |device| {
                         device
                             .request()
                             .deadline(Deadline::Infinity)
                             .wait_for_running()
-                            .delete_range(Self::make_truncate_bucket_range(
-                                lump_id_namespace_raftlog,
-                                bucket_seqno,
-                            ))
+                            .delete_range(raftlog_delete_range)
                             .map(|_| device)
                             .map_err(|e| track!(Error::from(e)))
                     })
@@ -156,32 +170,17 @@ where
                             .request()
                             .deadline(Deadline::Infinity)
                             .wait_for_running()
-                            .delete_range(Self::make_truncate_bucket_range(
-                                lump_id_namespace_object,
-                                bucket_seqno,
-                            ))
+                            .delete_range(object_delete_range)
                             .map_err(|e| track!(Error::from(e)))
                     })
             })
             .collect();
-        let logger1 = self.logger.clone();
-        let logger2 = logger1.clone();
         let future = futures::future::join_all(futures)
             .map(move |_| {
                 info!(logger1, "Finish truncate_bucket");
             })
             .map_err(move |e| error!(logger2, "Error: {}", e));
         self.spawner.spawn(future);
-    }
-
-    fn make_truncate_bucket_range(namespace: u8, bucket_seqno: u32) -> Range<LumpId> {
-        let mut id = [0; 16];
-        id[0] = namespace;
-        BigEndian::write_u32(&mut id[1..5], bucket_seqno);
-        let start = LumpId::new(BigEndian::read_u128(&id[..]));
-        BigEndian::write_u32(&mut id[1..5], bucket_seqno + 1);
-        let end = LumpId::new(BigEndian::read_u128(&id[..]));
-        Range { start, end }
     }
 
     fn handle_config_event(&mut self, event: ConfigEvent) -> Result<()> {
@@ -362,7 +361,12 @@ where
                 let node1 = *node;
                 let range = frugalos_segment::config::make_available_object_lump_id_range(&node1);
                 let logger = self.logger.clone();
-                let logger1 = logger.new(o!("node" => node.local_id.to_string()));
+                let logger1 = logger.new(o!(
+                    "node" => node.local_id.to_string(),
+                    "bucket_id" => bucket_id,
+                    "bucket_no" => format!("{}", bucket_no),
+                    "segment_no" => format!("{}", segment_no),
+                ));
                 let logger2 = logger1.clone();
                 let logger_end = logger1.clone();
 
@@ -377,9 +381,9 @@ where
                                 .map(|value| value.parse().unwrap())
                                 .unwrap_or(60000);
                         let duration = Duration::from_millis(waiting_time_millis);
-                        let inner = fibers::time::timer::timeout(duration);
-                        Timeout(inner)
-                            .map_err(|e| track!(e))
+                        let timer = fibers::time::timer::timeout(duration);
+                        timer
+                            .map_err(|e| track!(Error::from(e)))
                             .and_then(|()| Box::new(device_handle))
                             .and_then(move |device| {
                                 let storage = frugalos_raft::Storage::new(
@@ -399,18 +403,11 @@ where
                                     .delete_range(range)
                                     .map_err(|e| track!(Error::from(e)))
                                     .map(move |vec| {
-                                        info!(
-                                            logger2,
-                                            "Delete all objects: {}, segment_no: {}, bucket_no: {}, bucket_id: {}",
-                                            vec.len(),
-                                            segment_no.clone(),
-                                            bucket_no.clone(),
-                                            bucket_id.clone()
-                                        );
+                                        info!(logger2, "Delete all objects: {}", vec.len());
                                     })
                             })
                     })
-                    .map_err(move |e| error!(logger_end, "Error: {}", e));
+                    .map_err(move |e| error!(logger_end, "HANDLE_DELETE_SEGMENT_ERROR: {}", e));
                 self.spawner.spawn(future);
             }
             self.spawned_nodes.remove(node);
@@ -603,12 +600,54 @@ fn spawn_file_device(device: &FileDeviceConfig) -> fibers_tasque::AsyncCall<Resu
     })
 }
 
-#[derive(Debug)]
-pub struct Timeout(fibers::time::timer::Timeout);
-impl Future for Timeout {
-    type Item = ();
-    type Error = Error;
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        track!(self.0.poll().map_err(|e| ErrorKind::Other.cause(e).into(),))
+fn make_truncate_bucket_range(namespace: u8, bucket_seqno: u32) -> Range<LumpId> {
+    let mut id = [0; 16];
+    BigEndian::write_u32(&mut id[0..4], bucket_seqno);
+    id[0] = namespace;
+    let start = LumpId::new(BigEndian::read_u128(&id[..]));
+    BigEndian::write_u32(&mut id[0..4], bucket_seqno + 1);
+    id[0] = namespace;
+    let end = LumpId::new(BigEndian::read_u128(&id[..]));
+    Range { start, end }
+}
+
+#[cfg(test)]
+mod tests {
+    use cannyls::lump::LumpId;
+    use service;
+    use std::ops::Range;
+
+    #[allow(clippy::inconsistent_digit_grouping)]
+    #[test]
+    fn make_truncate_bucket_range_works() {
+        // https://github.com/frugalos/frugalos/wiki/Naming-Rules-of-LumpIds
+        // 1 byte: lump namespace
+        // 7 byte: local_node_id
+        //         3 byte: bucket_no
+        //         2 byte: segment_no
+        //         1 byte: member_no
+        //         1 byte: type
+        // 8 byte: index (version)
+
+        // bucket_seqno=1 を削除する場合
+        // namespace=1 かつ bucket_seqno=1 から 2 までの全てのオブジェクトを含む
+        let expect = Range {
+            start: LumpId::new(0x00_000001_0000_00_00_00000000_00000000u128),
+            end: LumpId::new(0x00_000002_0000_00_00_00000000_00000000u128),
+        };
+        let actual = service::make_truncate_bucket_range(0, 1);
+        assert_eq!(expect, actual);
+
+        // bucket_seqno=1 を削除する場合は range に bucket_seqno=2 のオブジェクトが含まれない
+        let another_bucket_content = LumpId::new(0x00_000002_0003_04_00_01234567_89abcdefu128);
+        assert_eq!(false, actual.contains(&another_bucket_content));
+
+        // bucket_seqno=1 を削除する場合 (namespace=1)
+        let expect = Range {
+            start: LumpId::new(0x01_000001_0000_00_00_00000000_00000000u128),
+            end: LumpId::new(0x01_000002_0000_00_00_00000000_00000000u128),
+        };
+        let actual = service::make_truncate_bucket_range(1, 1);
+        assert_eq!(expect, actual);
     }
 }

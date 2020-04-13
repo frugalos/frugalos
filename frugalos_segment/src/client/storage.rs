@@ -155,13 +155,6 @@ impl StorageClient {
             StorageClient::Dispersed(c) => c.delete_fragment(version, deadline, parent, index),
         }
     }
-    pub fn delete_all_objects(self, parent: SpanHandle) -> BoxFuture<Vec<Vec<LumpId>>> {
-        match self {
-            StorageClient::Metadata => Box::new(future::ok(Vec::new())),
-            StorageClient::Replicated(c) => c.delete_all_objects(),
-            StorageClient::Dispersed(c) => c.delete_all_objects(parent),
-        }
-    }
 }
 
 pub struct PutAll {

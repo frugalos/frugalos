@@ -11,3 +11,6 @@ extern crate trackable;
 
 pub mod serde_ext;
 pub mod tracer;
+
+pub const LUMP_ID_NAMESPACE_RAFTLOG: u8 = 0;
+pub const LUMP_ID_NAMESPACE_OBJECT: u8 = 1;

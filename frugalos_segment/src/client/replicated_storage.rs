@@ -5,7 +5,7 @@ use cannyls_rpc::Client as CannyLsClient;
 use cannyls_rpc::DeviceId;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_raft::NodeId;
-use futures::{Async, Future, Poll, Stream};
+use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::{FragmentsSummary, ObjectVersion};
 use std::sync::Arc;
 use trackable::error::ErrorKindExt;
@@ -167,33 +167,6 @@ impl ReplicatedClient {
                 .map(move |deleted| Some((deleted, DeviceId::new(device), lump_id)))
                 .map_err(|e| track!(Error::from(e))),
         )
-    }
-    pub fn delete_all_objects(self) -> BoxFuture<Vec<Vec<LumpId>>> {
-        let cannyls_config = self.client_config.cannyls.clone();
-        let rpc_service = self.rpc_service.clone();
-        let members = self.cluster.members.to_vec();
-        let future = futures::stream::iter_ok(members)
-            .and_then(move |member| {
-                let range = member.make_available_object_lump_id_range();
-                let client = CannyLsClient::new(member.node.addr, rpc_service.clone());
-                let device_id = DeviceId::new(member.device);
-                let mut request = client.request();
-                request.rpc_options(cannyls_config.rpc_options());
-                Box::new(
-                    request
-                        .delete_range(device_id, range)
-                        .map_err(|e| track!(Error::from(e)))
-                        .then(move |result| {
-                            if let Err(ref _e) = result {
-                                // TODO Error logging
-                                return Ok(Vec::new());
-                            }
-                            result
-                        }),
-                )
-            })
-            .collect();
-        Box::new(future.map_err(|e| track!(e)))
     }
 }
 
