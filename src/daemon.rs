@@ -211,8 +211,8 @@ impl DaemonRunner {
             DaemonCommand::TakeSnapshot => {
                 self.service.take_snapshot();
             }
-            DaemonCommand::DeleteBucketContents { bucket_seqno } => {
-                self.service.delete_bucket_contents(bucket_seqno);
+            DaemonCommand::TruncateBucket { bucket_seqno } => {
+                self.service.truncate_bucket(bucket_seqno);
             }
         }
     }
@@ -260,8 +260,8 @@ impl FrugalosDaemonHandle {
     }
 
     /// バケツのデータ削除を要求する
-    pub fn delete_bucket_contents(&self, bucket_seqno: u32) {
-        let command = DaemonCommand::DeleteBucketContents { bucket_seqno };
+    pub fn truncate_bucket(&self, bucket_seqno: u32) {
+        let command = DaemonCommand::TruncateBucket { bucket_seqno };
         let _ = self.command_tx.send(command);
     }
 }
@@ -272,7 +272,7 @@ enum DaemonCommand {
         reply: oneshot::Monitored<(), Error>,
     },
     TakeSnapshot,
-    DeleteBucketContents {
+    TruncateBucket {
         bucket_seqno: u32,
     },
 }
@@ -417,12 +417,8 @@ pub fn set_repair_config(
 /// 指定のバケツ番号 (seqno) に関連するデータを全て削除する
 /// 通常のバケツ削除と異なりデータ削除 (Lump 削除) のみを実行する
 /// 通常のバケツ削除処理でデータ削除に失敗した場合などに実行することを想定
-pub fn delete_bucket_contents(
-    logger: &Logger,
-    rpc_addr: SocketAddr,
-    bucket_seqno: u32,
-) -> Result<()> {
-    info!(logger, "Starts delete_bucket_contents");
+pub fn truncate_bucket(logger: &Logger, rpc_addr: SocketAddr, bucket_seqno: u32) -> Result<()> {
+    info!(logger, "Starts truncate_bucket");
 
     let mut executor = track!(ThreadPoolExecutor::with_thread_count(1).map_err(Error::from))?;
     let rpc_service = RpcServiceBuilder::new()
@@ -432,11 +428,11 @@ pub fn delete_bucket_contents(
     executor.spawn(rpc_service.map_err(|e| panic!("{}", e)));
 
     let client = libfrugalos::client::frugalos::Client::new(rpc_addr, rpc_service_handle);
-    let fiber = executor.spawn_monitor(client.delete_bucket_contents(bucket_seqno));
+    let fiber = executor.spawn_monitor(client.truncate_bucket(bucket_seqno));
     track!(executor
         .run_fiber(fiber)
         .unwrap()
         .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected"))))?;
-    info!(logger, "Finish delete_bucket_contents");
+    info!(logger, "Finish truncate_bucket");
     Ok(())
 }

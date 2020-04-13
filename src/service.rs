@@ -127,7 +127,7 @@ where
     pub fn take_snapshot(&mut self) {
         self.frugalos_segment_service.take_snapshot();
     }
-    pub fn delete_bucket_contents(&mut self, bucket_seqno: u32) {
+    pub fn truncate_bucket(&mut self, bucket_seqno: u32) {
         // TODO: namespace 定義をまとめる
         // - frugalos_segment/src/config.rs にも存在する
         let lump_id_namespace_raftlog: u8 = 0;
@@ -144,7 +144,7 @@ where
                             .request()
                             .deadline(Deadline::Infinity)
                             .wait_for_running()
-                            .delete_range(Self::make_delete_bucket_contents_range(
+                            .delete_range(Self::make_truncate_bucket_range(
                                 lump_id_namespace_raftlog,
                                 bucket_seqno,
                             ))
@@ -156,7 +156,7 @@ where
                             .request()
                             .deadline(Deadline::Infinity)
                             .wait_for_running()
-                            .delete_range(Self::make_delete_bucket_contents_range(
+                            .delete_range(Self::make_truncate_bucket_range(
                                 lump_id_namespace_object,
                                 bucket_seqno,
                             ))
@@ -168,13 +168,13 @@ where
         let logger2 = logger1.clone();
         let future = futures::future::join_all(futures)
             .map(move |_| {
-                info!(logger1, "Finish delete_bucket_contents");
+                info!(logger1, "Finish truncate_bucket");
             })
             .map_err(move |e| error!(logger2, "Error: {}", e));
         self.spawner.spawn(future);
     }
 
-    fn make_delete_bucket_contents_range(namespace: u8, bucket_seqno: u32) -> Range<LumpId> {
+    fn make_truncate_bucket_range(namespace: u8, bucket_seqno: u32) -> Range<LumpId> {
         let mut id = [0; 16];
         id[0] = namespace;
         BigEndian::write_u32(&mut id[1..5], bucket_seqno);

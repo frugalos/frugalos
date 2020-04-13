@@ -45,7 +45,7 @@ impl RpcServer {
         builder.add_call_handler::<rpc::DeleteObjectByVersionRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectsByRangeRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectsByPrefixRpc, _>(this.clone());
-        builder.add_call_handler::<rpc::DeleteBucketContentsRpc, _>(this.clone());
+        builder.add_call_handler::<rpc::TruncateBucketRpc, _>(this.clone());
         // 上の clone を一つだけ消したくないので、ここで drop する
         drop(this);
     }
@@ -231,9 +231,9 @@ impl HandleCall<rpc::TakeSnapshotRpc> for RpcServer {
         Reply::done(Ok(()))
     }
 }
-impl HandleCall<rpc::DeleteBucketContentsRpc> for RpcServer {
-    fn handle_call(&self, request: rpc::BucketSeqnoRequest) -> Reply<rpc::DeleteBucketContentsRpc> {
-        self.daemon.delete_bucket_contents(request.bucket_seqno);
+impl HandleCall<rpc::TruncateBucketRpc> for RpcServer {
+    fn handle_call(&self, request: rpc::BucketSeqnoRequest) -> Reply<rpc::TruncateBucketRpc> {
+        self.daemon.truncate_bucket(request.bucket_seqno);
         Reply::done(Ok(()))
     }
 }

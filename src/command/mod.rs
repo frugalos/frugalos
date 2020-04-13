@@ -4,9 +4,9 @@ use clap::{App, Arg, ArgMatches};
 use sloggers::LoggerBuilder;
 use trackable::error::ErrorKindExt;
 
-pub mod delete_bucket_contents;
 pub mod rpc_addr;
 pub mod set_repair_config;
+pub mod truncate_bucket;
 
 use {Error, ErrorKind, Result};
 
@@ -58,11 +58,11 @@ pub fn get_bucket_seqno(matches: &ArgMatches) -> Result<u32> {
 #[cfg(test)]
 mod tests {
     use clap::App;
-    use command::{delete_bucket_contents, get_bucket_seqno, FrugalosSubcommand};
+    use command::{get_bucket_seqno, truncate_bucket, FrugalosSubcommand};
 
     #[test]
     fn get_bucket_seqno_matches_works() {
-        let delete_buckets_contents_command = delete_bucket_contents::DeleteBucketContentsCommand;
+        let truncate_bucket_command = truncate_bucket::TruncateBucketCommand;
         let matches = App::new("frugalos-test")
             .subcommand(delete_buckets_contents_command.get_subcommand())
             .get_matches_from(vec![

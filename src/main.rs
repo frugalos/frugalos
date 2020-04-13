@@ -21,9 +21,9 @@ use std::string::ToString;
 use std::time::Duration;
 use trackable::error::{ErrorKindExt, Failure};
 
-use frugalos::command::delete_bucket_contents::DeleteBucketContentsCommand;
 use frugalos::command::rpc_addr;
 use frugalos::command::set_repair_config::SetRepairConfigCommand;
+use frugalos::command::truncate_bucket::TruncateBucketCommand;
 use frugalos::command::FrugalosSubcommand;
 use frugalos::FrugalosConfig;
 use frugalos::{Error, ErrorKind, Result};
@@ -43,7 +43,7 @@ fn main() {
 
     // Subcommand definitions
     let set_repair_config_command = SetRepairConfigCommand;
-    let delete_bucket_contents_command = DeleteBucketContentsCommand;
+    let truncate_bucket_command = TruncateBucketCommand;
 
     let matches = App::new("frugalos")
         .version(env!("CARGO_PKG_VERSION"))
@@ -106,7 +106,7 @@ fn main() {
         .subcommand(SubCommand::with_name("stop").arg(rpc_addr::get_arg()))
         .subcommand(SubCommand::with_name("take-snapshot").arg(rpc_addr::get_arg()))
         .subcommand(set_repair_config_command.get_subcommand())
-        .subcommand(delete_bucket_contents_command.get_subcommand())
+        .subcommand(truncate_bucket_command.get_subcommand())
         .arg(
             Arg::with_name("LOGLEVEL")
                 .short("l")
@@ -301,8 +301,8 @@ fn main() {
         debug!(logger, "config: {:?}", config);
     } else if let Some(matches) = set_repair_config_command.check_matches(&matches) {
         set_repair_config_command.handle_matches(logger_builder, matches, &unknown_fields);
-    } else if let Some(matches) = delete_bucket_contents_command.check_matches(&matches) {
-        delete_bucket_contents_command.handle_matches(logger_builder, matches, &unknown_fields);
+    } else if let Some(matches) = truncate_bucket_command.check_matches(&matches) {
+        truncate_bucket_command.handle_matches(logger_builder, matches, &unknown_fields);
     } else {
         println!("Usage: {}", matches.usage());
         std::process::exit(1);
