@@ -281,7 +281,8 @@ impl HandleRequest for DeleteBucket {
         let future = self.0.client().delete_bucket(bucket_id).then(|result| {
             let (status, body) = match track!(result) {
                 Err(e) => (Status::InternalServerError, Err(Error::from(e))),
-                Ok(v) => (Status::Ok, Ok(v)),
+                Ok(None) => (Status::NotFound, Err(not_found())),
+                Ok(Some(v)) => (Status::Ok, Ok(Some(v))),
             };
             Ok(make_json_response(status, body))
         });

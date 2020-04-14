@@ -36,7 +36,7 @@ use trackable::error::ErrorKindExt;
 
 use bucket::Bucket;
 use client::FrugalosClient;
-use frugalos_core::{LUMP_ID_NAMESPACE_OBJECT, LUMP_ID_NAMESPACE_RAFTLOG};
+use frugalos_core::lump::{LUMP_ID_NAMESPACE_OBJECT, LUMP_ID_NAMESPACE_RAFTLOG};
 use recovery::RecoveryRequest;
 use {Error, ErrorKind, Result};
 
@@ -129,7 +129,8 @@ where
         self.frugalos_segment_service.take_snapshot();
     }
     pub fn truncate_bucket(&mut self, bucket_seqno: u32) {
-        // バケツが存在する場合はデータ削除処理を実施しない
+        // バケツが存在する場合はバケツ削除処理自体が要求されていない可能性があり
+        // 意図しない raft クラスタの破壊を防ぐため処理を実施しない
         if self.bucket_no_to_id.contains_key(&bucket_seqno) {
             return;
         }
@@ -151,10 +152,8 @@ where
             .map(|local_device| local_device.watch())
             .map(|device_handle| {
                 let future = Box::new(device_handle.map_err(|e| track!(e)));
-                let raftlog_delete_range =
-                    make_truncate_bucket_range(LUMP_ID_NAMESPACE_RAFTLOG, bucket_seqno);
-                let object_delete_range =
-                    make_truncate_bucket_range(LUMP_ID_NAMESPACE_OBJECT, bucket_seqno);
+                let raftlog_delete_range = raftlog_delete_range.clone();
+                let object_delete_range = object_delete_range.clone();
                 future
                     .and_then(move |device| {
                         device
@@ -291,7 +290,7 @@ where
             self.buckets.store(buckets);
 
             // このサーバが扱うべきRaftノードを起動
-            for (node, device_no) in members.iter().zip(group.members.iter()) {
+            for (&node, device_no) in members.iter().zip(group.members.iter()) {
                 let device_id =
                     if let Some(id) = self.local_devices.get(&device_no).map(LocalDevice::id) {
                         id
@@ -299,7 +298,7 @@ where
                         continue;
                     };
 
-                if self.spawned_nodes.contains(node) {
+                if self.spawned_nodes.contains(&node) {
                     info!(
                         self.logger,
                         "The node has been spawned already: {}",
@@ -308,7 +307,7 @@ where
                     continue;
                 }
 
-                self.spawned_nodes.insert(node.clone());
+                self.spawned_nodes.insert(node);
 
                 info!(
                     self.logger,
@@ -370,8 +369,9 @@ where
                 let logger_end = logger.clone();
 
                 // ノードに紐づくデータ (raftlog/オブジェクト) の削除を実行する
-                // raftlog の削除はノード停止から一定時間 ( FRUGALOS_STOP_SEGMENT_WAITING_TIME_MILLIS ) 経過後に実施する
-                // オブジェクトのデータ削除は raftlog の削除後に行われる
+                //
+                // データ削除をノード停止直後に実施すると並列で行われる書き込み分を見逃し
+                // 削除されないデータが残ってしまう可能性があるためノード停止から一定時間経過後に実施する
                 let future = future
                     .map_err(|e| track!(Error::from(e)))
                     .and_then(move |()| {

@@ -415,6 +415,7 @@ pub fn set_repair_config(
 }
 
 /// 指定のバケツ番号 (seqno) に関連するデータを全て削除する
+///
 /// 通常のバケツ削除と異なりデータ削除 (Lump 削除) のみを実行する
 /// 通常のバケツ削除処理でデータ削除に失敗した場合などに実行することを想定
 pub fn truncate_bucket(logger: &Logger, rpc_addr: SocketAddr, bucket_seqno: u32) -> Result<()> {
