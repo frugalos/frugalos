@@ -243,6 +243,7 @@ fn into_rpc_error(e: Error) -> libfrugalos::Error {
         ErrorKind::InvalidInput => libfrugalos::ErrorKind::InvalidInput,
         ErrorKind::NotFound => libfrugalos::ErrorKind::Other,
         ErrorKind::Unexpected(v) => libfrugalos::ErrorKind::Unexpected(v),
+        ErrorKind::InconsistentState => libfrugalos::ErrorKind::Other,
         ErrorKind::Other => libfrugalos::ErrorKind::Other,
     };
     kind.takes_over(e).into()

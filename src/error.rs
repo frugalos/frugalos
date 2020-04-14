@@ -140,6 +140,7 @@ pub enum ErrorKind {
     InvalidInput,
     NotFound,
     Unexpected(Option<ObjectVersion>),
+    InconsistentState,
     Other,
 }
 impl TrackableErrorKind for ErrorKind {}

@@ -138,12 +138,12 @@ where
         let object_delete_range =
             make_truncate_bucket_range(LUMP_ID_NAMESPACE_OBJECT, bucket_seqno);
         let logger = self.logger.clone();
-        let logger1 = logger.new(o!(
+        let logger = logger.new(o!(
             "bucket_seqno" => format!("{}", bucket_seqno),
             "raftlog_delete_range" => format!("{:?}", raftlog_delete_range),
             "object_delete_range" => format!("{:?}", object_delete_range),
         ));
-        let logger2 = logger1.clone();
+        let logger1 = logger.clone();
 
         let futures: Vec<_> = self
             .local_devices
@@ -177,9 +177,9 @@ where
             .collect();
         let future = futures::future::join_all(futures)
             .map(move |_| {
-                info!(logger1, "Finish truncate_bucket");
+                info!(logger, "Finish truncate_bucket");
             })
-            .map_err(move |e| error!(logger2, "Error: {}", e));
+            .map_err(move |e| error!(logger1, "Error: {}", e));
         self.spawner.spawn(future);
     }
 
@@ -257,9 +257,8 @@ where
         let id = bucket_config.id().clone();
         self.bucket_no_to_id.remove(&seqno);
         let mut buckets = (&*self.buckets.load()).clone();
-        if buckets.remove(&id).is_some() {
-            self.buckets.store(buckets);
-        }
+        track_assert!(buckets.remove(&id).is_some(), ErrorKind::InconsistentState);
+        self.buckets.store(buckets);
         Ok(())
     }
     fn handle_patch_segment(
@@ -361,14 +360,14 @@ where
                 let node1 = *node;
                 let range = frugalos_segment::config::make_available_object_lump_id_range(&node1);
                 let logger = self.logger.clone();
-                let logger1 = logger.new(o!(
+                let logger = logger.new(o!(
                     "node" => node.local_id.to_string(),
                     "bucket_id" => bucket_id,
                     "bucket_no" => format!("{}", bucket_no),
                     "segment_no" => format!("{}", segment_no),
                 ));
-                let logger2 = logger1.clone();
-                let logger_end = logger1.clone();
+                let logger1 = logger.clone();
+                let logger_end = logger.clone();
 
                 // ノードに紐づくデータ (raftlog/オブジェクト) の削除を実行する
                 // raftlog の削除はノード停止から一定時間 ( FRUGALOS_STOP_SEGMENT_WAITING_TIME_MILLIS ) 経過後に実施する
@@ -387,7 +386,7 @@ where
                             .and_then(|()| Box::new(device_handle))
                             .and_then(move |device| {
                                 let storage = frugalos_raft::Storage::new(
-                                    logger1,
+                                    logger,
                                     node1.local_id,
                                     device.clone(),
                                     frugalos_raft::StorageMetrics::new(),
@@ -403,7 +402,7 @@ where
                                     .delete_range(range)
                                     .map_err(|e| track!(Error::from(e)))
                                     .map(move |vec| {
-                                        info!(logger2, "Delete all objects: {}", vec.len());
+                                        info!(logger1, "Delete all objects: {}", vec.len());
                                     })
                             })
                     })

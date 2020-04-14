@@ -23,29 +23,3 @@ pub fn get_seqno(matches: &ArgMatches) -> Result<u32> {
             ))
         })
 }
-
-#[cfg(test)]
-mod tests {
-    use clap::App;
-    use command::bucket::get_seqno;
-    use command::{truncate_bucket, FrugalosSubcommand};
-
-    #[test]
-    fn get_seqno_matches_works() {
-        let truncate_bucket_command = truncate_bucket::TruncateBucketCommand;
-        let matches = App::new("frugalos-test")
-            .subcommand(truncate_bucket_command.get_subcommand())
-            .get_matches_from(vec![
-                "frugalos-test",
-                "delete-bucket-contents",
-                "--seqno",
-                "123",
-            ]);
-        if let Some(matches) = truncate_bucket_command.check_matches(&matches) {
-            let bucket_seqno = get_seqno(matches).unwrap();
-            assert_eq!(bucket_seqno, 123);
-        } else {
-            panic!();
-        }
-    }
-}
