@@ -353,8 +353,7 @@ where
                 let future = track!(self.frugalos_segment_service.handle().remove_node(node))?;
                 let device_handle = self.local_devices.get_mut(&device_no).unwrap().watch();
                 let bucket_id = bucket_id.clone();
-                let node1 = node;
-                let range = frugalos_segment::config::make_available_object_lump_id_range(&node1);
+                let range = frugalos_segment::config::make_available_object_lump_id_range(&node);
                 let logger = self.logger.clone();
                 let logger = logger.new(o!(
                     "node" => node.local_id.to_string(),
@@ -384,7 +383,7 @@ where
                             .and_then(move |device| {
                                 let storage = frugalos_raft::Storage::new(
                                     logger,
-                                    node1.local_id,
+                                    node.local_id,
                                     device.clone(),
                                     frugalos_raft::StorageMetrics::new(),
                                 );
