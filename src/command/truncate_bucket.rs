@@ -7,18 +7,18 @@ use command::bucket;
 use command::rpc_addr;
 use command::{warn_if_there_are_unknown_fields, FrugalosSubcommand};
 
-/// frugalos delete-bucket-contents
+/// frugalos truncate-bucket
 pub struct TruncateBucketCommand;
 
 impl FrugalosSubcommand for TruncateBucketCommand {
     fn get_subcommand<'a, 'b: 'a>(&self) -> App<'a, 'b> {
-        SubCommand::with_name("delete-bucket-contents")
+        SubCommand::with_name("truncate-bucket")
             .arg(rpc_addr::get_arg())
             .arg(bucket::seqno_arg())
     }
 
     fn check_matches<'a>(&self, matches: &'a ArgMatches<'a>) -> Option<&'a ArgMatches<'a>> {
-        matches.subcommand_matches("delete-bucket-contents")
+        matches.subcommand_matches("truncate-bucket")
     }
 
     fn handle_matches(
@@ -52,12 +52,7 @@ mod tests {
         let truncate_bucket_command = truncate_bucket::TruncateBucketCommand;
         let matches = App::new("frugalos-test")
             .subcommand(truncate_bucket_command.get_subcommand())
-            .get_matches_from(vec![
-                "frugalos-test",
-                "delete-bucket-contents",
-                "--seqno",
-                "123",
-            ]);
+            .get_matches_from(vec!["frugalos-test", "truncate-bucket", "--seqno", "123"]);
         if let Some(matches) = truncate_bucket_command.check_matches(&matches) {
             let bucket_seqno = get_seqno(matches).unwrap();
             assert_eq!(bucket_seqno, 123);
