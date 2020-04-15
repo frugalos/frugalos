@@ -45,6 +45,7 @@ impl RpcServer {
         builder.add_call_handler::<rpc::DeleteObjectByVersionRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectsByRangeRpc, _>(this.clone());
         builder.add_call_handler::<rpc::DeleteObjectsByPrefixRpc, _>(this.clone());
+        builder.add_call_handler::<rpc::TruncateBucketRpc, _>(this.clone());
         // 上の clone を一つだけ消したくないので、ここで drop する
         drop(this);
     }
@@ -230,12 +231,19 @@ impl HandleCall<rpc::TakeSnapshotRpc> for RpcServer {
         Reply::done(Ok(()))
     }
 }
+impl HandleCall<rpc::TruncateBucketRpc> for RpcServer {
+    fn handle_call(&self, request: rpc::BucketSeqnoRequest) -> Reply<rpc::TruncateBucketRpc> {
+        self.daemon.truncate_bucket(request.bucket_seqno);
+        Reply::done(Ok(()))
+    }
+}
 
 fn into_rpc_error(e: Error) -> libfrugalos::Error {
     let kind = match *e.kind() {
         ErrorKind::InvalidInput => libfrugalos::ErrorKind::InvalidInput,
         ErrorKind::NotFound => libfrugalos::ErrorKind::Other,
         ErrorKind::Unexpected(v) => libfrugalos::ErrorKind::Unexpected(v),
+        ErrorKind::InconsistentState => libfrugalos::ErrorKind::Other,
         ErrorKind::Other => libfrugalos::ErrorKind::Other,
     };
     kind.takes_over(e).into()

@@ -510,6 +510,16 @@ impl Service {
                 });
             }
         }
+        // 古い bucket が存在する場合は削除する
+        for b in old_buckets.values() {
+            if self.buckets.contains_key(b.id()) {
+                continue;
+            }
+            let bucket = b.clone();
+            info!(self.logger, "Bucket is deleted: {}", dump!(b.id(), bucket));
+            self.delete_segment_table(&bucket);
+            self.events.push_back(Event::DeleteBucket(bucket.clone()));
+        }
 
         track!(self.sync_servers())?;
         Ok(())
@@ -716,6 +726,13 @@ impl Service {
         track_try_unwrap!(self.take_snapshot());
     }
     fn delete_segment_table(&mut self, bucket: &Bucket) {
+        for (segment_no, segment) in self.segment_tables[bucket.id()].segments.iter().enumerate() {
+            self.events.push_back(Event::DeleteSegment {
+                bucket_no: bucket.seqno(),
+                segment_no: segment_no as u16,
+                groups: segment.groups.clone(),
+            });
+        }
         self.segment_tables.remove(bucket.id());
     }
 
@@ -792,6 +809,11 @@ pub enum Event {
     PutServer(Server),
     DeleteServer(Server),
     PatchSegment {
+        bucket_no: u32,
+        segment_no: u16,
+        groups: Vec<DeviceGroup>,
+    },
+    DeleteSegment {
         bucket_no: u32,
         segment_no: u16,
         groups: Vec<DeviceGroup>,

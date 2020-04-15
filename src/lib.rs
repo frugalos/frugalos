@@ -3,6 +3,7 @@
 #![allow(clippy::new_ret_no_self)]
 extern crate atomic_immut;
 extern crate bytecodec;
+extern crate byteorder;
 extern crate cannyls;
 extern crate cannyls_rpc;
 extern crate fibers;
