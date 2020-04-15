@@ -350,10 +350,7 @@ where
             }
 
             if let Some(bucket_id) = self.bucket_no_to_id.get(&bucket_no) {
-                let future = track!(self
-                    .frugalos_segment_service
-                    .handle()
-                    .remove_node(node.clone()))?;
+                let future = track!(self.frugalos_segment_service.handle().remove_node(*node))?;
                 let device_handle = self.local_devices.get_mut(&device_no).unwrap().watch();
                 let bucket_id = bucket_id.clone();
                 let node1 = *node;
