@@ -17,11 +17,6 @@ script:
   - cargo clippy --all --all-targets --locked
   - cargo fmt -- --check
 
-matrix:
-  allow_failures:
-    - rust: beta
-    - rust: nightly
-
 env:
   global:
   - RUSTFLAGS="-D warnings"
@@ -29,6 +24,9 @@ env:
   - DOCKER_IMAGE="frugalos:$TRAVIS_TAG"
 
 jobs:
+  allow_failures:
+  - rust: beta
+  - rust: nightly
   include:
   - stage: deploy-to-github
     if: tag =~ ^[0-9]\.[0-9].*$
