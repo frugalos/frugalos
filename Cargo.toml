@@ -34,7 +34,7 @@ jemallocator = "0.1.8"
 jemalloc-ctl = "0.2"
 hostname = "0.1"
 httpcodec = "0.2"
-libfrugalos = "0.6.0"
+libfrugalos = "0.6.1"
 num_cpus = "1"
 prometrics = "0.1"
 raftlog = "0.6"
@@ -59,6 +59,3 @@ trackable = "^0.2.21"
 
 [workspace]
 members = ["frugalos_core", "frugalos_config", "frugalos_mds", "frugalos_raft", "frugalos_segment"]
-
-[patch.crates-io]
-libfrugalos = { path = "../libfrugalos" }
