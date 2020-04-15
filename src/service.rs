@@ -344,16 +344,16 @@ where
         let members = self.list_segment_members(bucket_no, segment_no, group)?;
 
         // 起動している raft ノードを停止する
-        for (node, device_no) in members.iter().zip(group.members.iter()) {
-            if !self.spawned_nodes.contains(node) {
+        for (&node, device_no) in members.iter().zip(group.members.iter()) {
+            if !self.spawned_nodes.contains(&node) {
                 continue;
             }
 
             if let Some(bucket_id) = self.bucket_no_to_id.get(&bucket_no) {
-                let future = track!(self.frugalos_segment_service.handle().remove_node(*node))?;
+                let future = track!(self.frugalos_segment_service.handle().remove_node(node))?;
                 let device_handle = self.local_devices.get_mut(&device_no).unwrap().watch();
                 let bucket_id = bucket_id.clone();
-                let node1 = *node;
+                let node1 = node;
                 let range = frugalos_segment::config::make_available_object_lump_id_range(&node1);
                 let logger = self.logger.clone();
                 let logger = logger.new(o!(
@@ -406,7 +406,7 @@ where
                     .map_err(move |e| error!(logger_end, "HANDLE_DELETE_SEGMENT_ERROR: {}", e));
                 self.spawner.spawn(future);
             }
-            self.spawned_nodes.remove(node);
+            self.spawned_nodes.remove(&node);
         }
         Ok(())
     }
