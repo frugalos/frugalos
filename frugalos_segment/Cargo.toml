@@ -24,7 +24,7 @@ frugalos_core = { version = "0.1", path = "../frugalos_core/" }
 frugalos_mds = { version = "0.13", path = "../frugalos_mds/" }
 frugalos_raft = { version = "0.10", path = "../frugalos_raft/" }
 futures = "0.1"
-libfrugalos = "0.6.0"
+libfrugalos = "0.6.1"
 prometrics = "0.1"
 rand = "0.5"
 raftlog = "0.6"

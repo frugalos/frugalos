@@ -3,8 +3,10 @@
 use clap::{App, ArgMatches};
 use sloggers::LoggerBuilder;
 
+pub mod bucket;
 pub mod rpc_addr;
 pub mod set_repair_config;
+pub mod truncate_bucket;
 
 /// Trait for frugalos' subcommands.
 pub trait FrugalosSubcommand {
