@@ -396,6 +396,10 @@ impl Node {
                 let list = self.machine.to_summaries();
                 monitored.exit(Ok(list));
             }
+            Request::ListByPrefix(prefix, monitored) => {
+                let list = self.machine.to_summaries_by_prefix(&prefix);
+                monitored.exit(Ok(list));
+            }
             Request::LatestVersion(monitored) => {
                 let latest = self.machine.latest_version();
                 monitored.exit(Ok(latest));

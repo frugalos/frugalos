@@ -72,6 +72,17 @@ impl NodeHandle {
         Either::A(future)
     }
 
+    pub fn list_objects_by_prefix(
+        &self,
+        prefix: ObjectPrefix,
+    ) -> impl Future<Item = Vec<ObjectSummary>, Error = Error> {
+        let (monitored, monitor) = oneshot::monitor();
+        let request = Request::ListByPrefix(prefix, monitored);
+        future_try!(self.request_tx.send(request));
+        let future = monitor.map_err(|e| track!(Error::from(e)));
+        Either::A(future)
+    }
+
     pub fn latest_version(&self) -> impl Future<Item = Option<ObjectSummary>, Error = Error> {
         let (monitored, monitor) = oneshot::monitor();
         let request = Request::LatestVersion(monitored);

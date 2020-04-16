@@ -182,6 +182,7 @@ pub(crate) enum Request {
     StartElection,
     GetLeader(Instant, Reply<NodeId>),
     List(Reply<Vec<ObjectSummary>>),
+    ListByPrefix(ObjectPrefix, Reply<Vec<ObjectSummary>>),
     LatestVersion(Reply<Option<ObjectSummary>>),
     ObjectCount(Reply<u64>),
     Get(
@@ -223,6 +224,7 @@ impl Request {
         match self {
             Request::GetLeader(_, tx) => tx.exit(Err(track!(e))),
             Request::List(tx) => tx.exit(Err(track!(e))),
+            Request::ListByPrefix(_, tx) => tx.exit(Err(track!(e))),
             Request::LatestVersion(tx) => tx.exit(Err(track!(e))),
             Request::ObjectCount(tx) => tx.exit(Err(track!(e))),
             Request::Get(_, _, _, _, tx) => tx.exit(Err(track!(e))),

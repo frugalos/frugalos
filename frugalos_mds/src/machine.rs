@@ -138,6 +138,15 @@ impl Machine {
             .map(|(id, &version)| ObjectSummary { id, version })
             .collect()
     }
+    pub fn to_summaries_by_prefix(&self, object_prefix: &ObjectPrefix) -> Vec<ObjectSummary> {
+        self.id_to_version
+            .iter_prefix(object_prefix.0.as_bytes())
+            .map(|(id, version)| ObjectSummary {
+                id: String::from_utf8(id).unwrap(),
+                version: *version,
+            })
+            .collect()
+    }
     // FIXME: ad-hoc bit vector backed by u64. Bit (64k + j) will be stored in array[k] & 1 << j.
     // This function is added for future use. See arguments here https://github.com/frugalos/frugalos/pull/166#discussion_r291900772
     pub fn enumerate_object_versions(&self) -> Vec<u64> {

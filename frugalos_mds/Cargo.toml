@@ -23,7 +23,7 @@ frugalos_core = { version = "0.1", path = "../frugalos_core" }
 frugalos_raft = { version = "0.10", path = "../frugalos_raft/" }
 futures = "0.1"
 libfrugalos = "0.6.1"
-patricia_tree = { version = "0.1.8", features = ["binary-format"] }
+patricia_tree = { version = "0.1.9", features = ["binary-format"] }
 prometrics = "0.1"
 protobuf_codec = "0.2"
 raftlog = "0.6"

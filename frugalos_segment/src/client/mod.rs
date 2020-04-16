@@ -270,6 +270,16 @@ impl Client {
         self.mds.list()
     }
 
+    /// 保存済みのオブジェクト一覧を接頭辞を指定して取得する。
+    pub fn list_by_prefix(
+        &self,
+        prefix: ObjectPrefix,
+        _deadline: Deadline,
+        parent: SpanHandle,
+    ) -> impl Future<Item = Vec<ObjectSummary>, Error = Error> {
+        self.mds.list_by_prefix(prefix, parent)
+    }
+
     /// セグメント内の最新オブジェクトのバージョンを取得する。
     pub fn latest(&self) -> impl Future<Item = Option<ObjectSummary>, Error = Error> {
         self.mds.latest()

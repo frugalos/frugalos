@@ -140,6 +140,22 @@ impl MdsClient {
         Request::new(self.clone(), parent, request)
     }
 
+    pub fn list_by_prefix(
+        &self,
+        prefix: ObjectPrefix,
+        parent: SpanHandle,
+    ) -> impl Future<Item = Vec<ObjectSummary>, Error = Error> {
+        debug!(self.logger, "Starts LIST BY PREFIX");
+        let request = SingleRequestOnce::new(RequestKind::Other, move |client| {
+            Box::new(
+                client
+                    .list_objects_by_prefix(prefix.clone())
+                    .map_err(MdsError::from),
+            )
+        });
+        Request::new(self.clone(), parent, request)
+    }
+
     pub fn get(
         &self,
         id: ObjectId,
