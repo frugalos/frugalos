@@ -80,6 +80,7 @@ impl FrugalosDaemon {
             &mut rpc_server_builder,
             rpc_service.handle(),
             raft_service.handle(),
+            config.config,
             executor.handle(),
         ))?;
 
@@ -210,6 +211,9 @@ impl DaemonRunner {
             DaemonCommand::TakeSnapshot => {
                 self.service.take_snapshot();
             }
+            DaemonCommand::TruncateBucket { bucket_seqno } => {
+                self.service.truncate_bucket(bucket_seqno);
+            }
         }
     }
 }
@@ -254,6 +258,12 @@ impl FrugalosDaemonHandle {
         let command = DaemonCommand::TakeSnapshot;
         let _ = self.command_tx.send(command);
     }
+
+    /// バケツのデータ削除を要求する
+    pub fn truncate_bucket(&self, bucket_seqno: u32) {
+        let command = DaemonCommand::TruncateBucket { bucket_seqno };
+        let _ = self.command_tx.send(command);
+    }
 }
 
 #[derive(Debug)]
@@ -262,6 +272,9 @@ enum DaemonCommand {
         reply: oneshot::Monitored<(), Error>,
     },
     TakeSnapshot,
+    TruncateBucket {
+        bucket_seqno: u32,
+    },
 }
 
 #[derive(Debug)]
@@ -398,5 +411,29 @@ pub fn set_repair_config(
         logger,
         "The frugalos server has set repair_idleness_threshold"
     );
+    Ok(())
+}
+
+/// 指定のバケツ番号 (seqno) に関連するデータを全て削除する
+///
+/// 通常のバケツ削除と異なりデータ削除 (Lump 削除) のみを実行する
+/// 通常のバケツ削除処理でデータ削除に失敗した場合などに実行することを想定
+pub fn truncate_bucket(logger: &Logger, rpc_addr: SocketAddr, bucket_seqno: u32) -> Result<()> {
+    info!(logger, "Starts truncate_bucket");
+
+    let mut executor = track!(ThreadPoolExecutor::with_thread_count(1).map_err(Error::from))?;
+    let rpc_service = RpcServiceBuilder::new()
+        .logger(logger.clone())
+        .finish(executor.handle());
+    let rpc_service_handle = rpc_service.handle();
+    executor.spawn(rpc_service.map_err(|e| panic!("{}", e)));
+
+    let client = libfrugalos::client::frugalos::Client::new(rpc_addr, rpc_service_handle);
+    let fiber = executor.spawn_monitor(client.truncate_bucket(bucket_seqno));
+    track!(executor
+        .run_fiber(fiber)
+        .unwrap()
+        .map_err(|e| e.unwrap_or_else(|| panic!("monitoring channel disconnected"))))?;
+    info!(logger, "Finish truncate_bucket");
     Ok(())
 }

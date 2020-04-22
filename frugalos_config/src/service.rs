@@ -16,9 +16,11 @@ use std::collections::{BTreeMap, VecDeque};
 use std::mem;
 use std::net::SocketAddr;
 use std::path::Path;
+use trackable::error::ErrorKindExt;
 
 use builder::SegmentTableBuilder;
 use cluster;
+use config;
 use config::server_to_frugalos_raft_node;
 use machine::{Command, DeviceGroup, NextSeqNo, SegmentTable, Snapshot};
 use protobuf;
@@ -36,6 +38,7 @@ pub struct Service {
 
     leader: Option<SocketAddr>,
     leader_waiters: Vec<Reply<SocketAddr>>,
+    leader_waiters_threshold: usize,
 
     local_server: Server,
 
@@ -62,6 +65,7 @@ impl Service {
         rpc_builder: &mut RpcServerBuilder,
         rpc_service: RpcServiceHandle,
         raft_service: frugalos_raft::ServiceHandle,
+        config: config::FrugalosConfigConfig,
         spawner: S,
     ) -> Result<Self> {
         let server = track!(cluster::load_local_server_info(&data_dir))?;
@@ -85,6 +89,7 @@ impl Service {
             local_server: server,
             leader: None,
             leader_waiters: Vec::new(),
+            leader_waiters_threshold: config.leader_waiters_threshold,
 
             request_tx,
             request_rx,
@@ -220,7 +225,6 @@ impl Service {
         Ok(())
     }
     fn handle_put_server(&mut self, proposal_id: ProposalId, mut server: Server) {
-        // TODO: `SocketAddr`の重複を禁止する(?)
         // TODO: 新規作成と更新は明確に区別できた方が良いかも(事故防止のため)
         if let Some(old) = self.servers.remove(&server.id) {
             server.seqno = old.seqno;
@@ -229,6 +233,23 @@ impl Service {
             server.seqno = self.next_seqno.server;
             self.next_seqno.server += 1;
             info!(self.logger, "New server is added: {:?}", server);
+        }
+
+        // SocketAddr の重複を禁止する
+        if self.servers.iter().any(|(_, s)| s.addr() == server.addr()) {
+            warn!(
+                self.logger,
+                "Server addr:{} already registered",
+                server.addr()
+            );
+            if let Some(Proposal::PutServer { reply, .. }) =
+                self.pop_committed_proposal(proposal_id)
+            {
+                let e = ErrorKind::InvalidInput
+                    .cause(format!("Server addr:{} already registered", server.addr()));
+                reply.exit(Err(Error::from(e)));
+            }
+            return;
         }
 
         if let Some(Proposal::PutServer { reply, .. }) = self.pop_committed_proposal(proposal_id) {
@@ -425,9 +446,9 @@ impl Service {
 
         self.next_seqno = snapshot.next_seqno;
 
-        let old_buckets = mem::replace(&mut self.buckets, Default::default());
-        let old_devices = mem::replace(&mut self.devices, Default::default());
-        let old_servers = mem::replace(&mut self.servers, Default::default());
+        let old_buckets = mem::take(&mut self.buckets);
+        let old_devices = mem::take(&mut self.devices);
+        let old_servers = mem::take(&mut self.servers);
         self.buckets = snapshot
             .buckets
             .into_iter()
@@ -489,6 +510,16 @@ impl Service {
                 });
             }
         }
+        // 古い bucket が存在する場合は削除する
+        for b in old_buckets.values() {
+            if self.buckets.contains_key(b.id()) {
+                continue;
+            }
+            let bucket = b.clone();
+            info!(self.logger, "Bucket is deleted: {}", dump!(b.id(), bucket));
+            self.delete_segment_table(&bucket);
+            self.events.push_back(Event::DeleteBucket(bucket.clone()));
+        }
 
         track!(self.sync_servers())?;
         Ok(())
@@ -513,13 +544,25 @@ impl Service {
     fn handle_request(&mut self, request: Request) -> Result<()> {
         info!(self.logger, "Request: {:?}", request);
         match request {
+            Request::GetLeader { .. } => {}
+            _ => {
+                if let Err(e) = self.check_leader() {
+                    request.failed(e);
+                    return Ok(());
+                }
+            }
+        }
+        match request {
             Request::GetLeader { reply } => {
                 info!(self.logger, "Leader is {:?}", self.leader);
                 if let Some(leader) = self.leader {
                     reply.exit(Ok(leader));
                 } else {
-                    // TODO: add length limit
                     self.leader_waiters.push(reply);
+                    if self.leader_waiters.len() > self.leader_waiters_threshold {
+                        warn!(self.logger, "Too many waitings (cleared)");
+                        self.clear_leader_waiters();
+                    }
                 }
             }
             Request::ListServers { reply } => {
@@ -683,6 +726,13 @@ impl Service {
         track_try_unwrap!(self.take_snapshot());
     }
     fn delete_segment_table(&mut self, bucket: &Bucket) {
+        for (segment_no, segment) in self.segment_tables[bucket.id()].segments.iter().enumerate() {
+            self.events.push_back(Event::DeleteSegment {
+                bucket_no: bucket.seqno(),
+                segment_no: segment_no as u16,
+                groups: segment.groups.clone(),
+            });
+        }
         self.segment_tables.remove(bucket.id());
     }
 
@@ -707,6 +757,25 @@ impl Service {
             })
         } else {
             false
+        }
+    }
+
+    fn check_leader(&self) -> Result<()> {
+        use raftlog::election::Role;
+        track_assert_eq!(
+            self.rlog.local_node().role,
+            Role::Leader,
+            ErrorKind::NotLeader
+        );
+        Ok(())
+    }
+
+    fn clear_leader_waiters(&mut self) {
+        for x in self.leader_waiters.drain(..) {
+            let e = track!(Error::from(
+                ErrorKind::Other.cause("Leader waiting timeout")
+            ));
+            x.exit(Err(e));
         }
     }
 }
@@ -740,6 +809,11 @@ pub enum Event {
     PutServer(Server),
     DeleteServer(Server),
     PatchSegment {
+        bucket_no: u32,
+        segment_no: u16,
+        groups: Vec<DeviceGroup>,
+    },
+    DeleteSegment {
         bucket_no: u32,
         segment_no: u16,
         groups: Vec<DeviceGroup>,
@@ -796,6 +870,25 @@ enum Request {
         id: BucketId,
         reply: Reply<Option<Bucket>>,
     },
+}
+impl Request {
+    pub fn failed(self, e: Error) {
+        match self {
+            Request::GetLeader { reply } => reply.exit(Err(track!(e))),
+            Request::ListServers { reply } => reply.exit(Err(track!(e))),
+            Request::GetServer { reply, .. } => reply.exit(Err(track!(e))),
+            Request::PutServer { reply, .. } => reply.exit(Err(track!(e))),
+            Request::DeleteServer { reply, .. } => reply.exit(Err(track!(e))),
+            Request::ListDevices { reply } => reply.exit(Err(track!(e))),
+            Request::GetDevice { reply, .. } => reply.exit(Err(track!(e))),
+            Request::PutDevice { reply, .. } => reply.exit(Err(track!(e))),
+            Request::DeleteDevice { reply, .. } => reply.exit(Err(track!(e))),
+            Request::ListBuckets { reply } => reply.exit(Err(track!(e))),
+            Request::GetBucket { reply, .. } => reply.exit(Err(track!(e))),
+            Request::PutBucket { reply, .. } => reply.exit(Err(track!(e))),
+            Request::DeleteBucket { reply, .. } => reply.exit(Err(track!(e))),
+        }
+    }
 }
 type Reply<T> = oneshot::Monitored<T, Error>;
 

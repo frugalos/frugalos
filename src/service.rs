@@ -1,6 +1,9 @@
 use atomic_immut::AtomicImmut;
+use byteorder::{BigEndian, ByteOrder};
 use cannyls;
+use cannyls::deadline::Deadline;
 use cannyls::device::{Device, DeviceHandle};
+use cannyls::lump::LumpId;
 use cannyls_rpc::DeviceId;
 use cannyls_rpc::DeviceRegistryHandle;
 use fibers::sync::oneshot;
@@ -26,11 +29,14 @@ use libfrugalos::entity::server::{Server, ServerId};
 use prometrics::metrics::MetricBuilder;
 use slog::Logger;
 use std::collections::{HashMap, HashSet};
+use std::ops::Range;
 use std::sync::Arc;
+use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
 use bucket::Bucket;
 use client::FrugalosClient;
+use frugalos_core::lump::{LUMP_ID_NAMESPACE_OBJECT, LUMP_ID_NAMESPACE_RAFTLOG};
 use recovery::RecoveryRequest;
 use {Error, ErrorKind, Result};
 
@@ -65,6 +71,7 @@ pub struct Service<S> {
     spawned_nodes: HashSet<NodeId>,
 
     recovery_request: Option<RecoveryRequest>,
+    spawner: S,
 }
 impl<S> Service<S>
 where
@@ -86,7 +93,7 @@ where
     ) -> Result<Self> {
         let frugalos_segment_service = track!(SegmentService::new(
             logger.clone(),
-            spawner,
+            spawner.clone(),
             rpc_service.clone(),
             rpc,
             raft_service.handle(),
@@ -109,6 +116,7 @@ where
             spawned_nodes: HashSet::new(),
             recovery_request,
             segment_config,
+            spawner,
         })
     }
     pub fn client(&self) -> FrugalosClient {
@@ -120,6 +128,60 @@ where
     pub fn take_snapshot(&mut self) {
         self.frugalos_segment_service.take_snapshot();
     }
+    pub fn truncate_bucket(&mut self, bucket_seqno: u32) {
+        // バケツが存在する場合はバケツ削除処理自体が要求されていない可能性があり
+        // 意図しない raft クラスタの破壊を防ぐため処理を実施しない
+        if self.bucket_no_to_id.contains_key(&bucket_seqno) {
+            return;
+        }
+        let raftlog_delete_range =
+            make_truncate_bucket_range(LUMP_ID_NAMESPACE_RAFTLOG, bucket_seqno);
+        let object_delete_range =
+            make_truncate_bucket_range(LUMP_ID_NAMESPACE_OBJECT, bucket_seqno);
+        let logger = self.logger.clone();
+        let logger = logger.new(o!(
+            "bucket_seqno" => format!("{}", bucket_seqno),
+            "raftlog_delete_range" => format!("{:?}", raftlog_delete_range),
+            "object_delete_range" => format!("{:?}", object_delete_range),
+        ));
+        let logger1 = logger.clone();
+
+        let futures: Vec<_> = self
+            .local_devices
+            .values_mut()
+            .map(|local_device| local_device.watch())
+            .map(|device_handle| {
+                let future = Box::new(device_handle.map_err(|e| track!(e)));
+                let raftlog_delete_range = raftlog_delete_range.clone();
+                let object_delete_range = object_delete_range.clone();
+                future
+                    .and_then(move |device| {
+                        device
+                            .request()
+                            .deadline(Deadline::Infinity)
+                            .wait_for_running()
+                            .delete_range(raftlog_delete_range)
+                            .map(|_| device)
+                            .map_err(|e| track!(Error::from(e)))
+                    })
+                    .and_then(move |device| {
+                        device
+                            .request()
+                            .deadline(Deadline::Infinity)
+                            .wait_for_running()
+                            .delete_range(object_delete_range)
+                            .map_err(|e| track!(Error::from(e)))
+                    })
+            })
+            .collect();
+        let future = futures::future::join_all(futures)
+            .map(move |_| {
+                info!(logger, "Finish truncate_bucket");
+            })
+            .map_err(move |e| error!(logger1, "Error: {}", e));
+        self.spawner.spawn(future);
+    }
+
     fn handle_config_event(&mut self, event: ConfigEvent) -> Result<()> {
         info!(self.logger, "Configuration Event: {:?}", event);
         match event {
@@ -147,8 +209,7 @@ where
                 track!(self.handle_put_bucket(&bucket))?;
             }
             ConfigEvent::DeleteBucket(bucket) => {
-                // TODO
-                track_panic!(ErrorKind::Other, "Unimplemented: {:?}", bucket);
+                track!(self.handle_delete_bucket(&bucket))?;
             }
             ConfigEvent::PatchSegment {
                 bucket_no,
@@ -157,6 +218,14 @@ where
             } => {
                 track_assert_eq!(groups.len(), 1, ErrorKind::Other, "Unimplemented");
                 track!(self.handle_patch_segment(bucket_no, segment_no, &groups[0]))?;
+            }
+            ConfigEvent::DeleteSegment {
+                bucket_no,
+                segment_no,
+                groups,
+            } => {
+                track_assert_eq!(groups.len(), 1, ErrorKind::Other, "Unimplemented");
+                track!(self.handle_delete_segment(bucket_no, segment_no, &groups[0]))?;
             }
             ConfigEvent::PutServer(server) => {
                 self.servers.insert(server.id.clone(), server);
@@ -182,6 +251,15 @@ where
         self.buckets.store(buckets);
         Ok(())
     }
+    fn handle_delete_bucket(&mut self, bucket_config: &BucketConfig) -> Result<()> {
+        let seqno = bucket_config.seqno();
+        let id = bucket_config.id().clone();
+        self.bucket_no_to_id.remove(&seqno);
+        let mut buckets = (&*self.buckets.load()).clone();
+        track_assert!(buckets.remove(&id).is_some(), ErrorKind::InconsistentState);
+        self.buckets.store(buckets);
+        Ok(())
+    }
     fn handle_patch_segment(
         &mut self,
         bucket_no: u32,
@@ -189,17 +267,7 @@ where
         group: &DeviceGroup,
     ) -> Result<()> {
         // このグループに対応するRaftクラスタのメンバ群を用意
-        let mut members = Vec::new();
-        for (member_no, device_no) in (0..group.members.len()).zip(group.members.iter()) {
-            let owner = &self.servers[&self.seqno_to_device[device_no].server];
-            let node: NodeId = track!(format!(
-                "00{:06x}{:04x}{:02x}.{:x}@{}:{}",
-                bucket_no, segment_no, member_no, device_no, owner.host, owner.port
-            )
-            .parse())?;
-            members.push(node);
-        }
-
+        let members = self.list_segment_members(bucket_no, segment_no, group)?;
         // バケツの更新
         if let Some(id) = self.bucket_no_to_id.get(&bucket_no) {
             // TODO: だいぶコスト高の操作なので、セグメント更新はバッチ的に行った方が良いかも
@@ -222,7 +290,7 @@ where
             self.buckets.store(buckets);
 
             // このサーバが扱うべきRaftノードを起動
-            for (node, device_no) in members.iter().zip(group.members.iter()) {
+            for (&node, device_no) in members.iter().zip(group.members.iter()) {
                 let device_id =
                     if let Some(id) = self.local_devices.get(&device_no).map(LocalDevice::id) {
                         id
@@ -230,7 +298,7 @@ where
                         continue;
                     };
 
-                if self.spawned_nodes.contains(node) {
+                if self.spawned_nodes.contains(&node) {
                     info!(
                         self.logger,
                         "The node has been spawned already: {}",
@@ -239,7 +307,7 @@ where
                     continue;
                 }
 
-                self.spawned_nodes.insert(node.clone());
+                self.spawned_nodes.insert(node);
 
                 info!(
                     self.logger,
@@ -266,6 +334,82 @@ where
 
         Ok(())
     }
+
+    fn handle_delete_segment(
+        &mut self,
+        bucket_no: u32,
+        segment_no: u16,
+        group: &DeviceGroup,
+    ) -> Result<()> {
+        let members = self.list_segment_members(bucket_no, segment_no, group)?;
+
+        // 起動している raft ノードを停止する
+        for (&node, device_no) in members.iter().zip(group.members.iter()) {
+            if !self.spawned_nodes.contains(&node) {
+                continue;
+            }
+
+            if let Some(bucket_id) = self.bucket_no_to_id.get(&bucket_no) {
+                let future = track!(self.frugalos_segment_service.handle().remove_node(node))?;
+                let device_handle = self.local_devices.get_mut(&device_no).unwrap().watch();
+                let bucket_id = bucket_id.clone();
+                let range = frugalos_segment::config::make_available_object_lump_id_range(&node);
+                let logger = self.logger.clone();
+                let logger = logger.new(o!(
+                    "node" => node.local_id.to_string(),
+                    "bucket_id" => bucket_id,
+                    "bucket_no" => format!("{}", bucket_no),
+                    "segment_no" => format!("{}", segment_no),
+                ));
+                let logger1 = logger.clone();
+                let logger_end = logger.clone();
+
+                // ノードに紐づくデータ (raftlog/オブジェクト) の削除を実行する
+                //
+                // データ削除をノード停止直後に実施すると並列で行われる書き込み分を見逃し
+                // 削除されないデータが残ってしまう可能性があるためノード停止から一定時間経過後に実施する
+                let future = future
+                    .map_err(|e| track!(Error::from(e)))
+                    .and_then(move |()| {
+                        let waiting_time_millis =
+                            std::env::var("FRUGALOS_STOP_SEGMENT_WAITING_TIME_MILLIS")
+                                .map(|value| value.parse().unwrap())
+                                .unwrap_or(60000);
+                        let duration = Duration::from_millis(waiting_time_millis);
+                        let timer = fibers::time::timer::timeout(duration);
+                        timer
+                            .map_err(|e| track!(Error::from(e)))
+                            .and_then(|()| Box::new(device_handle))
+                            .and_then(move |device| {
+                                let storage = frugalos_raft::Storage::new(
+                                    logger,
+                                    node.local_id,
+                                    device.clone(),
+                                    frugalos_raft::StorageMetrics::new(),
+                                );
+                                let future = frugalos_raft::ClearLog::new(storage);
+                                future.map(|_| device).map_err(|e| track!(Error::from(e)))
+                            })
+                            .and_then(move |device| {
+                                device
+                                    .request()
+                                    .deadline(Deadline::Infinity)
+                                    .wait_for_running()
+                                    .delete_range(range)
+                                    .map_err(|e| track!(Error::from(e)))
+                                    .map(move |vec| {
+                                        info!(logger1, "Delete all objects: {}", vec.len());
+                                    })
+                            })
+                    })
+                    .map_err(move |e| error!(logger_end, "HANDLE_DELETE_SEGMENT_ERROR: {}", e));
+                self.spawner.spawn(future);
+            }
+            self.spawned_nodes.remove(&node);
+        }
+        Ok(())
+    }
+
     fn spawn_device(&mut self, device_config: &DeviceConfig) -> Result<()> {
         let device = LocalDevice::new(
             self.logger.clone(),
@@ -274,6 +418,25 @@ where
         );
         self.local_devices.insert(device_config.seqno(), device);
         Ok(())
+    }
+
+    fn list_segment_members(
+        &self,
+        bucket_no: u32,
+        segment_no: u16,
+        group: &DeviceGroup,
+    ) -> Result<Vec<NodeId>> {
+        let mut members = Vec::new();
+        for (member_no, device_no) in (0..group.members.len()).zip(group.members.iter()) {
+            let owner = &self.servers[&self.seqno_to_device[device_no].server];
+            let node: NodeId = track!(format!(
+                "00{:06x}{:04x}{:02x}.{:x}@{}:{}",
+                bucket_no, segment_no, member_no, device_no, owner.host, owner.port
+            )
+            .parse())?;
+            members.push(node);
+        }
+        Ok(members)
     }
 }
 impl<S> Future for Service<S>
@@ -430,4 +593,56 @@ fn spawn_file_device(device: &FileDeviceConfig) -> fibers_tasque::AsyncCall<Resu
             .spawn(|| Ok(storage)); // TODO: taskqueは止める
         Ok(device)
     })
+}
+
+fn make_truncate_bucket_range(namespace: u8, bucket_seqno: u32) -> Range<LumpId> {
+    let mut id = [0; 16];
+    BigEndian::write_u32(&mut id[0..4], bucket_seqno);
+    id[0] = namespace;
+    let start = LumpId::new(BigEndian::read_u128(&id[..]));
+    BigEndian::write_u32(&mut id[0..4], bucket_seqno + 1);
+    id[0] = namespace;
+    let end = LumpId::new(BigEndian::read_u128(&id[..]));
+    Range { start, end }
+}
+
+#[cfg(test)]
+mod tests {
+    use cannyls::lump::LumpId;
+    use service;
+    use std::ops::Range;
+
+    #[allow(clippy::inconsistent_digit_grouping)]
+    #[test]
+    fn make_truncate_bucket_range_works() {
+        // https://github.com/frugalos/frugalos/wiki/Naming-Rules-of-LumpIds
+        // 1 byte: lump namespace
+        // 7 byte: local_node_id
+        //         3 byte: bucket_no
+        //         2 byte: segment_no
+        //         1 byte: member_no
+        //         1 byte: type
+        // 8 byte: index (version)
+
+        // bucket_seqno=1 を削除する場合
+        // namespace=1 かつ bucket_seqno=1 から 2 までの全てのオブジェクトを含む
+        let expect = Range {
+            start: LumpId::new(0x00_000001_0000_00_00_00000000_00000000u128),
+            end: LumpId::new(0x00_000002_0000_00_00_00000000_00000000u128),
+        };
+        let actual = service::make_truncate_bucket_range(0, 1);
+        assert_eq!(expect, actual);
+
+        // bucket_seqno=1 を削除する場合は range に bucket_seqno=2 のオブジェクトが含まれない
+        let another_bucket_content = LumpId::new(0x00_000002_0003_04_00_01234567_89abcdefu128);
+        assert_eq!(false, actual.contains(&another_bucket_content));
+
+        // bucket_seqno=1 を削除する場合 (namespace=1)
+        let expect = Range {
+            start: LumpId::new(0x01_000001_0000_00_00_00000000_00000000u128),
+            end: LumpId::new(0x01_000002_0000_00_00_00000000_00000000u128),
+        };
+        let actual = service::make_truncate_bucket_range(1, 1);
+        assert_eq!(expect, actual);
+    }
 }

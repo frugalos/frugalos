@@ -58,6 +58,7 @@ impl Server {
         builder.add_cast_handler::<rpc::RecommendToLeaderRpc, _>(this.clone());
         builder.add_call_handler::<rpc::GetLeaderRpc, _>(this.clone());
         builder.add_call_handler::<rpc::ListObjectsRpc, _>(this.clone());
+        builder.add_call_handler::<rpc::ListObjectsByPrefixRpc, _>(this.clone());
         builder.add_call_handler::<rpc::GetObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::HeadObjectRpc, _>(this.clone());
         builder.add_call_handler::<rpc::PutObjectRpc, _>(this.clone());
@@ -117,6 +118,20 @@ impl HandleCall<rpc::ListObjectsRpc> for Server {
         let node_id = rpc_try!(request.node_id.parse().map_err(Error::from));
         let node = rpc_try!(self.get_node(node_id));
         Reply::future(node.list_objects().map_err(to_rpc_error).then(Ok))
+    }
+}
+
+impl HandleCall<rpc::ListObjectsByPrefixRpc> for Server {
+    fn handle_call(&self, request: rpc::PrefixRequest) -> Reply<rpc::ListObjectsByPrefixRpc> {
+        let node_id = rpc_try!(request.node_id.parse().map_err(Error::from));
+        let node = rpc_try!(self.get_node(node_id));
+        let mut span = self.start_span("mds_list_objects_by_prefix_rpc");
+        span.set_tag(|| Tag::new("node_id", node_id.to_string()));
+        Reply::future(
+            node.list_objects_by_prefix(request.prefix)
+                .then(with_trace(span))
+                .then(Ok),
+        )
     }
 }
 

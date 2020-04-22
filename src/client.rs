@@ -255,6 +255,22 @@ impl<'a> Request<'a> {
             Box::new(futures::failed(e.into()))
         }
     }
+    pub fn list_by_prefix(&self, prefix: ObjectPrefix) -> BoxFuture<Vec<ObjectSummary>> {
+        let buckets = self.client.buckets.load();
+        let bucket = try_get_bucket!(buckets, self.bucket_id);
+        let mut futures = Vec::new();
+        for segment in bucket.segments() {
+            futures.push(
+                segment
+                    .list_by_prefix(prefix.clone(), self.deadline, self.parent.clone())
+                    .map_err(|e| track!(Error::from(e))),
+            );
+        }
+        Box::new(
+            futures::future::join_all(futures)
+                .map(|summaries| summaries.into_iter().flatten().collect()),
+        )
+    }
     pub fn latest(&self, segment: usize) -> BoxFuture<Option<ObjectSummary>> {
         let buckets = self.client.buckets.load();
         let bucket = try_get_bucket!(buckets, self.bucket_id);

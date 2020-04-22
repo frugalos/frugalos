@@ -59,6 +59,9 @@ struct Metrics {
     proposal_queue_len: Gauge,
     get_request_duration_seconds: Histogram,
     leader_waiting_duration_seconds: Histogram,
+    leader_waiting_enqueued_total: Counter,
+    leader_waiting_completed_total: Counter,
+    leader_waiting_failed_total: Counter,
 }
 impl Metrics {
     pub fn new(node_id: &NodeId) -> Result<Self> {
@@ -105,6 +108,27 @@ impl Metrics {
                 .namespace("frugalos")
                 .subsystem("mds")
         ))?;
+        let leader_waiting_enqueued_total =
+            track!(CounterBuilder::new("leader_waiting_enqueued_total")
+                .namespace("frugalos")
+                .subsystem("mds")
+                .help("The total number of active requests waiting for a new leader")
+                .default_registry()
+                .finish())?;
+        let leader_waiting_completed_total =
+            track!(CounterBuilder::new("leader_waiting_completed_total")
+                .namespace("frugalos")
+                .subsystem("mds")
+                .help("The total number of completed requests waiting for a new leader")
+                .default_registry()
+                .finish())?;
+        let leader_waiting_failed_total =
+            track!(CounterBuilder::new("leader_waiting_failed_total")
+                .namespace("frugalos")
+                .subsystem("mds")
+                .help("The total number of failed requests waiting for a new leader")
+                .default_registry()
+                .finish())?;
         Ok(Metrics {
             objects,
             snapshots_total,
@@ -114,6 +138,9 @@ impl Metrics {
             proposal_queue_len,
             get_request_duration_seconds,
             leader_waiting_duration_seconds,
+            leader_waiting_enqueued_total,
+            leader_waiting_completed_total,
+            leader_waiting_failed_total,
         })
     }
 }
@@ -356,6 +383,7 @@ impl Node {
                         self.leader_waiting_timeout.reset();
                     }
                     self.leader_waitings.push(waiting);
+                    self.metrics.leader_waiting_enqueued_total.increment();
                     if self.leader_waitings.len() > self.large_leader_waiting_queue_threshold.0 {
                         // NOTE: リーダが収束しない状態で無限にメモリを消費してしまうことがないようにする
                         // TODO: もう少しちゃんと制御（e.g., timeout)
@@ -366,6 +394,10 @@ impl Node {
             }
             Request::List(monitored) => {
                 let list = self.machine.to_summaries();
+                monitored.exit(Ok(list));
+            }
+            Request::ListByPrefix(prefix, monitored) => {
+                let list = self.machine.to_summaries_by_prefix(&prefix);
                 monitored.exit(Ok(list));
             }
             Request::LatestVersion(monitored) => {
@@ -618,6 +650,9 @@ impl Node {
         }
     }
     fn change_leader(&mut self, leader: NodeId) {
+        self.metrics
+            .leader_waiting_completed_total
+            .add_u64(self.leader_waitings.len() as u64);
         for x in self.leader_waitings.drain(..) {
             x.exit(Ok(leader));
         }
@@ -851,6 +886,9 @@ impl Node {
         }
     }
     fn clear_leader_waitings(&mut self) {
+        self.metrics
+            .leader_waiting_failed_total
+            .add_u64(self.leader_waitings.len() as u64);
         for x in self.leader_waitings.drain(..) {
             let e = track!(Error::from(
                 ErrorKind::Other.cause("Leader waiting timeout")

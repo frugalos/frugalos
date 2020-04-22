@@ -9,5 +9,6 @@ extern crate serde_derive;
 extern crate serde_yaml;
 extern crate trackable;
 
+pub mod lump;
 pub mod serde_ext;
 pub mod tracer;

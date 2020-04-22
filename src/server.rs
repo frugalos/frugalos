@@ -99,6 +99,7 @@ impl Server {
     pub fn register(self, builder: &mut HttpServerBuilder) -> Result<()> {
         track!(builder.add_handler(ListSegments(self.clone())))?;
         self.register_once_with_metrics(ListObjects(self.clone()), builder)?;
+        self.register_once_with_metrics(ListObjectsByPrefix(self.clone()), builder)?;
         self.register_once_with_metrics(GetObject(self.clone()), builder)?;
         self.register_once_with_metrics(HeadObject(self.clone()), builder)?;
         self.register_once_with_metrics(HeadFragments(self.clone()), builder)?;
@@ -184,6 +185,55 @@ impl HandleRequest for ListObjects {
             .client
             .request(bucket_id)
             .list(segment_num as usize)
+            .then(|result| {
+                let response = match track!(result) {
+                    Ok(list) => make_json_response(Status::Ok, Ok(list)),
+                    Err(ref e) if *e.kind() == ErrorKind::NotFound => {
+                        make_json_response(Status::NotFound, Err(not_found()))
+                    }
+                    Err(e) => make_json_response(Status::InternalServerError, Err(e)),
+                };
+                Ok(response)
+            });
+        Box::new(future)
+    }
+}
+
+struct ListObjectsByPrefix(Server);
+impl HandleRequest for ListObjectsByPrefix {
+    const METHOD: &'static str = "GET";
+    const PATH: &'static str = "/v1/buckets/*/object_prefixes/*";
+
+    type ReqBody = ();
+    type ResBody = HttpResult<Vec<ObjectSummary>>;
+    type Decoder = BodyDecoder<NullDecoder>;
+    type Encoder = BodyEncoder<AsyncEncoder<JsonEncoder<Self::ResBody>>>;
+    type Reply = Reply<Self::ResBody>;
+
+    fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
+        let bucket_id = get_bucket_id(req.url());
+        let object_prefix = get_object_prefix(req.url());
+        let deadline = try_badarg!(get_deadline(&req.url()));
+
+        let client_span = SpanContext::extract_from_http_header(&TraceHeader(req.header()))
+            .ok()
+            .and_then(|c| c);
+        let mut span = self.0.tracer.span(|t| {
+            t.span("list_objects_by_prefix")
+                .child_of(&client_span)
+                .start()
+        });
+        span.set_tag(|| StdTag::http_method("GET"));
+        span.set_tag(|| Tag::new("bucket.id", bucket_id.clone()));
+        span.set_tag(|| Tag::new("object_prefix", object_prefix.clone()));
+
+        let future = self
+            .0
+            .client
+            .request(bucket_id)
+            .deadline(deadline)
+            .span(&span)
+            .list_by_prefix(ObjectPrefix(object_prefix))
             .then(|result| {
                 let response = match track!(result) {
                     Ok(list) => make_json_response(Status::Ok, Ok(list)),
@@ -1070,7 +1120,7 @@ fn parse_etag_values(s: &str) -> Result<Vec<ObjectVersion>> {
     for token in s.split(',') {
         let token = token.trim();
         track_assert!(
-            token.bytes().nth(0) == Some(b'"') && token.bytes().last() == Some(b'"'),
+            token.bytes().next() == Some(b'"') && token.bytes().last() == Some(b'"'),
             ErrorKind::InvalidInput,
             "Malformed ETag value: {:?}",
             token

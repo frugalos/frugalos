@@ -63,7 +63,7 @@ impl Future for LoadLogSuffix {
                 self.metrics
                     .load_log_suffix_duration_seconds
                     .observe(elapsed);
-                let suffix = mem::replace(&mut self.suffix, LogSuffix::default());
+                let suffix = mem::take(&mut self.suffix);
                 let _ = self.event_tx.send(Event::LogSuffixLoaded(suffix.clone()));
                 return Ok(Async::Ready(suffix));
             }

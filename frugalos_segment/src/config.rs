@@ -50,7 +50,8 @@ pub(crate) fn get_object_version_from_lump_id(lump_id: LumpId) -> ObjectVersion 
     ObjectVersion(BigEndian::read_u64(&id[8..]))
 }
 
-pub(crate) fn make_available_object_lump_id_range(node: &NodeId) -> Range<LumpId> {
+/// ノードに紐づく全ての object を指す Range<LumpId> を返す
+pub fn make_available_object_lump_id_range(node: &NodeId) -> Range<LumpId> {
     let range = node.local_id.to_available_lump_id_range();
     let mut id = [0; 16];
     BigEndian::write_u128(&mut id, range.start.as_u128());
