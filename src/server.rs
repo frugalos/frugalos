@@ -502,7 +502,7 @@ impl HandleRequest for HeadObject {
                 Err(e) => {
                     warn!(
                         logger,
-                        "Cannot get object (bucket={:?}, object={:?}): {}",
+                        "Cannot head object (bucket={:?}, object={:?}): {}",
                         get_bucket_id(req.url()),
                         get_object_id(req.url()),
                         e
