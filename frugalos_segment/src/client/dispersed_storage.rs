@@ -470,9 +470,13 @@ impl Future for DispersedGet {
     }
 }
 
+/// A fragment on the specified device.
+#[derive(Debug)]
+struct DeviceFragment(Vec<u8>, LumpId, String);
+
 struct CollectFragments {
     logger: Logger,
-    futures: Vec<BoxFuture<Option<Vec<u8>>>>,
+    futures: Vec<BoxFuture<Option<DeviceFragment>>>,
     fragments: Vec<Vec<u8>>,
     data_fragments: usize,
     spares: Vec<ClusterMember>,
@@ -557,6 +561,7 @@ impl CollectFragments {
                 m.node,
                 lump_id
             );
+
             let mut span = self.parent.child("collect_fragment", |span| {
                 span.tag(StdTag::component(module_path!()))
                     .tag(StdTag::span_kind("client"))
@@ -570,6 +575,7 @@ impl CollectFragments {
             let mut request = client.request();
             request.rpc_options(self.cannyls_config.rpc_options());
 
+            let device_id = m.device.clone();
             let future = request
                 .deadline(self.deadline)
                 .get_lump(DeviceId::new(m.device), lump_id)
@@ -577,7 +583,9 @@ impl CollectFragments {
                     if let Err(ref e) = result {
                         span.log_error(e);
                     }
-                    result
+                    result.map(|maybe_fragment| {
+                        maybe_fragment.map(|fragment| DeviceFragment(fragment, lump_id, device_id))
+                    })
                 });
             let future: BoxFuture<_> = Box::new(future.map_err(|e| track!(Error::from(e))));
             self.futures.push(future);
@@ -603,10 +611,10 @@ impl Future for CollectFragments {
                     }
                     Ok(Async::Ready(fragment)) => {
                         self.futures.swap_remove(i);
-                        if let Some(mut fragment) = fragment {
+                        if let Some(DeviceFragment(mut fragment, lump_id, device_id)) = fragment {
                             if let Err(e) = track!(verify_and_remove_checksum(&mut fragment)) {
                                 // TODO: Add protection for log overflow
-                                warn!(self.logger, "[CollectFragments] Corrupted fragment: {}", e);
+                                error!(self.logger, "[CollectFragments] Corrupted fragment: reason={}, version={:?}, device_id={}, lump_id={:?}", e, self.version, device_id, lump_id);
                                 track!(self.fill_shortage_from_spare(false))?;
                             } else {
                                 self.fragments.push(fragment);
