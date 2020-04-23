@@ -34,6 +34,13 @@ impl FrugalosClient {
     pub(crate) fn new(buckets: Arc<AtomicImmut<HashMap<BucketId, Bucket>>>) -> Self {
         FrugalosClient { buckets }
     }
+    /// 与えられた `ObjectId` に対応するセグメント番号を返す。
+    pub fn segment_no(&self, bucket_id: &BucketId, object_id: &ObjectId) -> Option<u16> {
+        self.buckets
+            .load()
+            .get(bucket_id)
+            .map(|b| b.segment_no(object_id))
+    }
     pub fn request(&self, bucket_id: BucketId) -> Request {
         Request::new(self, bucket_id)
     }

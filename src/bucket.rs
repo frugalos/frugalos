@@ -98,14 +98,14 @@ impl Bucket {
         Ok(())
     }
     pub fn get_segment(&self, id: &ObjectId) -> &Segment {
-        use std::hash::{Hash, Hasher};
-        let mut hasher = siphasher::sip::SipHasher13::new();
-        id.hash(&mut hasher);
-        let i = hasher.finish() as usize % self.segments.len();
-        &self.segments[i]
+        &self.segments[self.segment_index(id)]
     }
     pub fn segments(&self) -> &[Segment] {
         &self.segments
+    }
+    /// 与えられた `ObjectId` が属すべきセグメント番号を返す。
+    pub fn segment_no(&self, id: &ObjectId) -> u16 {
+        self.segment_index(id) as u16
     }
 
     pub fn effectiveness_ratio(&self) -> f64 {
@@ -124,5 +124,13 @@ impl Bucket {
             frugalos_segment::config::Storage::Metadata => 0.0,
             _ => 1.0 - self.effectiveness_ratio(),
         }
+    }
+
+    /// 与えられた `ObjectId` が属すべきセグメントインデックスを返す。
+    fn segment_index(&self, id: &ObjectId) -> usize {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = siphasher::sip::SipHasher13::new();
+        id.hash(&mut hasher);
+        hasher.finish() as usize % self.segments.len()
     }
 }

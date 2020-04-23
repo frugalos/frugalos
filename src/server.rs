@@ -461,6 +461,7 @@ impl HandleRequest for HeadObject {
         let deadline = try_badarg!(get_deadline(&req.url()));
         let consistency = try_badarg!(get_consistency(&req.url()));
         let check_storage = try_badarg!(get_check_storage(&req.url()));
+        let segment_no = try_badarg_option!(self.0.client.segment_no(&bucket_id, &object_id));
         let future = if check_storage {
             Either::A(
                 self.0
@@ -486,12 +487,15 @@ impl HandleRequest for HeadObject {
             let response = match track!(result) {
                 Ok(None) => {
                     span.set_tag(|| StdTag::http_status_code(404));
-                    ObjectResponse::new(Status::NotFound, Err(not_found())).into_response()
+                    ObjectResponse::new(Status::NotFound, Err(not_found()))
+                        .segment(segment_no)
+                        .into_response()
                 }
                 Ok(Some(version)) => {
                     span.set_tag(|| Tag::new("object.version", version.0 as i64));
                     span.set_tag(|| StdTag::http_status_code(200));
                     ObjectResponse::new(Status::Ok, Ok(Vec::new()))
+                        .segment(segment_no)
                         .version(Some(version))
                         .into_response()
                 }
@@ -508,7 +512,9 @@ impl HandleRequest for HeadObject {
                         e
                     );
                     span.set_tag(|| StdTag::http_status_code(500));
-                    ObjectResponse::new(Status::InternalServerError, Err(e)).into_response()
+                    ObjectResponse::new(Status::InternalServerError, Err(e))
+                        .segment(segment_no)
+                        .into_response()
                 }
             };
             Ok(response)

@@ -129,6 +129,13 @@ impl ObjectResponse {
             },
         }
     }
+    /// セグメント番号をレスポンスにセットする.
+    pub fn segment(mut self, segment_no: u16) -> Self {
+        self.inner.header_mut().add_field(unsafe {
+            HeaderField::new_unchecked("FrugalOS-Segment-Number", &format!("{}", segment_no))
+        });
+        self
+    }
     /// `ObjectVersion` をレスポンスにセットする.
     pub fn version(mut self, version: Option<ObjectVersion>) -> Self {
         if let Some(version) = version {
