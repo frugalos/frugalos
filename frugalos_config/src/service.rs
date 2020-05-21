@@ -618,6 +618,10 @@ impl Service {
             }
             Request::GetBucket { id, reply } => reply.exit(Ok(self.buckets.get(&id).cloned())),
             Request::PutBucket { bucket, reply } => {
+                if let Err(e) = verify_bucket_devices(&self.devices, &bucket) {
+                    reply.exit(Err(e));
+                    return Ok(());
+                }
                 let command = Command::PutBucket { bucket };
                 match track!(self.propose_command(command)) {
                     Err(e) => reply.exit(Err(e)),
@@ -1056,5 +1060,145 @@ impl ServiceHandle {
         let request = Request::DeleteBucket { id, reply };
         let _ = self.request_tx.send(request);
         response
+    }
+}
+
+/// 関連デバイスを全て列挙して問題ないか確認する
+/// デバイスに循環参照がない仮定に基づいた実装
+pub(crate) fn verify_bucket_devices(
+    devices: &BTreeMap<DeviceId, Device>,
+    bucket: &Bucket,
+) -> Result<()> {
+    let root_device_id = bucket.device().clone();
+    let mut vec = vec![root_device_id];
+
+    while !vec.is_empty() {
+        let device_id = vec.pop().expect("Never fail");
+        let device = devices.get(&device_id);
+        if device.is_none() {
+            let e = ErrorKind::InvalidInput
+                .cause(format!("Referred device:{} does not exist.", device_id));
+            return Err(Error::from(e));
+        }
+        let device = device.expect("Nexver fail");
+        if let Device::Virtual(v) = device {
+            for child_device_id in v.children.iter() {
+                vec.push(child_device_id.clone())
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Result;
+    use libfrugalos::entity::bucket::{Bucket, DispersedBucket};
+    use libfrugalos::entity::device::{
+        Device, DeviceId, FileDevice, SegmentAllocationPolicy, VirtualDevice, Weight,
+    };
+    use service::verify_bucket_devices;
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::path::PathBuf;
+    use test_util::build_device_tree;
+
+    fn create_file_device(id: DeviceId) -> Device {
+        Device::File(FileDevice {
+            id,
+            seqno: 0,
+            weight: Weight::Auto,
+            server: String::from("frugalos-server"),
+            capacity: 0,
+            filepath: PathBuf::new(),
+        })
+    }
+
+    fn create_virtual_device(id: DeviceId, children: BTreeSet<DeviceId>) -> Device {
+        Device::Virtual(VirtualDevice {
+            id,
+            seqno: 0,
+            weight: Weight::Auto,
+            children,
+            policy: SegmentAllocationPolicy::ScatterIfPossible,
+        })
+    }
+
+    fn create_device_btree_map_1(root_id: DeviceId) -> BTreeMap<DeviceId, Device> {
+        // generate illegal device tree
+        //
+        // root
+        // - sub_root
+        //   - file0
+        //   - file1
+        //   - file2
+        //   - file3 ( not regiesterd )
+
+        let file0_id = "file0".to_owned();
+        let file0 = create_file_device(file0_id.clone());
+        let file1_id = "file1".to_owned();
+        let file1 = create_file_device(file1_id.clone());
+        let file2_id = "file2".to_owned();
+        let file2 = create_file_device(file2_id.clone());
+
+        let sub_root_id = "sub_root".to_owned();
+        let mut sub_root_children = BTreeSet::new();
+        sub_root_children.insert(file0_id.clone());
+        sub_root_children.insert(file1_id.clone());
+        sub_root_children.insert(file2_id.clone());
+        sub_root_children.insert("file3".to_owned());
+        let sub_root = create_virtual_device(sub_root_id.clone(), sub_root_children);
+
+        let mut root_children = BTreeSet::new();
+        root_children.insert(sub_root_id.clone());
+        let root = create_virtual_device(root_id.clone(), root_children);
+
+        let entries = vec![
+            (file0, file0_id),
+            (file1, file1_id),
+            (file2, file2_id),
+            (sub_root, sub_root_id),
+            (root, root_id),
+        ];
+        let mut btree_map = BTreeMap::new();
+        for (v, k) in entries.into_iter() {
+            btree_map.insert(k, v);
+        }
+        btree_map
+    }
+
+    #[test]
+    fn verify_bucket_devices_works() -> Result<()> {
+        let (devices, root_device_id) =
+            build_device_tree(&[3, 8], SegmentAllocationPolicy::ScatterIfPossible);
+        let bucket = Bucket::Dispersed(DispersedBucket {
+            id: String::from("bucket0"),
+            seqno: 0,
+            device: root_device_id.clone(),
+            segment_count: 0,
+            tolerable_faults: 0,
+            data_fragment_count: 0,
+        });
+        let result = verify_bucket_devices(&devices, &bucket);
+        assert!(result.is_ok());
+
+        // reference illegal device
+        let devices = create_device_btree_map_1(root_device_id);
+        let result = verify_bucket_devices(&devices, &bucket);
+        assert!(result.is_err());
+
+        // mismatch root_device_id
+        let bucket = Bucket::Dispersed(DispersedBucket {
+            id: String::from("bucket0"),
+            seqno: 0,
+            device: String::from("blah_root_device"),
+            segment_count: 0,
+            tolerable_faults: 0,
+            data_fragment_count: 0,
+        });
+        let (devices, _) = build_device_tree(&[3, 8], SegmentAllocationPolicy::ScatterIfPossible);
+        let result = verify_bucket_devices(&devices, &bucket);
+        assert!(result.is_err());
+
+        Ok(())
     }
 }
