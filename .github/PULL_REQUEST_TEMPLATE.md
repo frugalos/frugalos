@@ -13,6 +13,8 @@ Please check one of the following:
 
 ### Purpose
 
+## How to test operation
+
 ## Checklists
 
 - Run `cargo fmt --all`.
