@@ -13,7 +13,7 @@ Please check one of the following:
 
 ### Purpose
 
-## How to test operation
+## How to test this PR
 
 ## Checklists
 
