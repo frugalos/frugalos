@@ -41,6 +41,7 @@ pub mod cluster;
 
 mod builder;
 mod config;
+mod device_tree;
 mod error;
 mod machine;
 mod protobuf;
