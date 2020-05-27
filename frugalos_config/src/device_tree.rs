@@ -46,7 +46,7 @@ pub fn verify_device_tree_dfs(
     if device.is_none() {
         let e =
             ErrorKind::InvalidInput.cause(format!("Referred device:{} does not exist.", device_id));
-        return Err(Error::from(e));
+        return track!(Err(Error::from(e)));
     }
     let device = device.expect("Never fail");
     if let Device::Virtual(v) = device {
@@ -54,9 +54,9 @@ pub fn verify_device_tree_dfs(
             if visit.get(child_device_id).is_none() {
                 verify_device_tree_dfs(visit, child_device_id, devices)?
             } else {
-                let e = ErrorKind::InvalidInput
-                    .cause("TODO: Illegal device construct detected.".to_owned());
-                return Err(Error::from(e));
+                let e =
+                    ErrorKind::InvalidInput.cause("Illegal device construct detected.".to_owned());
+                return track!(Err(Error::from(e)));
             }
         }
     }
@@ -103,7 +103,7 @@ mod tests {
         //   - file0
         //   - file1
         //   - file2
-        //   - file3 ( not regiesterd )
+        //   - file3 ( not registered )
 
         let file0_id = "file0".to_owned();
         let file0 = create_file_device(file0_id.clone());
