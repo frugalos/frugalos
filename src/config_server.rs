@@ -159,7 +159,13 @@ impl HandleRequest for PutDevice {
         let device = req.into_body();
         let future = self.0.client().put_device(device).then(|result| {
             let (status, body) = match track!(result) {
-                Err(e) => (Status::InternalServerError, Err(Error::from(e))),
+                Err(e) => {
+                    if let libfrugalos::ErrorKind::InvalidInput = e.kind() {
+                        (Status::BadRequest, Err(Error::from(e)))
+                    } else {
+                        (Status::InternalServerError, Err(Error::from(e)))
+                    }
+                }
                 Ok(v) => (Status::Ok, Ok(v)),
             };
             Ok(make_json_response(status, body))
@@ -231,7 +237,13 @@ impl HandleRequest for PutBucket {
         let bucket = req.into_body();
         let future = self.0.client().put_bucket(bucket).then(|result| {
             let (status, body) = match track!(result) {
-                Err(e) => (Status::InternalServerError, Err(Error::from(e))),
+                Err(e) => {
+                    if let libfrugalos::ErrorKind::InvalidInput = e.kind() {
+                        (Status::BadRequest, Err(Error::from(e)))
+                    } else {
+                        (Status::InternalServerError, Err(Error::from(e)))
+                    }
+                }
                 Ok(v) => (Status::Ok, Ok(v)),
             };
             Ok(make_json_response(status, body))
