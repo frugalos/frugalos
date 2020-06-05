@@ -140,7 +140,7 @@ impl DispersedClient {
         );
         ReconstructDispersedFragment {
             phase: Phase::A(future),
-            ec: self.ec.clone(),
+            ec: self.ec,
             missing_index,
         }
     }
@@ -176,7 +176,7 @@ impl DispersedClient {
         );
         Box::new(DispersedGet {
             phase: Phase::A(future),
-            ec: self.ec.clone(),
+            ec: self.ec,
             span,
         })
     }

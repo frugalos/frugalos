@@ -317,7 +317,7 @@ where
 
                 let device_handle = self.local_devices.get_mut(&device_no).unwrap().watch();
                 track!(self.frugalos_segment_service.handle().add_node(
-                    node.clone(),
+                    node,
                     Box::new(
                         device_handle
                             .map_err(|e| frugalos_segment::ErrorKind::Other.takes_over(e).into())

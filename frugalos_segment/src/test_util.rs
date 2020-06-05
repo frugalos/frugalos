@@ -150,11 +150,11 @@ pub mod tests {
                 .map(|m| m.node.to_raft_node_id())
                 .collect();
 
-            for (node_id, _, device_handle) in members {
+            for &(node_id, _, ref device_handle) in members {
                 let client = track!(self.make_segment_client())?;
                 self.service_handle
                     .add_node(
-                        node_id.clone(),
+                        node_id,
                         Box::new(
                             futures::future::ok::<DeviceHandle, Error>(device_handle.clone())
                                 .map_err(|e| ErrorKind::Other.takes_over(e).into()),
