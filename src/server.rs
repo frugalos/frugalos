@@ -12,16 +12,18 @@ use futures::future::Either;
 use futures::{self, Future, Stream};
 use httpcodec::{BodyDecoder, BodyEncoder, HeadBodyEncoder, Header};
 use libfrugalos::consistency::ReadConsistency;
+use libfrugalos::entity::bucket::BucketKind;
 use libfrugalos::entity::object::{
     DeleteObjectsByPrefixSummary, ObjectPrefix, ObjectSummary, ObjectVersion,
 };
 use libfrugalos::expect::Expect;
-use prometrics::metrics::MetricBuilder;
+use prometrics::metrics::{Counter, CounterBuilder, MetricBuilder};
 use rustracing::tag::{StdTag, Tag};
 use rustracing_jaeger::reporter::JaegerCompactReporter;
 use rustracing_jaeger::span::{SpanContext, SpanReceiver};
 use slog::Logger;
 use std::cmp;
+use std::collections::HashMap;
 use std::str;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -71,12 +73,86 @@ macro_rules! try_badarg_option {
     };
 }
 
+/// オブジェクト操作のメトリクス
+///
+/// bucket_kind 毎に label を設定する
+#[derive(Clone)]
+pub(crate) struct ObjectRequestMetrics {
+    get_total: Counter,
+    put_total: Counter,
+    delete_total: Counter,
+}
+impl ObjectRequestMetrics {
+    pub fn new(bucket_kind: &str) -> Self {
+        let get_total = CounterBuilder::new("get_total")
+            .namespace("frugalos_object_request_http")
+            .label("bucket_kind", bucket_kind)
+            .default_registry()
+            .finish()
+            .expect("metric should be well-formed");
+        let put_total = CounterBuilder::new("put_total")
+            .namespace("frugalos_object_request_http")
+            .default_registry()
+            .label("bucket_kind", bucket_kind)
+            .finish()
+            .expect("metric should be well-formed");
+        let delete_total = CounterBuilder::new("delete_total")
+            .namespace("frugalos_object_request_http")
+            .default_registry()
+            .label("bucket_kind", bucket_kind)
+            .finish()
+            .expect("metric should be well-formed");
+        ObjectRequestMetrics {
+            get_total,
+            put_total,
+            delete_total,
+        }
+    }
+    pub fn increment(&self, method: &str) {
+        match method {
+            "GET" => self.get_total.increment(),
+            "PUT" => self.put_total.increment(),
+            "DELETE" => self.delete_total.increment(),
+            _ => (),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct Metrics {
+    object_requests: HashMap<u32, ObjectRequestMetrics>,
+}
+impl Metrics {
+    pub fn new() -> Self {
+        let mut object_requests = HashMap::new();
+        object_requests.insert(
+            BucketKind::Metadata as u32,
+            ObjectRequestMetrics::new("metadata"),
+        );
+        object_requests.insert(
+            BucketKind::Dispersed as u32,
+            ObjectRequestMetrics::new("dispersed"),
+        );
+        object_requests.insert(
+            BucketKind::Replicated as u32,
+            ObjectRequestMetrics::new("replicated"),
+        );
+        Metrics { object_requests }
+    }
+    pub fn increment_object_requests(&self, method: &str, bucket_kind: BucketKind) {
+        if let Some(m) = self.object_requests.get(&(bucket_kind as u32)) {
+            m.increment(method)
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Server {
     logger: Logger,
     config: FrugalosConfig,
     client: FrugalosClient,
     tracer: ThreadLocalTracer,
+    metrics: Metrics,
 
     // TODO: remove
     large_object_count: Arc<AtomicUsize>,
@@ -88,11 +164,13 @@ impl Server {
         client: FrugalosClient,
         tracer: ThreadLocalTracer,
     ) -> Self {
+        let metrics = Metrics::new();
         Server {
             logger,
             config,
             client,
             tracer,
+            metrics,
             large_object_count: Arc::default(),
         }
     }
@@ -380,6 +458,10 @@ impl HandleRequest for GetObject {
         span.set_tag(|| Tag::new("object.id", object_id.clone()));
         // TODO: deadline and expect
 
+        if let Some(bucket_kind) = self.0.client.bucket_kind(&bucket_id) {
+            self.0.metrics.increment_object_requests("GET", bucket_kind);
+        }
+
         let logger = self.0.logger.clone();
         let expect = try_badarg!(get_expect(&req.header()));
         let deadline = try_badarg!(get_deadline(&req.url()));
@@ -618,6 +700,12 @@ impl HandleRequest for DeleteObject {
         span.set_tag(|| Tag::new("bucket.id", bucket_id.clone()));
         span.set_tag(|| Tag::new("object.id", object_id.clone()));
         // TODO: deadline and expect
+
+        if let Some(bucket_kind) = self.0.client.bucket_kind(&bucket_id) {
+            self.0
+                .metrics
+                .increment_object_requests("DELETE", bucket_kind);
+        }
 
         let logger = self.0.logger.clone();
         let expect = try_badarg!(get_expect(&req.header()));
@@ -878,6 +966,10 @@ impl HandleRequest for PutObject {
         span.set_tag(|| Tag::new("bucket.id", bucket_id.clone()));
         span.set_tag(|| Tag::new("object.id", object_id.clone()));
         span.set_tag(|| Tag::new("object.size", content.len().to_string()));
+
+        if let Some(bucket_kind) = self.0.client.bucket_kind(&bucket_id) {
+            self.0.metrics.increment_object_requests("PUT", bucket_kind);
+        }
 
         // TODO: deadline and expect
         let logger = self.0.logger.clone();

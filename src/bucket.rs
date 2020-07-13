@@ -3,7 +3,7 @@ use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_segment::config::ClusterMember;
 use frugalos_segment::Client as Segment;
 use frugalos_segment::{self, ErasureCoder, FrugalosSegmentConfig};
-use libfrugalos::entity::bucket::Bucket as BucketConfig;
+use libfrugalos::entity::bucket::{Bucket as BucketConfig, BucketKind};
 use libfrugalos::entity::object::ObjectId;
 use siphasher;
 use slog::Logger;
@@ -123,6 +123,13 @@ impl Bucket {
         match self.storage_config {
             frugalos_segment::config::Storage::Metadata => 0.0,
             _ => 1.0 - self.effectiveness_ratio(),
+        }
+    }
+    pub fn kind(&self) -> BucketKind {
+        match self.storage_config {
+            frugalos_segment::config::Storage::Metadata => BucketKind::Metadata,
+            frugalos_segment::config::Storage::Replicated(_) => BucketKind::Replicated,
+            frugalos_segment::config::Storage::Dispersed(_) => BucketKind::Dispersed,
         }
     }
 }
