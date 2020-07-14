@@ -84,22 +84,28 @@ pub(crate) struct ObjectRequestMetrics {
 }
 impl ObjectRequestMetrics {
     pub fn new(bucket_kind: &str) -> Self {
-        let get_total = CounterBuilder::new("get_total")
-            .namespace("frugalos_object_request_http")
+        let get_total = CounterBuilder::new("object_requests_total")
+            .namespace("frugalos")
+            .subsystem("http")
             .label("bucket_kind", bucket_kind)
+            .label("method", "GET")
             .default_registry()
             .finish()
             .expect("metric should be well-formed");
-        let put_total = CounterBuilder::new("put_total")
-            .namespace("frugalos_object_request_http")
-            .default_registry()
+        let put_total = CounterBuilder::new("object_requests_total")
+            .namespace("frugalos")
+            .subsystem("http")
             .label("bucket_kind", bucket_kind)
+            .label("method", "PUT")
+            .default_registry()
             .finish()
             .expect("metric should be well-formed");
-        let delete_total = CounterBuilder::new("delete_total")
-            .namespace("frugalos_object_request_http")
-            .default_registry()
+        let delete_total = CounterBuilder::new("object_requests_total")
+            .namespace("frugalos")
+            .subsystem("http")
             .label("bucket_kind", bucket_kind)
+            .label("method", "DELETE")
+            .default_registry()
             .finish()
             .expect("metric should be well-formed");
         ObjectRequestMetrics {
