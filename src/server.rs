@@ -77,7 +77,7 @@ macro_rules! try_badarg_option {
 ///
 /// bucket_kind 毎に label を設定する
 #[derive(Clone)]
-pub(crate) struct ObjectRequestMetrics {
+struct ObjectRequestMetrics {
     get_total: Counter,
     put_total: Counter,
     delete_total: Counter,
@@ -125,7 +125,7 @@ impl ObjectRequestMetrics {
 }
 
 #[derive(Clone)]
-pub(crate) struct Metrics {
+struct Metrics {
     object_requests: HashMap<u32, ObjectRequestMetrics>,
 }
 impl Metrics {
