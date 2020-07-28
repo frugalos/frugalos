@@ -241,7 +241,7 @@ mod tests {
     }
 
     fn make_object_id(id: usize, kind: MetadataKind) -> ObjectId {
-        #[allow(clippy::identity_conversion)]
+        #[allow(clippy::useless_conversion)]
         match kind {
             MetadataKind::MUSIC => ObjectId::from(format!("music:metadata:{}", id)),
             MetadataKind::LYRIC => ObjectId::from(format!("lyric:metadata:{}", id)),

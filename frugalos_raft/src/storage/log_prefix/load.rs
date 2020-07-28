@@ -21,6 +21,7 @@ pub struct LoadLogPrefix {
     metrics: StorageMetrics,
 }
 impl LoadLogPrefix {
+    #[allow(clippy::reversed_empty_ranges)]
     pub fn new(storage: &Storage) -> Self {
         let handle = storage.handle.clone();
         let phase = Phase::A(LoadLogPrefixIndex::new(handle.clone()));
