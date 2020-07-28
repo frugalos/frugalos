@@ -100,6 +100,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::reversed_empty_ranges)]
     fn it_works_with_minimum_range() -> TestResult {
         let range = Range { start: 1, end: 1 };
         let mut threshold = track!(SnapshotThreshold::new(GOOD_SEED, range))?;
@@ -112,6 +113,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::reversed_empty_ranges)]
     fn it_works_with_long_seed() -> TestResult {
         let range = Range { start: 1, end: 1 };
         let mut threshold = track!(SnapshotThreshold::new(LONG_SEED, range))?;
@@ -124,6 +126,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::reversed_empty_ranges)]
     fn it_rejects_invalid_range() -> TestResult {
         assert!(SnapshotThreshold::new(GOOD_SEED, Range { start: 3, end: 2 }).is_err());
         Ok(())

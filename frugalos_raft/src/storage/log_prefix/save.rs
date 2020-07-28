@@ -41,6 +41,7 @@ pub struct SaveLogPrefix {
     metrics: StorageMetrics,
 }
 impl SaveLogPrefix {
+    #[allow(clippy::reversed_empty_ranges)]
     pub(crate) fn new(storage: &mut Storage, prefix: LogPrefix) -> Self {
         let handle = storage.handle.clone();
         let old_entries = Range {
@@ -70,6 +71,7 @@ impl Future for SaveLogPrefix {
     type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        #[allow(clippy::reversed_empty_ranges)]
         while let Async::Ready(phase) = self.phase.poll()? {
             let next = match phase {
                 Phase5::A(index) => {
