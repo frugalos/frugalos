@@ -124,6 +124,29 @@ where
     pub fn stop(&mut self) {
         self.frugalos_segment_service.stop();
     }
+    /// 単に止めるためだけなら device_seqno は不要だが、ログ出力のために受け取っておく。
+    pub fn stop_device(&mut self, device_seqno: u32, device_id: &DeviceId) -> bool {
+        let existed = self
+            .frugalos_segment_service
+            .device_registry_mut()
+            .stop_device(device_id);
+        if existed {
+            info!(
+                self.logger,
+                "Stopping device";
+                "device_seqno" => device_seqno,
+                "device_id" => device_id.as_str(),
+            );
+            return true;
+        }
+        info!(
+            self.logger,
+            "Device not found";
+            "device_seqno" => device_seqno,
+            "device_id" => device_id.as_str(),
+        );
+        false
+    }
     pub fn take_snapshot(&mut self) {
         self.frugalos_segment_service.take_snapshot();
     }
