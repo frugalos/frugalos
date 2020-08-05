@@ -38,7 +38,7 @@ use bucket::Bucket;
 use client::FrugalosClient;
 use frugalos_core::lump::{LUMP_ID_NAMESPACE_OBJECT, LUMP_ID_NAMESPACE_RAFTLOG};
 use recovery::RecoveryRequest;
-use {Error, ErrorKind, Result};
+use {DeviceBuildingConfig, Error, ErrorKind, FrugalosServiceConfig, Result};
 
 pub struct PhysicalDevice {
     id: DeviceId,
@@ -65,6 +65,7 @@ pub struct Service<S> {
 
     servers: HashMap<ServerId, Server>,
 
+    service_config: FrugalosServiceConfig,
     segment_config: FrugalosSegmentConfig,
 
     // 起動済みのノード一覧
@@ -86,6 +87,7 @@ where
         config_service: ConfigService,
         rpc: &mut RpcServerBuilder,
         rpc_service: RpcServiceHandle,
+        service_config: FrugalosServiceConfig,
         mds_config: frugalos_mds::FrugalosMdsConfig,
         segment_config: FrugalosSegmentConfig,
         recovery_request: Option<RecoveryRequest>,
@@ -115,6 +117,7 @@ where
             servers: HashMap::new(),
             spawned_nodes: HashSet::new(),
             recovery_request,
+            service_config,
             segment_config,
             spawner,
         })
@@ -414,6 +417,7 @@ where
         let device = LocalDevice::new(
             self.logger.clone(),
             &device_config,
+            self.service_config.device.clone(),
             self.frugalos_segment_service.device_registry().handle(),
         );
         self.local_devices.insert(device_config.seqno(), device);
@@ -477,14 +481,19 @@ struct LocalDevice {
     watches: Vec<oneshot::Monitored<DeviceHandle, Error>>,
 }
 impl LocalDevice {
-    fn new(logger: Logger, config: &DeviceConfig, device_registry: DeviceRegistryHandle) -> Self {
+    fn new(
+        logger: Logger,
+        config: &DeviceConfig,
+        device_building_config: DeviceBuildingConfig,
+        device_registry: DeviceRegistryHandle,
+    ) -> Self {
         info!(logger, "Starts spawning new device: {:?}", config);
         LocalDevice {
             logger: logger.clone(),
             config: config.clone(),
             device_registry,
             handle: None,
-            future: spawn_device(config, logger).fuse(),
+            future: spawn_device(config, device_building_config, logger).fuse(),
             watches: Vec::new(),
         }
     }
@@ -535,20 +544,25 @@ impl Future for WatchDeviceHandle {
     }
 }
 
-fn spawn_device(device: &DeviceConfig, logger: Logger) -> fibers_tasque::AsyncCall<Result<Device>> {
+fn spawn_device(
+    device: &DeviceConfig,
+    device_building_config: DeviceBuildingConfig,
+    logger: Logger,
+) -> fibers_tasque::AsyncCall<Result<Device>> {
     use libfrugalos::entity::device::Device;
 
     match *device {
         Device::Virtual(_) => {
             fibers_tasque::DefaultIoTaskQueue.async_call(|| track_panic!(ErrorKind::Other))
         }
-        Device::Memory(ref d) => spawn_memory_device(d, logger),
-        Device::File(ref d) => spawn_file_device(d, logger),
+        Device::Memory(ref d) => spawn_memory_device(d, device_building_config, logger),
+        Device::File(ref d) => spawn_file_device(d, device_building_config, logger),
     }
 }
 
 fn spawn_memory_device(
     device: &MemoryDeviceConfig,
+    device_building_config: DeviceBuildingConfig,
     logger: Logger,
 ) -> fibers_tasque::AsyncCall<Result<Device>> {
     let metrics = MetricBuilder::new()
@@ -559,16 +573,15 @@ fn spawn_memory_device(
     storage.metrics(metrics.clone());
     fibers_tasque::DefaultIoTaskQueue.async_call(move || {
         let storage = track!(storage.create(nvm).map_err(Error::from))?;
-        let device = cannyls::device::DeviceBuilder::new()
-            .logger(logger)
-            .metrics(metrics)
-            .spawn(|| Ok(storage)); // TODO: taskqueは止める
+        let device =
+            make_device_builder(device_building_config, logger, metrics).spawn(|| Ok(storage)); // TODO: taskqueは止める
         Ok(device)
     })
 }
 
 fn spawn_file_device(
     device: &FileDeviceConfig,
+    device_building_config: DeviceBuildingConfig,
     logger: Logger,
 ) -> fibers_tasque::AsyncCall<Result<Device>> {
     use cannyls::nvm::FileNvm;
@@ -595,14 +608,26 @@ fn spawn_file_device(
         } else {
             track!(storage.open(nvm).map_err(Error::from))?
         };
-        let device = cannyls::device::DeviceBuilder::new()
-            .logger(logger)
-            .metrics(metrics)
-            .busy_threshold(0)
-            .max_keep_busy_duration(Duration::new(10, 0))
-            .spawn(|| Ok(storage)); // TODO: taskqueは止める
+        let device =
+            make_device_builder(device_building_config, logger, metrics).spawn(|| Ok(storage)); // TODO: taskqueは止める
         Ok(device)
     })
+}
+
+fn make_device_builder(
+    device_building_config: DeviceBuildingConfig,
+    logger: Logger,
+    metrics: MetricBuilder,
+) -> cannyls::device::DeviceBuilder {
+    let mut device_builder = cannyls::device::DeviceBuilder::new();
+    device_builder.logger(logger).metrics(metrics);
+    if let Some(busy_threshold) = device_building_config.busy_threshold {
+        device_builder.busy_threshold(busy_threshold);
+    };
+    if let Some(max_keep_busy_duration) = device_building_config.max_keep_busy_duration {
+        device_builder.max_keep_busy_duration(max_keep_busy_duration);
+    }
+    device_builder
 }
 
 fn make_truncate_bucket_range(namespace: u8, bucket_seqno: u32) -> Range<LumpId> {

@@ -39,6 +39,7 @@ extern crate trackable;
 extern crate clap;
 extern crate sloggers;
 
+use cannyls::device::LongQueuePolicy;
 use fibers_http_server::metrics::BucketConfig;
 use std::fs::File;
 use std::net::SocketAddr;
@@ -100,6 +101,9 @@ pub struct FrugalosConfig {
     /// デーモン向けの設定。
     #[serde(default)]
     pub daemon: FrugalosDaemonConfig,
+    /// サービス向けの設定。
+    #[serde(default)]
+    pub service: FrugalosServiceConfig,
     /// HTTP server 向けの設定。
     #[serde(default)]
     pub http_server: FrugalosHttpServerConfig,
@@ -147,6 +151,7 @@ impl Default for FrugalosConfig {
             loglevel: default_loglevel(),
             max_concurrent_logs: default_max_concurrent_logs(),
             daemon: Default::default(),
+            service: Default::default(),
             http_server: Default::default(),
             rpc_client: Default::default(),
             mds: Default::default(),
@@ -176,6 +181,49 @@ impl Default for FrugalosDaemonConfig {
             sampling_rate: default_sampling_rate(),
         }
     }
+}
+
+/// `service::Service` 向けの設定。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct FrugalosServiceConfig {
+    /// デバイスの起動についての設定。
+    pub device: DeviceBuildingConfig,
+}
+
+mod cannyls_remote {
+    use cannyls::device::LongQueuePolicy;
+    #[derive(Serialize, Deserialize)]
+    #[serde(remote = "LongQueuePolicy")]
+    pub enum LongQueuePolicyDef {
+        #[serde(rename = "refuse_new_requests")]
+        RefuseNewRequests { ratio: f64 },
+        #[serde(rename = "stop")]
+        Stop,
+        #[serde(rename = "drop")]
+        Drop { ratio: f64 },
+    }
+}
+
+/// デバイスの起動についての設定。
+/// Option 型になっているフィールドは、None にすると cannyls のデフォルト値が採用される。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct DeviceBuildingConfig {
+    /// デバイスが暇だと判定するための閾値(時間)。
+    #[serde(default)]
+    pub idle_threshold: Option<Duration>,
+    /// デバイスの最大キュー長。
+    #[serde(default)]
+    pub max_queue_len: Option<usize>,
+    /// デバイスが最大継続ビジー時間。
+    #[serde(default)]
+    pub max_keep_busy_duration: Option<Duration>,
+    /// デバイスがビジー状態かどうかを判定するための閾値。
+    #[serde(default)]
+    pub busy_threshold: Option<usize>,
+    /// キューが長くなった場合にどうするかの設定。
+    #[serde(with = "cannyls_remote::LongQueuePolicyDef")]
+    #[serde(default)]
+    pub long_queue_policy: LongQueuePolicy,
 }
 
 /// HTTP server 向けの設定。
@@ -310,6 +358,10 @@ frugalos:
   daemon:
     executor_threads: 3
     sampling_rate: 0.1
+  service:
+    device:
+      max_queue_len: 100000
+      long_queue_policy: stop
   http_server:
     bind_addr: "127.0.0.1:2222"
   rpc_client:
@@ -479,5 +531,65 @@ frugalos:
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn long_queue_policy_serialize_works() {
+        use cannyls::device::LongQueuePolicy;
+
+        // LongQueuePolicy そのものには Serialize は実装されていないので、DeviceBuildingConfig にラップして検査する。
+        let value = DeviceBuildingConfig {
+            idle_threshold: None,
+            max_queue_len: None,
+            max_keep_busy_duration: None,
+            busy_threshold: None,
+            long_queue_policy: LongQueuePolicy::RefuseNewRequests { ratio: 0.5 },
+        };
+        let expected = r#"---
+idle_threshold: ~
+max_queue_len: ~
+max_keep_busy_duration: ~
+busy_threshold: ~
+long_queue_policy:
+  refuse_new_requests:
+    ratio: 0.5"#;
+        assert_eq!(serde_yaml::to_string(&value).unwrap(), expected);
+    }
+    #[test]
+    fn long_queue_policy_deserialize_works() {
+        use cannyls::device::LongQueuePolicy;
+
+        // LongQueuePolicy そのものには Deserialize は実装されていないので、DeviceBuildingConfig にラップして検査する。
+        let str = r#"---
+long_queue_policy:
+  refuse_new_requests:
+    ratio: 0.5"#;
+        let expected = LongQueuePolicy::RefuseNewRequests { ratio: 0.5 };
+        assert_eq!(
+            serde_yaml::from_str::<DeviceBuildingConfig>(&str)
+                .unwrap()
+                .long_queue_policy,
+            expected
+        );
+        let str = r#"---
+long_queue_policy: stop"#;
+        let expected = LongQueuePolicy::Stop;
+        assert_eq!(
+            serde_yaml::from_str::<DeviceBuildingConfig>(&str)
+                .unwrap()
+                .long_queue_policy,
+            expected
+        );
+        let str = r#"---
+long_queue_policy:
+  drop:
+    ratio: 0.5"#;
+        let expected = LongQueuePolicy::Drop { ratio: 0.5 };
+        assert_eq!(
+            serde_yaml::from_str::<DeviceBuildingConfig>(&str)
+                .unwrap()
+                .long_queue_policy,
+            expected
+        );
     }
 }
