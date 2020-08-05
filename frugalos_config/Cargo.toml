@@ -14,7 +14,7 @@ travis-ci = {repository = "frugalos/frugalos"}
 [dependencies]
 bytecodec = "0.4"
 byteorder = "1"
-cannyls = "0.9"
+cannyls = "0.10"
 fibers = "0.1"
 fibers_rpc = "0.2"
 fibers_tasque = "0.1"

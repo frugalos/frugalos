@@ -14,8 +14,8 @@ travis-ci = {repository = "frugalos/frugalos"}
 [dependencies]
 adler32 = "1"
 byteorder = { version = "1", features = ["i128"] }
-cannyls = "0.9"
-cannyls_rpc = "0.1"
+cannyls = "0.10"
+cannyls_rpc = "0.2"
 ecpool = "1"
 fibers = "0.1"
 fibers_rpc = "0.2"
