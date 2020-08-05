@@ -51,6 +51,7 @@ impl Future for DeleteOldLogPrefixBytes {
                 .device
                 .request()
                 .deadline(Deadline::Infinity)
+                .prioritized()
                 .delete(lump_id);
             self.future = Some(into_box_future(future));
         }
@@ -94,6 +95,7 @@ impl DeleteOldLogEntries {
                 .device
                 .request()
                 .deadline(Deadline::Infinity)
+                .prioritized()
                 .delete_range(deleted_range)
                 .map(|_| ()), // 結果は不要なので捨てる
         )

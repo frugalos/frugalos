@@ -116,6 +116,7 @@ impl LoadLogPrefixIndex {
                 .device
                 .request()
                 .deadline(Deadline::Infinity)
+                .prioritized()
                 .get(lump_id),
         );
         LoadLogPrefixIndex { handle, future }
@@ -204,6 +205,7 @@ impl Future for LoadLogPrefixBytes {
                         .device
                         .request()
                         .deadline(Deadline::Infinity)
+                        .prioritized()
                         .get(lump_id);
                     self.future = Some(into_box_future(future));
                 }

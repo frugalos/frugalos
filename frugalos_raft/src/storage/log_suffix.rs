@@ -90,6 +90,7 @@ impl LoadLogEntry {
                 .device
                 .request()
                 .deadline(Deadline::Infinity)
+                .prioritized()
                 .get(lump_id),
         );
         LoadLogEntry { handle, future }
@@ -179,6 +180,7 @@ impl Future for SaveLogSuffix {
                     .device
                     .request()
                     .deadline(Deadline::Immediate)
+                    .prioritized()
                     .put(lump_id, data);
                 self.future = Either::B(into_box_future(future));
             } else {

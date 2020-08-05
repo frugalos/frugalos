@@ -182,6 +182,7 @@ impl Future for SaveLogPrefixBytes {
                 .device
                 .request()
                 .deadline(Deadline::Infinity)
+                .prioritized()
                 .put(lump_id, data);
             self.current_index += 1;
             self.future = Some(into_box_future(future));
@@ -210,6 +211,7 @@ impl SaveLogPrefixIndex {
                 .device
                 .request()
                 .deadline(Deadline::Infinity)
+                .prioritized()
                 .put(lump_id, data),
         );
         Ok(SaveLogPrefixIndex { handle, future })

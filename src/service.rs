@@ -480,11 +480,11 @@ impl LocalDevice {
     fn new(logger: Logger, config: &DeviceConfig, device_registry: DeviceRegistryHandle) -> Self {
         info!(logger, "Starts spawning new device: {:?}", config);
         LocalDevice {
-            logger,
+            logger: logger.clone(),
             config: config.clone(),
             device_registry,
             handle: None,
-            future: spawn_device(config).fuse(),
+            future: spawn_device(config, logger).fuse(),
             watches: Vec::new(),
         }
     }
@@ -535,19 +535,22 @@ impl Future for WatchDeviceHandle {
     }
 }
 
-fn spawn_device(device: &DeviceConfig) -> fibers_tasque::AsyncCall<Result<Device>> {
+fn spawn_device(device: &DeviceConfig, logger: Logger) -> fibers_tasque::AsyncCall<Result<Device>> {
     use libfrugalos::entity::device::Device;
 
     match *device {
         Device::Virtual(_) => {
             fibers_tasque::DefaultIoTaskQueue.async_call(|| track_panic!(ErrorKind::Other))
         }
-        Device::Memory(ref d) => spawn_memory_device(d),
-        Device::File(ref d) => spawn_file_device(d),
+        Device::Memory(ref d) => spawn_memory_device(d, logger),
+        Device::File(ref d) => spawn_file_device(d, logger),
     }
 }
 
-fn spawn_memory_device(device: &MemoryDeviceConfig) -> fibers_tasque::AsyncCall<Result<Device>> {
+fn spawn_memory_device(
+    device: &MemoryDeviceConfig,
+    logger: Logger,
+) -> fibers_tasque::AsyncCall<Result<Device>> {
     let metrics = MetricBuilder::new()
         .label("device", device.id.as_ref())
         .clone();
@@ -557,13 +560,17 @@ fn spawn_memory_device(device: &MemoryDeviceConfig) -> fibers_tasque::AsyncCall<
     fibers_tasque::DefaultIoTaskQueue.async_call(move || {
         let storage = track!(storage.create(nvm).map_err(Error::from))?;
         let device = cannyls::device::DeviceBuilder::new()
+            .logger(logger)
             .metrics(metrics)
             .spawn(|| Ok(storage)); // TODO: taskqueは止める
         Ok(device)
     })
 }
 
-fn spawn_file_device(device: &FileDeviceConfig) -> fibers_tasque::AsyncCall<Result<Device>> {
+fn spawn_file_device(
+    device: &FileDeviceConfig,
+    logger: Logger,
+) -> fibers_tasque::AsyncCall<Result<Device>> {
     use cannyls::nvm::FileNvm;
     let metrics = MetricBuilder::new()
         .label("device", device.id.as_ref())
@@ -589,7 +596,10 @@ fn spawn_file_device(device: &FileDeviceConfig) -> fibers_tasque::AsyncCall<Resu
             track!(storage.open(nvm).map_err(Error::from))?
         };
         let device = cannyls::device::DeviceBuilder::new()
+            .logger(logger)
             .metrics(metrics)
+            .busy_threshold(0)
+            .max_keep_busy_duration(Duration::new(10, 0))
             .spawn(|| Ok(storage)); // TODO: taskqueは止める
         Ok(device)
     })
