@@ -360,8 +360,9 @@ frugalos:
     sampling_rate: 0.1
   service:
     device:
-      max_queue_len: 100000
-      long_queue_policy: stop
+      long_queue_policy:
+        refuse_new_requests:
+          ratio: 0.5
   http_server:
     bind_addr: "127.0.0.1:2222"
   rpc_client:
@@ -411,6 +412,8 @@ frugalos:
             HttpRequestDurationHistogramBucketConfig(Some(vec![1.5, 2.0, 3.0, 4.0]));
         expected.daemon.sampling_rate = 0.1;
         expected.daemon.executor_threads = 3;
+        expected.service.device.long_queue_policy =
+            LongQueuePolicy::RefuseNewRequests { ratio: 0.5 };
         expected.http_server.bind_addr = SocketAddr::from(([127, 0, 0, 1], 2222));
         expected.rpc_client.tcp_connect_timeout = Duration::from_secs(8);
         expected.rpc_client.tcp_write_timeout = Duration::from_secs(10);
