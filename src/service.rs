@@ -621,12 +621,19 @@ fn make_device_builder(
 ) -> cannyls::device::DeviceBuilder {
     let mut device_builder = cannyls::device::DeviceBuilder::new();
     device_builder.logger(logger).metrics(metrics);
+    if let Some(idle_threshold) = device_building_config.idle_threshold {
+        device_builder.idle_threshold(idle_threshold);
+    }
+    if let Some(max_queue_len) = device_building_config.max_queue_len {
+        device_builder.max_queue_len(max_queue_len);
+    }
     if let Some(busy_threshold) = device_building_config.busy_threshold {
         device_builder.busy_threshold(busy_threshold);
-    };
+    }
     if let Some(max_keep_busy_duration) = device_building_config.max_keep_busy_duration {
         device_builder.max_keep_busy_duration(max_keep_busy_duration);
     }
+    device_builder.long_queue_policy(device_building_config.long_queue_policy);
     device_builder
 }
 
