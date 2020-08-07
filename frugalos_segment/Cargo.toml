@@ -1,6 +1,6 @@
 [package]
 name = "frugalos_segment"
-version = "1.0.0"
+version = "1.1.0"
 authors = ["The FrugalOS Developers"]
 description = "A segment in a bucket in a Frugalos cluster"
 homepage = "https://github.com/frugalos/frugalos"
