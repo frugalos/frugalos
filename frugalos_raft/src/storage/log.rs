@@ -167,6 +167,7 @@ impl DeleteLog {
                 .device
                 .request()
                 .deadline(Deadline::Infinity)
+                .prioritized()
                 .wait_for_running()
                 .delete_range(node.to_available_lump_id_range())
                 .map(|_| ()),

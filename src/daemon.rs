@@ -100,6 +100,7 @@ impl FrugalosDaemon {
             config_service,
             &mut rpc_server_builder,
             rpc_service.handle(),
+            config.service,
             config.mds,
             config.segment,
             recovery_request,

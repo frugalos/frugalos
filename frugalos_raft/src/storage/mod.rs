@@ -353,11 +353,7 @@ where
     let future = future.map_err(|e| match *e.kind() {
         cannyls::ErrorKind::DeviceBusy => ErrorKind::Busy.takes_over(e).into(),
         cannyls::ErrorKind::InvalidInput => ErrorKind::InvalidInput.takes_over(e).into(),
-        cannyls::ErrorKind::Other
-        | cannyls::ErrorKind::InconsistentState
-        | cannyls::ErrorKind::DeviceTerminated
-        | cannyls::ErrorKind::StorageCorrupted
-        | cannyls::ErrorKind::StorageFull => ErrorKind::Other.takes_over(e).into(),
+        _ => ErrorKind::Other.takes_over(e).into(),
     });
     Box::new(future)
 }
