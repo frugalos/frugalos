@@ -1,6 +1,6 @@
 [package]
 name = "frugalos_segment"
-version = "1.1.0"
+version = "1.1.1"
 authors = ["The FrugalOS Developers"]
 description = "A segment in a bucket in a Frugalos cluster"
 homepage = "https://github.com/frugalos/frugalos"
@@ -21,8 +21,8 @@ fibers = "0.1"
 fibers_rpc = "0.2"
 fibers_tasque = "0.1"
 frugalos_core = { version = "1.0", path = "../frugalos_core/" }
-frugalos_mds = { version = "1.0", path = "../frugalos_mds/" }
-frugalos_raft = { version = "1.0", path = "../frugalos_raft/" }
+frugalos_mds = { version = "1.1", path = "../frugalos_mds/" }
+frugalos_raft = { version = "1.1", path = "../frugalos_raft/" }
 futures = "0.1"
 libfrugalos = "0.6.1"
 prometrics = "0.1"
