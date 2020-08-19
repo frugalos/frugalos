@@ -8,5 +8,6 @@ set -eux
 
 FRUGALOS_VERSION=$1
 
+docker pull rust:slim
 docker build --build-arg FRUGALOS_VERSION=$FRUGALOS_VERSION -t frugalos/frugalos:${FRUGALOS_VERSION} .
 docker push frugalos/frugalos:${FRUGALOS_VERSION}
