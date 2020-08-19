@@ -70,12 +70,7 @@ impl From<cannyls::Error> for Error {
     fn from(f: cannyls::Error) -> Self {
         match *f.kind() {
             cannyls::ErrorKind::InvalidInput => ErrorKind::InvalidInput.takes_over(f).into(),
-            cannyls::ErrorKind::DeviceBusy
-            | cannyls::ErrorKind::DeviceTerminated
-            | cannyls::ErrorKind::StorageFull
-            | cannyls::ErrorKind::StorageCorrupted
-            | cannyls::ErrorKind::InconsistentState
-            | cannyls::ErrorKind::Other => ErrorKind::Other.takes_over(f).into(),
+            _ => ErrorKind::Other.takes_over(f).into(),
         }
     }
 }

@@ -21,6 +21,7 @@ pub struct LoadLogPrefix {
     metrics: StorageMetrics,
 }
 impl LoadLogPrefix {
+    #[allow(clippy::reversed_empty_ranges)]
     pub fn new(storage: &Storage) -> Self {
         let handle = storage.handle.clone();
         let phase = Phase::A(LoadLogPrefixIndex::new(handle.clone()));
@@ -115,6 +116,7 @@ impl LoadLogPrefixIndex {
                 .device
                 .request()
                 .deadline(Deadline::Infinity)
+                .prioritized()
                 .get(lump_id),
         );
         LoadLogPrefixIndex { handle, future }
@@ -203,6 +205,7 @@ impl Future for LoadLogPrefixBytes {
                         .device
                         .request()
                         .deadline(Deadline::Infinity)
+                        .prioritized()
                         .get(lump_id);
                     self.future = Some(into_box_future(future));
                 }

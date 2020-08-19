@@ -1,6 +1,6 @@
 [package]
 name = "frugalos_mds"
-version = "1.0.0"
+version = "1.1.0"
 authors = ["The FrugalOS Developers"]
 description = "Metadata Store for Frugalos"
 homepage = "https://github.com/frugalos/frugalos"
@@ -15,7 +15,7 @@ travis-ci = {repository = "frugalos/frugalos"}
 atomic_immut = "0.1"
 bytecodec = "0.4"
 byteorder = "1"
-cannyls = "0.9"
+cannyls = "0.10"
 fibers = "0.1"
 fibers_rpc = "0.2"
 fibers_tasque = "0.1"

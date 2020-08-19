@@ -22,6 +22,7 @@ use builder::SegmentTableBuilder;
 use cluster;
 use config;
 use config::server_to_frugalos_raft_node;
+use device_tree;
 use machine::{Command, DeviceGroup, NextSeqNo, SegmentTable, Snapshot};
 use protobuf;
 use rpc;
@@ -594,6 +595,10 @@ impl Service {
             }
             Request::GetDevice { id, reply } => reply.exit(Ok(self.devices.get(&id).cloned())),
             Request::PutDevice { device, reply } => {
+                if let Err(e) = device_tree::verify_new_device(&device, &self.devices) {
+                    reply.exit(Err(e));
+                    return Ok(());
+                }
                 let command = Command::PutDevice { device };
                 match track!(self.propose_command(command)) {
                     Err(e) => reply.exit(Err(e)),
@@ -618,6 +623,10 @@ impl Service {
             }
             Request::GetBucket { id, reply } => reply.exit(Ok(self.buckets.get(&id).cloned())),
             Request::PutBucket { bucket, reply } => {
+                if let Err(e) = device_tree::verify_device_tree(bucket.device(), &self.devices) {
+                    reply.exit(Err(e));
+                    return Ok(());
+                }
                 let command = Command::PutBucket { bucket };
                 match track!(self.propose_command(command)) {
                     Err(e) => reply.exit(Err(e)),

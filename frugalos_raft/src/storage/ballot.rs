@@ -28,6 +28,7 @@ impl LoadBallot {
             .request()
             .wait_for_running() // 一番最初の呼び出し時には、まだデバイス起動中の可能性がある
             .deadline(Deadline::Immediate)
+            .prioritized()
             .get(lump_id);
         let future = into_box_future(future);
         LoadBallot {
@@ -83,6 +84,7 @@ impl SaveBallot {
                         .device
                         .request()
                         .deadline(Deadline::Immediate)
+                        .prioritized()
                         .put(lump_id, data),
                 ))
             }
