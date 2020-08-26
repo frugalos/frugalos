@@ -206,7 +206,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "fibers"
 version = "0.1.13"
-source = "git+https://github.com/dwango/fibers-rs?branch=tmp/trace-instant#68c847fdf5db919a269f70f363c26d5abfa52d1f"
+source = "git+https://github.com/dwango/fibers-rs?branch=tmp/trace-instant#758c740977e900d84f7a5c4522f4de608b8e7628"
 dependencies = [
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
  "mio 0.6.16 (registry+https://github.com/rust-lang/crates.io-index)",
