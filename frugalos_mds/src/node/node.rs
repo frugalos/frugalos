@@ -298,6 +298,13 @@ impl Node {
 
         let metrics = track!(Metrics::new(&node_id))?;
         let proposal_metrics = track!(ProposalMetrics::new())?;
+        if config.node_polling_interval >= Duration::from_secs(1 << 30) {
+            warn!(
+                logger,
+                "interval too large at Node::new: {:?}", config.node_polling_interval,
+            );
+        }
+
         Ok(Node {
             logger,
             service,
@@ -919,6 +926,12 @@ impl Stream for Node {
             // TODO: バグが修正されたら、このコードは消す
             // => 定期実行系は便利ではあるので、残しておいても良いかも
             self.polling_timer = timer::timeout(self.polling_timer_interval);
+            if self.polling_timer_interval >= Duration::from_secs(1 << 30) {
+                warn!(
+                    self.logger,
+                    "interval too large at mds::poll: {:?}", self.polling_timer_interval,
+                );
+            }
 
             // キュー長チェック
             let proposal_queue_len = self.rlog.proposal_queue_len();
