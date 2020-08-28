@@ -300,13 +300,7 @@ impl Client {
         storage
             .storage_usage(parent)
             .and_then(move |usages| {
-                let f = |e: &StorageUsage| -> bool {
-                    if let StorageUsage::Unknown = e {
-                        true
-                    } else {
-                        false
-                    }
-                };
+                let f = |e: &StorageUsage| -> bool { matches!(e, StorageUsage::Unknown) };
                 if !is_metadata && usages.iter().all(f) {
                     Err(ErrorKind::Invalid
                         .cause("All segment-nodes disk-usage unavailable")

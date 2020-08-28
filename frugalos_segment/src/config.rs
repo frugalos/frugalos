@@ -372,11 +372,7 @@ pub enum Storage {
 impl Storage {
     /// メタデータストレージかどうかを判定する。
     pub fn is_metadata(&self) -> bool {
-        if let Storage::Metadata = *self {
-            true
-        } else {
-            false
-        }
+        matches!(*self, Storage::Metadata)
     }
 }
 
