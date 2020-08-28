@@ -62,3 +62,4 @@ members = ["frugalos_core", "frugalos_config", "frugalos_mds", "frugalos_raft", 
 
 [patch.crates-io]
 fibers = { git = "https://github.com/dwango/fibers-rs", branch = "tmp/trace-instant" }
+fibers_rpc = { git = "https://github.com/koba-e964/fibers_rpc", branch = "tmp/with-backtrace" }
