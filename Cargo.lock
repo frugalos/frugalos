@@ -1304,7 +1304,7 @@ dependencies = [
 [[patch.unused]]
 name = "fibers_rpc"
 version = "0.3.3"
-source = "git+https://github.com/koba-e964/fibers_rpc?branch=tmp/with-backtrace#7e61aaf6f82099736006c821ba836c1823694459"
+source = "git+https://github.com/koba-e964/fibers_rpc?branch=tmp/with-backtrace#113c50f2f05ef9f238cb1fd086557a713d45d278"
 
 [metadata]
 "checksum adler32 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "7e522997b529f05601e05166c07ed17789691f562762c7f3b987263d2dedee5c"
