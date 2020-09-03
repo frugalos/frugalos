@@ -245,7 +245,7 @@ dependencies = [
 [[package]]
 name = "fibers_rpc"
 version = "0.2.100"
-source = "git+https://github.com/koba-e964/fibers_rpc?branch=tmp/with-backtrace#0fbe74ccef32d0d7250167caccc3d2411cbe3d75"
+source = "git+https://github.com/koba-e964/fibers_rpc?branch=tmp/with-backtrace#312388a72de122ed9669ce43373d2398572ee33b"
 dependencies = [
  "atomic_immut 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytecodec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
