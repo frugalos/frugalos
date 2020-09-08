@@ -88,9 +88,11 @@ use std::collections::hash_set::HashSet;
 use std::fmt::Debug;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use trackable::error::ErrorKindExt;
 
 use config::{ClusterConfig, MdsClientConfig, MdsRequestPolicy};
+use metrics::MdsClientMetrics;
 use {Error, ErrorKind, ObjectValue, Result};
 
 // TODO HEAD/GET 以外の参照系リクエストで `ReadConsistency` をサポートする
@@ -100,6 +102,7 @@ pub struct MdsClient {
     rpc_service: RpcServiceHandle,
     inner: Arc<Mutex<Inner>>,
     client_config: MdsClientConfig,
+    metrics: MdsClientMetrics,
 }
 impl MdsClient {
     pub fn new(
@@ -107,6 +110,7 @@ impl MdsClient {
         rpc_service: RpcServiceHandle,
         cluster_config: ClusterConfig,
         client_config: MdsClientConfig,
+        metrics: MdsClientMetrics,
     ) -> Self {
         // TODO: 以下のassertionは復活させたい
         // assert!(!config.members.is_empty());
@@ -115,6 +119,7 @@ impl MdsClient {
             rpc_service,
             inner: Arc::new(Mutex::new(Inner::new(cluster_config))),
             client_config,
+            metrics,
         }
     }
 
@@ -573,10 +578,13 @@ impl Future for RequestTimeout {
 pub struct Request<T: RequestOnce> {
     client: MdsClient,
     max_retry: usize,
+    retries_total: usize,
     request: T,
     parent: SpanHandle,
     peers: Vec<NodeId>,
     timeout: RequestTimeout,
+    timeout_total: usize,
+    started_at: Instant,
     future: Option<BoxFuture<T::Item>>,
 }
 impl<T> Request<T>
@@ -590,10 +598,13 @@ where
         Request {
             client,
             max_retry,
+            retries_total: 0,
+            timeout_total: 0,
             request,
             parent,
             peers: Vec::new(),
             timeout,
+            started_at: Instant::now(),
             future: None,
         }
     }
@@ -605,6 +616,21 @@ where
         self.timeout = self.client.timeout(self.request.kind());
         self.future = Some(future);
         Ok(())
+    }
+    fn aggregate_metrics(&mut self) {
+        let elapsed = prometrics::timestamp::duration_to_seconds(self.started_at.elapsed());
+        self.client
+            .metrics
+            .request_duration_seconds
+            .observe(elapsed);
+        self.client
+            .metrics
+            .request_timeout_total
+            .observe(self.timeout_total as f64);
+        self.client
+            .metrics
+            .request_retries_total
+            .observe(self.retries_total as f64);
     }
 }
 impl<T> Future for Request<T>
@@ -618,14 +644,23 @@ where
         // It is possible to reduce processing time by making a request time out.
         // For example, there is a node where leader election has been completed but the leader has not been updated yet.
         while let Async::Ready(()) = track!(self.timeout.poll())? {
+            self.timeout_total += 1;
             warn!(
                 self.client.logger,
                 "Request timeout: peers={:?}, max_retry={}", self.peers, self.max_retry
             );
             self.client.clear_leader();
             if self.max_retry == 0 {
+                self.client
+                    .metrics
+                    .request_max_retry_reached_total
+                    .increment();
+                self.aggregate_metrics();
                 track_panic!(ErrorKind::Busy, "max retry reached: peers={:?}", self.peers);
             }
+            // NOTE: `request_once` はリトライ以外にも初回のリクエストでも呼ばれるため、
+            // `request_once` の外で計測する必要がある.
+            self.retries_total += 1;
             track!(self.request_once())?;
         }
         match self.future.poll() {
@@ -635,6 +670,7 @@ where
                     "Error: peers={:?}, reason={}", self.peers, e
                 );
                 if let MdsErrorKind::Unexpected(current) = *e.kind() {
+                    self.aggregate_metrics();
                     return Err(
                         track!(ErrorKind::UnexpectedVersion { current }.takes_over(e)).into(),
                     );
@@ -642,10 +678,16 @@ where
                     self.client.clear_leader();
                 }
                 if self.max_retry == 0 {
+                    self.client
+                        .metrics
+                        .request_max_retry_reached_total
+                        .increment();
+                    self.aggregate_metrics();
                     return Err(
                         track!(ErrorKind::Busy.takes_over(e), "peers={:?}", self.peers).into(),
                     );
                 }
+                self.retries_total += 1;
                 track!(self.request_once())?;
                 debug!(self.client.logger, "Tries next peers: {:?}", self.peers);
                 self.poll()
@@ -660,6 +702,7 @@ where
                     let (_addr, local_node_id) = leader;
                     self.client.set_leader(track!(local_node_id.parse())?);
                 }
+                self.aggregate_metrics();
                 Ok(Async::Ready(v))
             }
         }
