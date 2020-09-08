@@ -18,11 +18,11 @@ atomic_immut = "0.1"
 bytecodec = { version = "0.4", features = ["json_codec"] }
 byteorder = { version = "1", features = ["i128"] }
 cannyls = "0.10"
-cannyls_rpc = "0.2"
+cannyls_rpc = "0.3"
 clap = "2"
 fibers = "0.1"
 fibers_http_server = "0.1.12"
-fibers_rpc = "0.2"
+fibers_rpc = "0.3.4"
 fibers_tasque = "0.1"
 frugalos_core = { version = "1.0", path = "frugalos_core" }
 frugalos_config = { version = "1.1", path = "frugalos_config" }
@@ -34,7 +34,7 @@ jemallocator = "0.1.8"
 jemalloc-ctl = "0.2"
 hostname = "0.1"
 httpcodec = "0.2"
-libfrugalos = "0.6.1"
+libfrugalos = "0.7"
 num_cpus = "1"
 prometrics = "0.1"
 raftlog = "0.6"
