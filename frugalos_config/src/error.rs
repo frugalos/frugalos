@@ -60,6 +60,28 @@ impl From<libfrugalos::Error> for Error {
         kind.takes_over(f).into()
     }
 }
+impl From<fibers_rpc::Error> for Error {
+    fn from(f: fibers_rpc::Error) -> Self {
+        ErrorKind::Other.takes_over(f).into()
+    }
+}
+impl<T> From<std::sync::mpsc::SendError<T>> for Error
+where
+    T: Send + Sync + 'static,
+{
+    fn from(f: std::sync::mpsc::SendError<T>) -> Self {
+        ErrorKind::Other.cause(f).into()
+    }
+}
+impl From<std::sync::mpsc::TryRecvError> for Error {
+    fn from(f: std::sync::mpsc::TryRecvError) -> Self {
+        let kind = match f {
+            std::sync::mpsc::TryRecvError::Disconnected => ErrorKind::Disconnected,
+            std::sync::mpsc::TryRecvError::Empty => ErrorKind::WouldBlock,
+        };
+        kind.cause(f).into()
+    }
+}
 
 pub fn to_rpc_error(e: Error) -> libfrugalos::Error {
     let kind = match *e.kind() {
@@ -72,10 +94,12 @@ pub fn to_rpc_error(e: Error) -> libfrugalos::Error {
 
 /// エラー種類。
 #[allow(missing_docs)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
     InvalidInput,
     NotLeader,
+    Disconnected,
+    WouldBlock,
     Other,
 }
 impl TrackableErrorKind for ErrorKind {}

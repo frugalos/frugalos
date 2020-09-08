@@ -40,6 +40,7 @@ pub use service::{Event, Service, ServiceHandle};
 pub mod cluster;
 
 mod builder;
+mod cancelable_future;
 mod config;
 mod device_tree;
 mod error;
