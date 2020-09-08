@@ -15,16 +15,16 @@ travis-ci = {repository = "frugalos/frugalos"}
 adler32 = "1"
 byteorder = { version = "1", features = ["i128"] }
 cannyls = "0.10"
-cannyls_rpc = "0.2"
+cannyls_rpc = "0.3"
 ecpool = "1"
 fibers = "0.1"
-fibers_rpc = "0.2"
+fibers_rpc = "0.3.4"
 fibers_tasque = "0.1"
 frugalos_core = { version = "1.0", path = "../frugalos_core/" }
 frugalos_mds = { version = "1.1", path = "../frugalos_mds/" }
 frugalos_raft = { version = "1.1", path = "../frugalos_raft/" }
 futures = "0.1"
-libfrugalos = "0.6.1"
+libfrugalos = "0.7"
 prometrics = "0.1"
 rand = "0.5"
 raftlog = "0.6"
