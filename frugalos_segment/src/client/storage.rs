@@ -63,11 +63,7 @@ impl StorageClient {
         }
     }
     pub fn is_metadata(&self) -> bool {
-        if let StorageClient::Metadata = *self {
-            true
-        } else {
-            false
-        }
+        matches!(*self, StorageClient::Metadata)
     }
     pub fn storage_usage(self, parent: SpanHandle) -> BoxFuture<Vec<StorageUsage>> {
         match self {

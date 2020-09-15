@@ -717,7 +717,7 @@ impl Node {
                 );
                 // ここでこのノードの停止準備が完了したことが `Service` に通知される.
                 if self.stopping.is_some() {
-                    info!(self.logger, "Drop stopping");
+                    debug!(self.logger, "Drop stopping");
                     self.stopping = None;
                 }
             }

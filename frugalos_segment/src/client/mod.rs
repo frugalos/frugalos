@@ -300,13 +300,7 @@ impl Client {
         storage
             .storage_usage(parent)
             .and_then(move |usages| {
-                let f = |e: &StorageUsage| -> bool {
-                    if let StorageUsage::Unknown = e {
-                        true
-                    } else {
-                        false
-                    }
-                };
+                let f = |e: &StorageUsage| -> bool { matches!(e, StorageUsage::Unknown) };
                 if !is_metadata && usages.iter().all(f) {
                     Err(ErrorKind::Invalid
                         .cause("All segment-nodes disk-usage unavailable")
@@ -561,8 +555,7 @@ mod tests {
         ))?;
         assert_eq!(result, Some(object_version));
         // delete (num of data_fragments) lumps
-        let mut i = 0;
-        for (node_id, device_id, _) in members {
+        for (i, (node_id, device_id, _)) in members.into_iter().enumerate() {
             let client = cannyls_rpc::Client::new(node_id.addr, rpc_service_handle.clone());
             let cluster_member = ClusterMember {
                 node: node_id,
@@ -575,8 +568,7 @@ mod tests {
                 .map_err(|e| e.into());
             let result = wait(future)?;
             assert_eq!(result, true);
-            i += 1;
-            if i >= data_fragments {
+            if i >= usize::from(data_fragments) {
                 break;
             }
         }
