@@ -43,6 +43,7 @@ impl ConfigServer {
         track!(builder.add_handler(ListDevices(self.clone())))?;
         track!(builder.add_handler(PutDevice(self.clone())))?;
         track!(builder.add_handler(GetDevice(self.clone())))?;
+        track!(builder.add_handler(GetDeviceState(self.clone())))?;
         track!(builder.add_handler(PutDeviceState(self.clone())))?;
 
         track!(builder.add_handler(ListBuckets(self.clone())))?;
@@ -291,12 +292,50 @@ impl HandleRequest for GetDeviceState {
     type Reply = Reply<Self::ResBody>;
 
     fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
-        let _device_id = get_id(&req.url());
-        let device_state = DeviceState {
-            state: RunningState::Started,
-        };
+        let device_id = get_id(&req.url());
+        let client = self.0.client();
+        let daemon_handle = self.0.daemon_handle.clone();
         // TODO
-        let future = futures::future::ok(make_json_response(Status::Ok, Ok(device_state)));
+        let future = client
+            .get_device(device_id)
+            .then(move |result| {
+                let (status, body) = match track!(result) {
+                    Err(e) => (Status::InternalServerError, Err(Error::from(e))),
+                    Ok(None) => (Status::NotFound, Err(track!(not_found()))),
+                    Ok(Some(v)) => (Status::Ok, Ok(v)),
+                };
+                futures::future::ok((status, body))
+            })
+            .and_then(move |(status, body)| match body {
+                Err(e) => Either::A(futures::future::ok((status, Err(e)))),
+                Ok(device) => {
+                    let device_seqno = device.seqno();
+                    let device_id = DeviceId::new(device.id());
+                    let future = daemon_handle.get_device_state(device_seqno, device_id).map(
+                        move |result| {
+                            let device_state = if result {
+                                DeviceState {
+                                    state: RunningState::Started,
+                                }
+                            } else {
+                                DeviceState {
+                                    state: RunningState::Stopped,
+                                }
+                            };
+                            (status, Ok(device_state))
+                        },
+                    );
+                    Either::B(future)
+                }
+            })
+            .then(move |result| {
+                let result = match result {
+                    Ok((status, body)) => make_json_response(status, body),
+                    Err(e) => make_json_response(Status::InternalServerError, Err(e)),
+                };
+                Ok(result)
+            });
+
         Box::new(future)
     }
 }

@@ -112,7 +112,7 @@ dependencies = [
 [[package]]
 name = "cannyls_rpc"
 version = "0.3.0"
-source = "git+https://github.com/frugalos/cannyls_rpc?branch=feature/stop-device#9c9e4ccf7775c7dfc198133e3da073f825c6e8f9"
+source = "git+https://github.com/frugalos/cannyls_rpc?branch=feature/stop-device#a401224afa6f647535cc5bb76ef3bc9f737e885c"
 dependencies = [
  "atomic_immut 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "bytecodec 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",

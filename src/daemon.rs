@@ -224,6 +224,14 @@ impl DaemonRunner {
                 let result = self.service.stop_device(device_seqno, &device_id);
                 reply.exit(Ok(result))
             }
+            DaemonCommand::GetDeviceState {
+                device_seqno,
+                device_id,
+                reply,
+            } => {
+                let result = self.service.get_device_state(device_seqno, &device_id);
+                reply.exit(Ok(result))
+            }
         }
     }
 }
@@ -290,6 +298,23 @@ impl FrugalosDaemonHandle {
         let _ = self.command_tx.send(command);
         StopDevice(reply_rx)
     }
+
+    /// デバイスの状態を要求する
+    pub fn get_device_state(
+        &self,
+        device_seqno: u32,
+        device_id: DeviceId,
+    ) -> impl Future<Item = bool, Error = Error> {
+        let (reply_tx, reply_rx) = oneshot::monitor();
+        // TODO
+        let command = DaemonCommand::GetDeviceState {
+            device_seqno,
+            device_id,
+            reply: reply_tx,
+        };
+        let _ = self.command_tx.send(command);
+        StopDevice(reply_rx)
+    }
 }
 
 #[derive(Debug)]
@@ -302,6 +327,11 @@ enum DaemonCommand {
         bucket_seqno: u32,
     },
     StopDevice {
+        device_seqno: u32,
+        device_id: DeviceId,
+        reply: oneshot::Monitored<bool, Error>,
+    },
+    GetDeviceState {
         device_seqno: u32,
         device_id: DeviceId,
         reply: oneshot::Monitored<bool, Error>,

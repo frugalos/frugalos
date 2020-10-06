@@ -147,6 +147,18 @@ where
         );
         false
     }
+    /// 単にデバイスのデータを取得するだけなら device_seqno は不要だが、ログ出力のために受け取っておく。
+    pub fn get_device_state(&mut self, device_seqno: u32, device_id: &DeviceId) -> bool {
+        info!(
+            self.logger,
+            "Getting device state";
+            "device_seqno" => device_seqno,
+            "device_id" => device_id.as_str(),
+        );
+        self.frugalos_segment_service
+            .device_registry_mut()
+            .is_device_running(device_id)
+    }
     pub fn take_snapshot(&mut self) {
         self.frugalos_segment_service.take_snapshot();
     }
