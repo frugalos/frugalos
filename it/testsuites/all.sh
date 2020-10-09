@@ -5,3 +5,4 @@ set -eux
 it/testsuites/basic.sh
 it/testsuites/down.sh
 it/testsuites/repair.sh
+it/testsuites/device.sh
