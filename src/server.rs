@@ -32,14 +32,14 @@ use std::time::Duration;
 use trackable::error::ErrorKindExt;
 use url::Url;
 
-use client::FrugalosClient;
-use codec::{AsyncEncoder, ObjectResultEncoder};
-use http::{
+use crate::client::FrugalosClient;
+use crate::codec::{AsyncEncoder, ObjectResultEncoder};
+use crate::http::{
     make_json_response, make_object_response, not_found, BucketStatistics, DeleteFragmentResponse,
     HttpResult, ObjectResponse, TraceHeader,
 };
-use many_objects::put_many_objects;
-use {Error, ErrorKind, FrugalosConfig, Result};
+use crate::many_objects::put_many_objects;
+use crate::{Error, ErrorKind, FrugalosConfig, Result};
 
 // TODO: 冗長化設定等を反映した正確な上限を使用する
 const MAX_PUT_OBJECT_SIZE: usize = 50 * 1024 * 1024;

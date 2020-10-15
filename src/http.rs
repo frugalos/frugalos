@@ -6,7 +6,7 @@ use libfrugalos::entity::object::{FragmentsSummary, ObjectVersion};
 use rustracing::carrier::IterHttpHeaderFields;
 use trackable::error::ErrorKindExt;
 
-use {Error, ErrorKind, Result};
+use crate::{Error, ErrorKind, Result};
 
 #[derive(Debug)]
 pub struct TraceHeader<'a>(pub Header<'a>);

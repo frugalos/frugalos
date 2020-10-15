@@ -7,7 +7,7 @@ use raftlog::message::Message;
 use raftlog::{self, ErrorKind, Result};
 
 use super::client::RpcClient;
-use NodeId;
+use crate::NodeId;
 
 /// Raft用のRPCメッセージの送受信を行うためのコンポーネント.
 #[derive(Debug)]

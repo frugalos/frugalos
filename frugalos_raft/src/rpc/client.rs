@@ -3,7 +3,7 @@ use fibers_rpc::Cast;
 use raftlog::message::Message;
 use std::net::SocketAddr;
 
-use rpc;
+use crate::rpc;
 
 #[derive(Debug, Clone)]
 pub struct RpcClient<'a> {

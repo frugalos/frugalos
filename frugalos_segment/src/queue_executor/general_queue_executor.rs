@@ -12,9 +12,9 @@ use std::convert::Infallible;
 use std::env;
 use std::time::{Duration, SystemTime};
 
-use delete::DeleteContent;
-use repair::RepairPrepContent;
-use Error;
+use crate::delete::DeleteContent;
+use crate::repair::RepairPrepContent;
+use crate::Error;
 
 const MAX_TIMEOUT_SECONDS: u64 = 60;
 const DELETE_CONCURRENCY: usize = 16;
@@ -76,11 +76,11 @@ impl Future for Task {
             Task::Wait(ref mut f) => track!(f
                 .poll()
                 .map_err(Error::from)
-                .map(|async| async.map(|()| None))),
+                .map(|r#async| r#async.map(|()| None))),
             Task::Delete(ref mut f) => track!(f
                 .poll()
                 .map_err(Error::from)
-                .map(|async| async.map(|()| None))),
+                .map(|r#async| r#async.map(|()| None))),
             Task::RepairPrep(ref mut f) => track!(f.poll()),
         }
     }

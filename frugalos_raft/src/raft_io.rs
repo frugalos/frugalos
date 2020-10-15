@@ -5,9 +5,9 @@ use raftlog::{ErrorKind, Io, Result};
 use slog::Logger;
 use trackable::error::ErrorKindExt;
 
-use storage::{self, Storage};
-use timer::{Timeout, Timer};
-use {LocalNodeId, Mailer, ServiceHandle};
+use crate::storage::{self, Storage};
+use crate::timer::{Timeout, Timer};
+use crate::{LocalNodeId, Mailer, ServiceHandle};
 
 /// `raftlog::Io`トレイトの実装.
 #[derive(Debug)]

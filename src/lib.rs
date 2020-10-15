@@ -52,7 +52,7 @@ macro_rules! dump {
     }
 }
 
-pub use error::{Error, ErrorKind};
+pub use crate::error::{Error, ErrorKind};
 
 pub mod command;
 pub mod daemon;

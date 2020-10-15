@@ -9,8 +9,8 @@ use std::mem;
 use std::time::Instant;
 
 use super::{into_box_future, BoxFuture, Event, Handle, Storage};
-use protobuf;
-use StorageMetrics;
+use crate::protobuf;
+use crate::StorageMetrics;
 
 // #[derive(Debug)]
 pub struct LoadLogSuffix {

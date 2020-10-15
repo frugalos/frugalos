@@ -3,9 +3,9 @@ use clap::{App, ArgMatches, SubCommand};
 use sloggers::Build;
 use sloggers::LoggerBuilder;
 
-use command::bucket;
-use command::rpc_addr;
-use command::{warn_if_there_are_unknown_fields, FrugalosSubcommand};
+use crate::command::bucket;
+use crate::command::rpc_addr;
+use crate::command::{warn_if_there_are_unknown_fields, FrugalosSubcommand};
 
 /// frugalos truncate-bucket
 pub struct TruncateBucketCommand;
@@ -43,9 +43,9 @@ impl FrugalosSubcommand for TruncateBucketCommand {
 
 #[cfg(test)]
 mod tests {
+    use crate::command::bucket::get_seqno;
+    use crate::command::{truncate_bucket, FrugalosSubcommand};
     use clap::App;
-    use command::bucket::get_seqno;
-    use command::{truncate_bucket, FrugalosSubcommand};
 
     #[test]
     fn get_seqno_matches_works() {

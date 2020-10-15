@@ -6,18 +6,12 @@ use fibers::sync::oneshot;
 use fibers::{Executor, Spawn, ThreadPoolExecutor};
 use fibers_http_server::metrics::{MetricsHandler, WithMetrics};
 use fibers_http_server::{Server as HttpServer, ServerBuilder as HttpServerBuilder};
-use fibers_rpc;
 use fibers_rpc::client::{ClientService as RpcService, ClientServiceBuilder as RpcServiceBuilder};
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
-use frugalos_config;
 use frugalos_core::tracer::ThreadLocalTracer;
-use frugalos_raft;
 use futures::{Async, Future, Poll, Stream};
-use libfrugalos;
-use prometrics;
 use prometrics::metrics::MetricBuilder;
 use rustracing::sampler::{PassiveSampler, ProbabilisticSampler, Sampler};
-use rustracing_jaeger;
 use rustracing_jaeger::span::SpanContextState;
 use slog::{self, Drain, Logger};
 use std::mem;
@@ -25,13 +19,13 @@ use std::net::SocketAddr;
 use std::process::Command;
 use trackable::error::ErrorKindExt;
 
-use config_server::ConfigServer;
+use crate::config_server::ConfigServer;
+use crate::recovery::prepare_recovery;
+use crate::rpc_server::RpcServer;
+use crate::server::{spawn_report_spans_thread, Server};
+use crate::service;
+use crate::{Error, ErrorKind, FrugalosConfig, Result};
 use libfrugalos::repair::RepairConfig;
-use recovery::prepare_recovery;
-use rpc_server::RpcServer;
-use server::{spawn_report_spans_thread, Server};
-use service;
-use {Error, ErrorKind, FrugalosConfig, Result};
 
 /// Frugalosの各種機能を提供するためのデーモン。
 pub struct FrugalosDaemon {

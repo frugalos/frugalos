@@ -9,10 +9,10 @@ use std::collections::BTreeSet;
 use std::convert::Infallible;
 use std::time::Instant;
 
-use client::storage::StorageClient;
-use repair::{RepairContent, RepairMetrics};
-use service::{RepairLock, ServiceHandle};
-use Error;
+use crate::client::storage::StorageClient;
+use crate::repair::{RepairContent, RepairMetrics};
+use crate::service::{RepairLock, ServiceHandle};
+use crate::Error;
 
 #[allow(clippy::large_enum_variant)]
 enum Task {

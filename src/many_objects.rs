@@ -5,7 +5,7 @@ use rustracing_jaeger::Span;
 use slog::Logger;
 use std::cmp::min;
 
-use client::FrugalosClient;
+use crate::client::FrugalosClient;
 
 #[allow(clippy::too_many_arguments)]
 pub fn put_many_objects<E>(

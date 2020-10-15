@@ -6,8 +6,8 @@ use fibers_tasque::{AsyncCall, DefaultCpuTaskQueue, TaskQueueExt};
 use futures::{Async, Future};
 use std::marker::PhantomData;
 
-use http::HttpResult;
-use Error;
+use crate::http::HttpResult;
+use crate::Error;
 
 #[derive(Debug, Default)]
 pub struct AsyncEncoder<E> {

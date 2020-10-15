@@ -13,7 +13,7 @@ use protobuf_codec::scalar::{
 };
 use trackable::error::ErrorKindExt;
 
-use machine::{Command, DeviceGroup, NextSeqNo, Segment, SegmentTable, Snapshot};
+use crate::machine::{Command, DeviceGroup, NextSeqNo, Segment, SegmentTable, Snapshot};
 
 //
 // https://github.com/frugalos/frugalos/blob/master/frugalos_config/schema/config.proto

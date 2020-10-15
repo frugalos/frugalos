@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use super::mail::{Mailbox, Mailer};
 use super::server::RpcServer;
-use rpc;
-use LocalNodeId;
+use crate::rpc;
+use crate::LocalNodeId;
 
 type Nodes = Arc<AtomicImmut<HashMap<LocalNodeId, Mailbox>>>;
 

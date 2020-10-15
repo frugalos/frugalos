@@ -1,16 +1,5 @@
-use cannyls;
 use fibers::sync::oneshot::MonitorError;
-use fibers_http_server;
-use fibers_rpc;
-use fibers_tasque;
-use frugalos_config;
-use frugalos_segment;
-use libfrugalos;
 use libfrugalos::entity::object::ObjectVersion;
-use prometrics;
-use raftlog;
-use serde_yaml;
-use std;
 use std::io;
 use trackable::error::TrackableError;
 use trackable::error::{ErrorKind as TrackableErrorKind, ErrorKindExt};

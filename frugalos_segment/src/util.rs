@@ -1,6 +1,6 @@
 use futures::{Future, Poll};
 
-use Error;
+use crate::Error;
 
 #[derive(Debug)]
 pub enum Phase<A, B> {

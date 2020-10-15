@@ -21,8 +21,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
-use bucket::Bucket;
-use {Error, ErrorKind};
+use crate::bucket::Bucket;
+use crate::{Error, ErrorKind};
 
 type BoxFuture<T> = Box<dyn Future<Item = T, Error = Error> + Send + 'static>;
 

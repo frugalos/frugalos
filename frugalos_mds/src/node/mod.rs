@@ -13,11 +13,11 @@ use raftlog::log::ProposalId;
 use std::time::Instant;
 use trackable::error::ErrorKindExt;
 
-use {Error, ErrorKind, Result};
+use crate::{Error, ErrorKind, Result};
 
 pub use self::handle::NodeHandle;
 pub use self::node::Node;
-use {StartSegmentGcReply, StopSegmentGcReply};
+use crate::{StartSegmentGcReply, StopSegmentGcReply};
 
 mod handle;
 mod metrics;
@@ -269,11 +269,9 @@ pub enum Event {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use error::Error;
+    use crate::error::Error;
     use fibers::sync::oneshot;
     use fibers::sync::oneshot::{Monitor, Monitored};
-    use fibers_global;
-    use futures;
     use futures::Future;
     use raftlog::election::Term;
     use raftlog::log::LogIndex;

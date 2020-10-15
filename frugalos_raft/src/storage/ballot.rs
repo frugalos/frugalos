@@ -7,8 +7,8 @@ use raftlog::Error;
 use std::time::Instant;
 
 use super::{into_box_future, BoxFuture, Handle, Storage};
-use protobuf;
-use StorageMetrics;
+use crate::protobuf;
+use crate::StorageMetrics;
 
 /// `Ballot`を永続ストレージから読み込むための`Future`実装.
 // #[derive(Debug)]

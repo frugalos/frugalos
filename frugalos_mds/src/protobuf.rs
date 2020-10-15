@@ -14,7 +14,7 @@ use protobuf_codec::scalar::{
     StringEncoder, Uint64Decoder, Uint64Encoder,
 };
 
-use machine::{Command, Snapshot};
+use crate::machine::{Command, Snapshot};
 
 pub fn command_decoder() -> impl MessageDecode<Item = Command> {
     let base = protobuf_message_decoder![(

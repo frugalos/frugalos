@@ -57,8 +57,8 @@ fn build_device_tree_dfs<'a>(
 }
 
 mod tests {
+    use crate::test_util::build_device_tree;
     use libfrugalos::entity::device::{Device, SegmentAllocationPolicy};
-    use test_util::build_device_tree;
 
     #[test]
     fn build_device_tree_creates_correct_number_of_devices() {

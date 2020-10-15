@@ -1,5 +1,4 @@
 #![allow(clippy::needless_pass_by_value)]
-use adler32;
 use byteorder::{BigEndian, ByteOrder};
 use cannyls::deadline::Deadline;
 use cannyls::lump::LumpId;
@@ -14,13 +13,13 @@ use rustracing_jaeger::span::SpanHandle;
 use slog::Logger;
 use trackable::error::ErrorKindExt;
 
-use client::dispersed_storage::{DispersedClient, ReconstructDispersedFragment};
-use client::ec::ErasureCoder;
-use client::replicated_storage::{GetReplicatedFragment, ReplicatedClient};
-use config::ClientConfig;
-use metrics::{DispersedClientMetrics, PutAllMetrics, ReplicatedClientMetrics};
-use util::BoxFuture;
-use {Error, ErrorKind, ObjectValue, Result};
+use crate::client::dispersed_storage::{DispersedClient, ReconstructDispersedFragment};
+use crate::client::ec::ErasureCoder;
+use crate::client::replicated_storage::{GetReplicatedFragment, ReplicatedClient};
+use crate::config::ClientConfig;
+use crate::metrics::{DispersedClientMetrics, PutAllMetrics, ReplicatedClientMetrics};
+use crate::util::BoxFuture;
+use crate::{Error, ErrorKind, ObjectValue, Result};
 
 #[derive(Clone)]
 pub enum StorageClient {
@@ -35,7 +34,7 @@ impl StorageClient {
         rpc_service: RpcServiceHandle,
         ec: Option<ErasureCoder>,
     ) -> Result<Self> {
-        use config::Storage;
+        use crate::config::Storage;
         match config.storage {
             Storage::Metadata => Ok(StorageClient::Metadata),
             Storage::Replicated(c) => {
@@ -268,9 +267,9 @@ pub(crate) fn verify_and_remove_checksum(bytes: &mut Vec<u8>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use config::{ClusterConfig, ClusterMember};
+    use crate::config::{ClusterConfig, ClusterMember};
+    use crate::test_util::tests::{setup_system, wait, System};
     use rustracing_jaeger::Span;
-    use test_util::tests::{setup_system, wait, System};
     use trackable::result::TestResult;
 
     fn candidate_position(

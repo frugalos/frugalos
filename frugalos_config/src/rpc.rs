@@ -5,8 +5,8 @@ use libfrugalos::entity::device::{Device, DeviceId};
 use libfrugalos::entity::server::{Server, ServerId};
 use libfrugalos::schema::config as spec;
 
-use error::to_rpc_error;
-use service::ServiceHandle;
+use crate::error::to_rpc_error;
+use crate::service::ServiceHandle;
 
 /// RPC サーバ。
 #[derive(Debug, Clone)]

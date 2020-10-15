@@ -5,8 +5,8 @@ use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
 use slog::Logger;
 
-use util::{into_box_future, BoxFuture};
-use {config, Error};
+use crate::util::{into_box_future, BoxFuture};
+use crate::{config, Error};
 
 // #[derive(Debug)]
 pub(crate) struct DeleteContent {
