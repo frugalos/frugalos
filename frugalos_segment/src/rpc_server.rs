@@ -1,7 +1,7 @@
+use crate::ServiceHandle;
 use fibers_rpc::server::{HandleCall, Reply, ServerBuilder as RpcServerBuilder};
 use libfrugalos::repair::RepairConfig;
 use libfrugalos::schema::frugalos as rpc;
-use ServiceHandle;
 
 #[derive(Clone)]
 pub struct RpcServer {

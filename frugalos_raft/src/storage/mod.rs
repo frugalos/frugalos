@@ -1,4 +1,3 @@
-use cannyls;
 use cannyls::device::DeviceHandle;
 use fibers::sync::mpsc;
 use futures::{Async, Future, Poll, Stream};
@@ -10,7 +9,7 @@ use slog::Logger;
 use std::sync::atomic::{self, AtomicUsize};
 use trackable::error::ErrorKindExt;
 
-use LocalNodeId;
+use crate::LocalNodeId;
 
 pub use self::ballot::{LoadBallot, SaveBallot};
 pub use self::log::{DeleteLog, LoadLog, SaveLog};

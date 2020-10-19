@@ -11,8 +11,8 @@ use libfrugalos::entity::server::{Server, ServerSummary};
 use std::net::SocketAddr;
 use url::Url;
 
-use http::{make_json_response, not_found, HttpResult};
-use {Error, Result};
+use crate::http::{make_json_response, not_found, HttpResult};
+use crate::{Error, Result};
 
 #[derive(Clone)]
 pub struct ConfigServer {

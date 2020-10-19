@@ -1,6 +1,5 @@
 //! クラスタ構成操作系の補助関数群。
 use bytecodec::{DecodeExt, EncodeExt};
-use cannyls;
 use cannyls::deadline::Deadline;
 use cannyls::device::Device;
 use fibers::{Executor, Spawn, ThreadPoolExecutor};
@@ -20,10 +19,10 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::time::Duration;
 
-use config::server_to_frugalos_raft_node;
-use machine::Snapshot;
-use protobuf;
-use {Error, ErrorKind, Result};
+use crate::config::server_to_frugalos_raft_node;
+use crate::machine::Snapshot;
+use crate::protobuf;
+use crate::{Error, ErrorKind, Result};
 
 const LOCAL_DATA_FILE_NAME: &str = "local.dat";
 const CLUSTER_DATA_FILE_NAME: &str = "cluster.lusf";

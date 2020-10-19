@@ -18,15 +18,15 @@ use std::net::SocketAddr;
 use std::path::Path;
 use trackable::error::ErrorKindExt;
 
-use builder::SegmentTableBuilder;
-use cluster;
-use config;
-use config::server_to_frugalos_raft_node;
-use device_tree;
-use machine::{Command, DeviceGroup, NextSeqNo, SegmentTable, Snapshot};
-use protobuf;
-use rpc;
-use {Error, ErrorKind, Result};
+use crate::builder::SegmentTableBuilder;
+use crate::cluster;
+use crate::config;
+use crate::config::server_to_frugalos_raft_node;
+use crate::device_tree;
+use crate::machine::{Command, DeviceGroup, NextSeqNo, SegmentTable, Snapshot};
+use crate::protobuf;
+use crate::rpc;
+use crate::{Error, ErrorKind, Result};
 
 type RaftEvent = raftlog::Event;
 

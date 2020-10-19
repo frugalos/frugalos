@@ -1,7 +1,7 @@
+use crate::client::storage::{GetFragment, MaybeFragment, StorageClient};
 use cannyls::deadline::Deadline;
 use cannyls::device::DeviceHandle;
 use cannyls::lump::LumpHeader;
-use client::storage::{GetFragment, MaybeFragment, StorageClient};
 use frugalos_raft::NodeId;
 use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
@@ -9,8 +9,8 @@ use prometrics::metrics::{Counter, Histogram, MetricBuilder};
 use slog::Logger;
 use std::time::Instant;
 
-use util::{into_box_future, BoxFuture, Phase3};
-use {config, Error};
+use crate::util::{into_box_future, BoxFuture, Phase3};
+use crate::{config, Error};
 
 #[derive(Clone)]
 pub(crate) struct RepairMetrics {
@@ -219,7 +219,7 @@ impl Future for RepairContent {
                     return Ok(Async::Ready(()));
                 }
                 Phase3::B(MaybeFragment::Fragment(mut content)) => {
-                    ::client::storage::append_checksum(&mut content); // TODO
+                    crate::client::storage::append_checksum(&mut content); // TODO
 
                     let lump_id = config::make_lump_id(&self.node_id, self.version);
                     debug!(

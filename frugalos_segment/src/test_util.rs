@@ -1,32 +1,26 @@
 #[cfg(test)]
 pub mod tests {
+    use crate::client::Client;
+    use crate::config::*;
+    use crate::{Error, ErrorKind, Result};
+    use crate::{Service, ServiceHandle};
     use cannyls::device::{DeviceBuilder, DeviceHandle};
     use cannyls::nvm::MemoryNvm;
     use cannyls::storage::StorageBuilder;
-    use cannyls_rpc;
     use cannyls_rpc::DeviceRegistryHandle;
-    use client::Client;
-    use config::*;
     use fibers::executor::Executor;
     use fibers::executor::ThreadPoolExecutor;
-    use fibers_global;
     use fibers_rpc::client::{ClientService, ClientServiceHandle};
     use fibers_rpc::server::ServerBuilder;
-    use frugalos_core;
-    use frugalos_mds;
     use frugalos_raft::{self, LocalNodeId, NodeId};
-    use futures;
     use futures::future::Future;
     use futures::Async;
     use libfrugalos::entity::device::DeviceId;
     use raftlog::cluster::ClusterMembers;
-    use slog;
     use std::net::SocketAddr;
     use std::thread;
     use std::time::Duration;
     use trackable::error::ErrorKindExt;
-    use {Error, ErrorKind, Result};
-    use {Service, ServiceHandle};
 
     /// Waits for the completion of the given future.
     pub fn wait<F: Future<Error = Error>>(mut f: F) -> Result<F::Item> {

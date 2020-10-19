@@ -1,14 +1,10 @@
-use cannyls;
 use cannyls::device::{Device, DeviceBuilder, DeviceHandle};
 use cannyls::lump::LumpId;
 use cannyls::nvm::MemoryNvm;
-use fibers_global;
-use fibers_rpc;
 use fibers_rpc::client::{ClientService, ClientServiceHandle};
 use fibers_rpc::server::ServerBuilder;
 use futures::{Async, Future, Stream};
 use prometrics::metrics::MetricBuilder;
-use raftlog;
 use raftlog::cluster::ClusterMembers;
 use raftlog::election::Role;
 use raftlog::log::{LogEntry, LogIndex};
@@ -21,11 +17,11 @@ use std::time::Duration;
 use trackable::result::TestResult;
 use trackable::Trackable;
 
-use node::{LocalNodeId, NodeId};
-use raft_io::RaftIo;
-use rpc::{Mailer, Service, ServiceHandle};
-use storage::{Handle, Storage, StorageMetrics};
-use timer::Timer;
+use crate::node::{LocalNodeId, NodeId};
+use crate::raft_io::RaftIo;
+use crate::rpc::{Mailer, Service, ServiceHandle};
+use crate::storage::{Handle, Storage, StorageMetrics};
+use crate::timer::Timer;
 
 pub type NodeIndex = usize;
 

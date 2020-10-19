@@ -11,9 +11,9 @@ use libfrugalos::entity::object::ObjectVersion;
 use prometrics::metrics::{Counter, Gauge, MetricBuilder};
 use slog::Logger;
 
+use crate::Error;
+use crate::{config, ErrorKind};
 use trackable::error::ErrorKindExt;
-use Error;
-use {config, ErrorKind};
 
 #[derive(Clone)]
 pub(crate) struct SegmentGcMetrics {
@@ -261,20 +261,20 @@ impl ObjectTable {
 
 #[cfg(test)]
 mod tests {
+    use crate::segment_gc::{
+        make_create_object_table, make_list_and_delete_content, ObjectTable, SegmentGc,
+    };
+    use crate::test_util::tests::{setup_system, wait, System};
     use cannyls::deadline::Deadline;
     use cannyls::device::DeviceHandle;
     use cannyls::lump::LumpId;
     use futures::future::Future;
     use libfrugalos::entity::object::ObjectVersion;
-    use segment_gc::{
-        make_create_object_table, make_list_and_delete_content, ObjectTable, SegmentGc,
-    };
     use slog::{Discard, Logger};
     use std::{thread, time};
-    use test_util::tests::{setup_system, wait, System};
     use trackable::result::TestResult;
 
-    use config::make_lump_id;
+    use crate::config::make_lump_id;
     use fibers::executor::Executor;
     use prometrics::metrics::{Counter, Gauge};
 

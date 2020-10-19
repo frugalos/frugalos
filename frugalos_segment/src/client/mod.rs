@@ -1,3 +1,4 @@
+use crate::SegmentStatistics;
 use cannyls::deadline::Deadline;
 use cannyls::lump::LumpId;
 use cannyls::storage::StorageUsage;
@@ -15,14 +16,13 @@ use rustracing_jaeger::span::SpanHandle;
 use slog::Logger;
 use std::mem;
 use std::ops::Range;
-use SegmentStatistics;
 
 use self::ec::ErasureCoder;
 use self::mds::MdsClient;
 use self::storage::StorageClient;
-use config::ClientConfig;
+use crate::config::ClientConfig;
+use crate::{Error, ErrorKind, ObjectValue, Result};
 use trackable::error::ErrorKindExt;
-use {Error, ErrorKind, ObjectValue, Result};
 
 mod dispersed_storage;
 pub mod ec; // to re-export in frugalos_segment/src/lib.rs
@@ -374,12 +374,12 @@ impl Drop for PutFailureTracking {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ClusterMember;
+    use crate::test_util::tests::{setup_system, wait, System};
     use cannyls_rpc::DeviceId;
-    use config::ClusterMember;
     use fibers::executor::Executor;
     use rustracing_jaeger::span::Span;
     use std::{thread, time};
-    use test_util::tests::{setup_system, wait, System};
     use trackable::result::TestResult;
 
     #[test]

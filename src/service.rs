@@ -1,6 +1,5 @@
 use atomic_immut::AtomicImmut;
 use byteorder::{BigEndian, ByteOrder};
-use cannyls;
 use cannyls::deadline::Deadline;
 use cannyls::device::{Device, DeviceHandle};
 use cannyls::lump::LumpId;
@@ -10,13 +9,10 @@ use fibers::sync::oneshot;
 use fibers::Spawn;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
-use fibers_tasque;
 use fibers_tasque::TaskQueueExt;
 use frugalos_config::{DeviceGroup, Event as ConfigEvent, Service as ConfigService};
 use frugalos_core::tracer::ThreadLocalTracer;
-use frugalos_mds;
 use frugalos_raft::{NodeId, Service as RaftService};
-use frugalos_segment;
 use frugalos_segment::FrugalosSegmentConfig;
 use frugalos_segment::Service as SegmentService;
 use futures::future::Fuse;
@@ -34,11 +30,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
-use bucket::Bucket;
-use client::FrugalosClient;
+use crate::bucket::Bucket;
+use crate::client::FrugalosClient;
+use crate::recovery::RecoveryRequest;
+use crate::{DeviceBuildingConfig, Error, ErrorKind, FrugalosServiceConfig, Result};
 use frugalos_core::lump::{LUMP_ID_NAMESPACE_OBJECT, LUMP_ID_NAMESPACE_RAFTLOG};
-use recovery::RecoveryRequest;
-use {DeviceBuildingConfig, Error, ErrorKind, FrugalosServiceConfig, Result};
 
 pub struct PhysicalDevice {
     id: DeviceId,
@@ -650,8 +646,8 @@ fn make_truncate_bucket_range(namespace: u8, bucket_seqno: u32) -> Range<LumpId>
 
 #[cfg(test)]
 mod tests {
+    use crate::service;
     use cannyls::lump::LumpId;
-    use service;
     use std::ops::Range;
 
     #[allow(clippy::inconsistent_digit_grouping)]

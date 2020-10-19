@@ -6,7 +6,7 @@ use libfrugalos::time::Seconds;
 use patricia_tree::PatriciaMap;
 use std::collections::HashMap;
 
-use {Error, Result};
+use crate::{Error, Result};
 
 /// ノードの状態を管理するための状態機械.
 #[derive(Debug, Clone, Default)]

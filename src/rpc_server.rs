@@ -1,18 +1,16 @@
-use cannyls;
 use fibers_rpc::server::{HandleCall, Reply, ServerBuilder as RpcServerBuilder};
 use frugalos_core::tracer::{SpanExt, ThreadLocalTracer};
 use futures::Future;
-use libfrugalos;
 use libfrugalos::schema::frugalos as rpc;
 use rustracing::tag::{StdTag, Tag};
 use rustracing_jaeger::span::Span;
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
-use client::FrugalosClient;
-use {Error, ErrorKind};
+use crate::client::FrugalosClient;
+use crate::{Error, ErrorKind};
 
-use daemon::FrugalosDaemonHandle;
+use crate::daemon::FrugalosDaemonHandle;
 
 #[derive(Debug, Clone)]
 pub struct RpcServer {
@@ -250,9 +248,9 @@ fn into_rpc_error(e: Error) -> libfrugalos::Error {
 }
 
 // TODO
-fn into_rpc_error2(e: ::Error) -> libfrugalos::Error {
+fn into_rpc_error2(e: crate::Error) -> libfrugalos::Error {
     let kind = match *e.kind() {
-        ::ErrorKind::InvalidInput => libfrugalos::ErrorKind::InvalidInput,
+        crate::ErrorKind::InvalidInput => libfrugalos::ErrorKind::InvalidInput,
         _ => libfrugalos::ErrorKind::Other,
     };
     kind.takes_over(e).into()

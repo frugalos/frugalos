@@ -6,8 +6,8 @@ use raftlog::message::{
 };
 
 use super::service::ServiceHandle;
-use rpc;
-use NodeId;
+use crate::rpc;
+use crate::NodeId;
 
 #[derive(Debug, Clone)]
 pub struct RpcServer {

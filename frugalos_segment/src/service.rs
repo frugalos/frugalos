@@ -22,12 +22,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
-use client::storage::StorageClient;
-use rpc_server::RpcServer;
-use segment_gc_manager::{GcTask, SegmentGcManager};
-use synchronizer::Synchronizer;
-use util::UnitFuture;
-use {Client, Error, ErrorKind, Result};
+use crate::client::storage::StorageClient;
+use crate::rpc_server::RpcServer;
+use crate::segment_gc_manager::{GcTask, SegmentGcManager};
+use crate::synchronizer::Synchronizer;
+use crate::util::UnitFuture;
+use crate::{Client, Error, ErrorKind, Result};
 
 type Reply<T> = Monitored<T, Error>;
 

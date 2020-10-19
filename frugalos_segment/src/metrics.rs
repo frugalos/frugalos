@@ -2,7 +2,7 @@
 
 use prometrics::metrics::{Counter, CounterBuilder};
 
-use Result;
+use crate::Result;
 
 #[derive(Debug, Clone)]
 pub struct PutAllMetrics {

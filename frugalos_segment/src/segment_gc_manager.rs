@@ -2,7 +2,7 @@ use futures::{Async, Future, Poll};
 use prometrics::metrics::{Gauge, MetricBuilder};
 use slog::Logger;
 
-use util::UnitFuture;
+use crate::util::UnitFuture;
 
 /// 実行開始と停止ができる型
 pub(crate) trait GcTask {

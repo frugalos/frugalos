@@ -4,8 +4,8 @@ use rendezvous_hash::{Capacity, IdNode, WeightedNode};
 use rendezvous_hash::{DefaultNodeHasher, RendezvousNodes};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use machine::{DeviceGroup, Segment, SegmentTable};
-use {ErrorKind, Result};
+use crate::machine::{DeviceGroup, Segment, SegmentTable};
+use crate::{ErrorKind, Result};
 
 type BucketNo = u32;
 type DeviceNo = u32;
@@ -313,11 +313,11 @@ struct DeviceState<'a> {
 #[cfg(test)]
 mod tests {
     use super::Result;
-    use builder::SegmentTableBuilder;
+    use crate::builder::SegmentTableBuilder;
+    use crate::test_util::build_device_tree;
     use libfrugalos::entity::bucket::{Bucket, DispersedBucket};
     use libfrugalos::entity::device::{Device, DeviceId, SegmentAllocationPolicy};
     use std::collections::HashMap;
-    use test_util::build_device_tree;
 
     fn get_bucket_8_4(segment_count: u32, root_device_id: DeviceId) -> Bucket {
         Bucket::Dispersed(DispersedBucket {

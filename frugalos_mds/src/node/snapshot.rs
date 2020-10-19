@@ -4,7 +4,7 @@ use std::iter;
 use std::ops::Range;
 use trackable::error::ErrorKindExt;
 
-use {ErrorKind, Result};
+use crate::{ErrorKind, Result};
 
 /// The length of a seed.
 const SEED_LENGTH: usize = 32;

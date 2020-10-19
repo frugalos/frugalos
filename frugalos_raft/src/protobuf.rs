@@ -1,6 +1,5 @@
 //! https://github.com/frugalos/frugalos_raft/blob/master/schema/raft.proto
 #![allow(missing_docs)]
-use adler32;
 use bytecodec::{self, Decode, DecodeExt, EncodeExt, SizedEncode};
 use byteorder::{BigEndian, ByteOrder};
 use protobuf_codec::field::num::{F1, F2};
@@ -8,7 +7,6 @@ use protobuf_codec::scalar::{Uint64Decoder, Uint64Encoder};
 use raftlog::election::Ballot;
 use raftlog::log::{LogEntry, LogPrefix};
 use raftlog::{self, Result};
-use raftlog_protobuf;
 use std::ops::Range;
 use trackable::error::ErrorKindExt;
 

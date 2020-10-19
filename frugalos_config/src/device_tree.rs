@@ -7,7 +7,7 @@ use libfrugalos::entity::device::{Device, DeviceId, DeviceKind};
 use std::collections::{BTreeMap, HashSet};
 use trackable::error::ErrorKindExt;
 
-use {Error, ErrorKind, Result};
+use crate::{Error, ErrorKind, Result};
 
 /// 新しく追加されるデバイスの検証を行う
 pub fn verify_new_device(device: &Device, devices: &BTreeMap<DeviceId, Device>) -> Result<()> {
@@ -66,13 +66,13 @@ pub fn verify_device_tree_dfs(
 #[cfg(test)]
 mod tests {
     use super::Result;
-    use device_tree::{verify_device_tree, verify_new_device};
+    use crate::device_tree::{verify_device_tree, verify_new_device};
+    use crate::test_util::build_device_tree;
     use libfrugalos::entity::device::{
         Device, DeviceId, FileDevice, SegmentAllocationPolicy, VirtualDevice, Weight,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::PathBuf;
-    use test_util::build_device_tree;
 
     fn create_file_device(id: DeviceId) -> Device {
         Device::File(FileDevice {

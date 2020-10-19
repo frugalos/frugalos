@@ -27,13 +27,13 @@ use super::metrics::make_histogram;
 use super::snapshot::SnapshotThreshold;
 use super::timeout::CountDownTimeout;
 use super::{Event, NodeHandle, Proposal, ProposalMetrics, Reply, Request, Seconds};
-use codec;
-use config::FrugalosMdsConfig;
-use machine::{Command, Machine};
-use node::Event::{StartSegmentGc, StopSegmentGc};
-use protobuf;
+use crate::codec;
+use crate::config::FrugalosMdsConfig;
+use crate::machine::{Command, Machine};
+use crate::node::Event::{StartSegmentGc, StopSegmentGc};
+use crate::protobuf;
+use crate::{Error, ErrorKind, Result, ServiceHandle};
 use std::cmp::Ordering;
-use {Error, ErrorKind, Result, ServiceHandle};
 
 type RaftEvent = raftlog::Event;
 

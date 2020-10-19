@@ -1,9 +1,9 @@
 // FIXME: protobufモジュールと統合(?)
 use bytecodec::{DecodeExt, EncodeExt};
 
-use machine::Machine;
-use protobuf;
-use {ErrorKind, Result};
+use crate::machine::Machine;
+use crate::protobuf;
+use crate::{ErrorKind, Result};
 
 pub fn encode_machine(machine: &Machine) -> Result<Vec<u8>> {
     let snapshot = machine.to_snapshot();

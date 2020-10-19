@@ -32,10 +32,10 @@ macro_rules! dump {
 }
 
 pub use self::error::{Error, ErrorKind};
-pub use config::FrugalosConfigConfig;
-pub use machine::DeviceGroup;
-pub use rpc::RpcServer;
-pub use service::{Event, Service, ServiceHandle};
+pub use crate::config::FrugalosConfigConfig;
+pub use crate::machine::DeviceGroup;
+pub use crate::rpc::RpcServer;
+pub use crate::service::{Event, Service, ServiceHandle};
 
 pub mod cluster;
 

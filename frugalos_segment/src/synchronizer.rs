@@ -7,12 +7,12 @@ use libfrugalos::repair::RepairIdleness;
 use prometrics::metrics::MetricBuilder;
 use slog::Logger;
 
-use client::storage::StorageClient;
-use queue_executor::general_queue_executor::GeneralQueueExecutor;
-use queue_executor::repair_queue_executor::RepairQueueExecutor;
-use segment_gc::{SegmentGc, SegmentGcMetrics};
-use service::ServiceHandle;
-use Error;
+use crate::client::storage::StorageClient;
+use crate::queue_executor::general_queue_executor::GeneralQueueExecutor;
+use crate::queue_executor::repair_queue_executor::RepairQueueExecutor;
+use crate::segment_gc::{SegmentGc, SegmentGcMetrics};
+use crate::service::ServiceHandle;
+use crate::Error;
 
 // TODO: 起動直後の確認は`device.list()`の結果を使った方が効率的
 pub struct Synchronizer {

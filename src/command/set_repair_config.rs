@@ -8,9 +8,9 @@ use sloggers::LoggerBuilder;
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
-use command::rpc_addr;
-use command::{warn_if_there_are_unknown_fields, FrugalosSubcommand};
-use {Error, ErrorKind};
+use crate::command::rpc_addr;
+use crate::command::{warn_if_there_are_unknown_fields, FrugalosSubcommand};
+use crate::{Error, ErrorKind};
 
 /// frugalos set-repair-config
 pub struct SetRepairConfigCommand;
@@ -117,7 +117,7 @@ mod tests {
     use std::time::Duration;
 
     use super::SetRepairConfigCommand;
-    use command::FrugalosSubcommand;
+    use crate::command::FrugalosSubcommand;
 
     #[test]
     fn get_repair_config_from_matches_work_correctly() {

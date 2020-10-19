@@ -12,8 +12,8 @@ use std::ops::Range;
 use std::time::Instant;
 
 use super::{Reply, Request};
-use node::{StartSegmentGcReply, StopSegmentGcReply};
-use Error;
+use crate::node::{StartSegmentGcReply, StopSegmentGcReply};
+use crate::Error;
 
 macro_rules! future_try {
     ($e:expr) => {
@@ -236,7 +236,6 @@ mod tests {
     use super::*;
     use fibers::sync::mpsc;
     use fibers::sync::mpsc::Receiver;
-    use fibers_global;
     use futures::{Async, Future, Stream};
     use std::thread;
     use std::time::Duration;
