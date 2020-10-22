@@ -296,7 +296,13 @@ impl FrugalosDaemonHandle {
             reply: reply_tx,
         };
         let _ = self.command_tx.send(command);
-        StopDevice(reply_rx)
+        reply_rx.map_err(|e| {
+            e.unwrap_or_else(|| {
+                ErrorKind::Other
+                    .cause("Monitoring channel disconnected")
+                    .into()
+            })
+        })
     }
 
     /// デバイスの状態を要求する
@@ -306,14 +312,19 @@ impl FrugalosDaemonHandle {
         device_id: DeviceId,
     ) -> impl Future<Item = bool, Error = Error> {
         let (reply_tx, reply_rx) = oneshot::monitor();
-        // TODO
         let command = DaemonCommand::GetDeviceState {
             device_seqno,
             device_id,
             reply: reply_tx,
         };
         let _ = self.command_tx.send(command);
-        StopDevice(reply_rx)
+        reply_rx.map_err(|e| {
+            e.unwrap_or_else(|| {
+                ErrorKind::Other
+                    .cause("Monitoring channel disconnected")
+                    .into()
+            })
+        })
     }
 }
 
@@ -342,22 +353,6 @@ enum DaemonCommand {
 pub(crate) struct StopDaemon(oneshot::Monitor<(), Error>);
 impl Future for StopDaemon {
     type Item = ();
-    type Error = Error;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        track!(self
-            .0
-            .poll()
-            .map_err(|e| e.unwrap_or_else(|| ErrorKind::Other
-                .cause("Monitoring channel disconnected")
-                .into())))
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct StopDevice(oneshot::Monitor<bool, Error>);
-impl Future for StopDevice {
-    type Item = bool;
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {

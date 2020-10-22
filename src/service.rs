@@ -124,7 +124,7 @@ where
     pub fn stop(&mut self) {
         self.frugalos_segment_service.stop();
     }
-    /// 単に止めるためだけなら device_seqno は不要だが、ログ出力のために受け取っておく。
+    // 単に止めるためだけなら device_seqno は不要だが、ログ出力のために受け取っておく。
     pub fn stop_device(&mut self, device_seqno: u32, device_id: &DeviceId) -> bool {
         let existed = self
             .frugalos_segment_service
@@ -147,7 +147,7 @@ where
         );
         false
     }
-    /// 単にデバイスのデータを取得するだけなら device_seqno は不要だが、ログ出力のために受け取っておく。
+    // 単にデバイスのデータを取得するだけなら device_seqno は不要だが、ログ出力のために受け取っておく。
     pub fn get_device_state(&mut self, device_seqno: u32, device_id: &DeviceId) -> bool {
         info!(
             self.logger,
