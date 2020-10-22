@@ -21,6 +21,7 @@ use std::process::Command;
 use trackable::error::ErrorKindExt;
 
 use crate::config_server::ConfigServer;
+use crate::device::DeviceState;
 use crate::recovery::prepare_recovery;
 use crate::rpc_server::RpcServer;
 use crate::server::{spawn_report_spans_thread, Server};
@@ -310,7 +311,7 @@ impl FrugalosDaemonHandle {
         &self,
         device_seqno: u32,
         device_id: DeviceId,
-    ) -> impl Future<Item = bool, Error = Error> {
+    ) -> impl Future<Item = DeviceState, Error = Error> {
         let (reply_tx, reply_rx) = oneshot::monitor();
         let command = DaemonCommand::GetDeviceState {
             device_seqno,
@@ -345,7 +346,7 @@ enum DaemonCommand {
     GetDeviceState {
         device_seqno: u32,
         device_id: DeviceId,
-        reply: oneshot::Monitored<bool, Error>,
+        reply: oneshot::Monitored<DeviceState, Error>,
     },
 }
 

@@ -14,6 +14,7 @@ use std::net::SocketAddr;
 use url::Url;
 
 use crate::daemon::FrugalosDaemonHandle;
+use crate::device::{DeviceState, RunningState};
 use crate::http::{make_json_response, not_found, HttpResult};
 use crate::{Error, Result};
 
@@ -210,18 +211,6 @@ impl HandleRequest for GetDevice {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct DeviceState {
-    state: RunningState,
-}
-
-#[derive(Serialize, Deserialize, Copy, Clone)]
-#[serde(rename_all = "lowercase")]
-enum RunningState {
-    Started,
-    Stopped,
-}
-
 struct PutDeviceState(ConfigServer);
 impl HandleRequest for PutDeviceState {
     const METHOD: &'static str = "PUT";
@@ -311,20 +300,9 @@ impl HandleRequest for GetDeviceState {
                 Ok(device) => {
                     let device_seqno = device.seqno();
                     let device_id = DeviceId::new(device.id());
-                    let future = daemon_handle.get_device_state(device_seqno, device_id).map(
-                        move |result| {
-                            let device_state = if result {
-                                DeviceState {
-                                    state: RunningState::Started,
-                                }
-                            } else {
-                                DeviceState {
-                                    state: RunningState::Stopped,
-                                }
-                            };
-                            (status, Ok(device_state))
-                        },
-                    );
+                    let future = daemon_handle
+                        .get_device_state(device_seqno, device_id)
+                        .map(move |device_state| (status, Ok(device_state)));
                     Either::B(future)
                 }
             })
