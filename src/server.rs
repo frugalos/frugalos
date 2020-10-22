@@ -10,6 +10,7 @@ use frugalos_core::tracer::ThreadLocalTracer;
 use frugalos_segment::SegmentStatistics;
 use futures::future::Either;
 use futures::{self, Future, Stream};
+use futures03::TryFutureExt;
 use httpcodec::{BodyDecoder, BodyEncoder, HeadBodyEncoder, Header};
 use libfrugalos::consistency::ReadConsistency;
 use libfrugalos::entity::bucket::BucketKind;
@@ -1139,7 +1140,11 @@ impl HandleRequest for CurrentConfigurations {
 
     fn handle_request(&self, _req: Req<Self::ReqBody>) -> Self::Reply {
         let response = make_json_response(Status::Ok, Ok(self.0.clone()));
-        Box::new(futures::finished(response))
+        // let fut = async { Ok(response) };
+        let fut = futures03::future::ok::<_, _>(response);
+        let fut = fut.compat();
+
+        Box::new(fut)
     }
 }
 
