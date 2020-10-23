@@ -64,6 +64,7 @@ mod bucket;
 mod client;
 mod codec;
 mod config_server;
+mod device;
 mod error;
 mod http;
 mod many_objects;

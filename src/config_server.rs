@@ -1,7 +1,9 @@
 use bytecodec::json_codec::{JsonDecoder, JsonEncoder};
 use bytecodec::null::NullDecoder;
+use cannyls_rpc::DeviceId;
 use fibers_http_server::{HandleRequest, Reply, Req, ServerBuilder as HttpServerBuilder, Status};
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
+use futures::future::Either;
 use futures::Future;
 use httpcodec::{BodyDecoder, BodyEncoder};
 use libfrugalos::client::config::Client as ConfigRpcClient;
@@ -11,6 +13,8 @@ use libfrugalos::entity::server::{Server, ServerSummary};
 use std::net::SocketAddr;
 use url::Url;
 
+use crate::daemon::FrugalosDaemonHandle;
+use crate::device::{DeviceState, RunningState};
 use crate::http::{make_json_response, not_found, HttpResult};
 use crate::{Error, Result};
 
@@ -18,12 +22,18 @@ use crate::{Error, Result};
 pub struct ConfigServer {
     rpc_service: RpcServiceHandle,
     local_addr: SocketAddr,
+    daemon_handle: FrugalosDaemonHandle,
 }
 impl ConfigServer {
-    pub fn new(rpc_service: RpcServiceHandle, local_addr: SocketAddr) -> Self {
+    pub fn new(
+        rpc_service: RpcServiceHandle,
+        local_addr: SocketAddr,
+        daemon_handle: FrugalosDaemonHandle,
+    ) -> Self {
         ConfigServer {
             rpc_service,
             local_addr,
+            daemon_handle,
         }
     }
     pub fn register(self, builder: &mut HttpServerBuilder) -> Result<()> {
@@ -34,6 +44,8 @@ impl ConfigServer {
         track!(builder.add_handler(ListDevices(self.clone())))?;
         track!(builder.add_handler(PutDevice(self.clone())))?;
         track!(builder.add_handler(GetDevice(self.clone())))?;
+        track!(builder.add_handler(GetDeviceState(self.clone())))?;
+        track!(builder.add_handler(PutDeviceState(self.clone())))?;
 
         track!(builder.add_handler(ListBuckets(self.clone())))?;
         track!(builder.add_handler(PutBucket(self.clone())))?;
@@ -195,6 +207,113 @@ impl HandleRequest for GetDevice {
             };
             Ok(make_json_response(status, body))
         });
+        Box::new(future)
+    }
+}
+
+struct PutDeviceState(ConfigServer);
+impl HandleRequest for PutDeviceState {
+    const METHOD: &'static str = "PUT";
+    const PATH: &'static str = "/v1/devices/*/state";
+
+    type ReqBody = DeviceState;
+    type ResBody = HttpResult<DeviceState>;
+    type Decoder = BodyDecoder<JsonDecoder<Self::ReqBody>>;
+    type Encoder = BodyEncoder<JsonEncoder<Self::ResBody>>;
+    type Reply = Reply<Self::ResBody>;
+
+    fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
+        let device_id = get_id(&req.url());
+        let device_state = req.into_body();
+        let client = self.0.client();
+        let daemon_handle = self.0.daemon_handle.clone();
+        let future = client
+            .get_device(device_id)
+            .then(move |result| {
+                let (status, body) = match track!(result) {
+                    Err(e) => (Status::InternalServerError, Err(Error::from(e))),
+                    Ok(None) => (Status::NotFound, Err(track!(not_found()))),
+                    Ok(Some(v)) => (Status::Ok, Ok(v)),
+                };
+                futures::future::ok((status, body))
+            })
+            .and_then(move |(status, body)| match (body, device_state.state) {
+                (Err(e), _) => Either::A(futures::future::ok((status, Err(e)))),
+                (Ok(_device), RunningState::Started) => {
+                    Either::A(futures::future::ok((status, Ok(device_state))))
+                }
+                (Ok(device), RunningState::Stopped) => {
+                    let device_seqno = device.seqno();
+                    let device_id = DeviceId::new(device.id());
+                    let future =
+                        daemon_handle
+                            .stop_device(device_seqno, device_id)
+                            .map(move |result| {
+                                if result {
+                                    (status, Ok(device_state))
+                                } else {
+                                    (Status::NotFound, Err(track!(not_found())))
+                                }
+                            });
+                    Either::B(future)
+                }
+            })
+            .then(move |result| {
+                let result = match result {
+                    Ok((status, body)) => make_json_response(status, body),
+                    Err(e) => make_json_response(Status::InternalServerError, Err(e)),
+                };
+                Ok(result)
+            });
+        Box::new(future)
+    }
+}
+
+struct GetDeviceState(ConfigServer);
+impl HandleRequest for GetDeviceState {
+    const METHOD: &'static str = "GET";
+    const PATH: &'static str = "/v1/devices/*/state";
+
+    type ReqBody = ();
+    type ResBody = HttpResult<DeviceState>;
+    type Decoder = BodyDecoder<NullDecoder>;
+    type Encoder = BodyEncoder<JsonEncoder<Self::ResBody>>;
+    type Reply = Reply<Self::ResBody>;
+
+    fn handle_request(&self, req: Req<Self::ReqBody>) -> Self::Reply {
+        let device_id = get_id(&req.url());
+        let client = self.0.client();
+        let daemon_handle = self.0.daemon_handle.clone();
+        // TODO
+        let future = client
+            .get_device(device_id)
+            .then(move |result| {
+                let (status, body) = match track!(result) {
+                    Err(e) => (Status::InternalServerError, Err(Error::from(e))),
+                    Ok(None) => (Status::NotFound, Err(track!(not_found()))),
+                    Ok(Some(v)) => (Status::Ok, Ok(v)),
+                };
+                futures::future::ok((status, body))
+            })
+            .and_then(move |(status, body)| match body {
+                Err(e) => Either::A(futures::future::ok((status, Err(e)))),
+                Ok(device) => {
+                    let device_seqno = device.seqno();
+                    let device_id = DeviceId::new(device.id());
+                    let future = daemon_handle
+                        .get_device_state(device_seqno, device_id)
+                        .map(move |device_state| (status, Ok(device_state)));
+                    Either::B(future)
+                }
+            })
+            .then(move |result| {
+                let result = match result {
+                    Ok((status, body)) => make_json_response(status, body),
+                    Err(e) => make_json_response(Status::InternalServerError, Err(e)),
+                };
+                Ok(result)
+            });
+
         Box::new(future)
     }
 }

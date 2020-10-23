@@ -19,7 +19,7 @@ atomic_immut = "0.1"
 bytecodec = { version = "0.4", features = ["json_codec"] }
 byteorder = { version = "1", features = ["i128"] }
 cannyls = "0.10"
-cannyls_rpc = "0.3"
+cannyls_rpc = "0.3.1"
 clap = "2"
 fibers = "0.1"
 fibers_http_server = "0.1.12"
