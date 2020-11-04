@@ -301,7 +301,7 @@ dependencies = [
 
 [[package]]
 name = "frugalos"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "atomic_immut",
  "bytecodec",
@@ -343,7 +343,7 @@ dependencies = [
 
 [[package]]
 name = "frugalos_config"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "bytecodec",
  "byteorder",
@@ -366,7 +366,7 @@ dependencies = [
 
 [[package]]
 name = "frugalos_core"
-version = "1.0.0"
+version = "1.2.0"
 dependencies = [
  "rustracing",
  "rustracing_jaeger",
@@ -378,7 +378,7 @@ dependencies = [
 
 [[package]]
 name = "frugalos_mds"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "atomic_immut",
  "bytecodec",
@@ -407,7 +407,7 @@ dependencies = [
 
 [[package]]
 name = "frugalos_raft"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "adler32",
  "atomic_immut",
@@ -431,7 +431,7 @@ dependencies = [
 
 [[package]]
 name = "frugalos_segment"
-version = "1.1.2"
+version = "1.2.0"
 dependencies = [
  "adler32",
  "byteorder",
