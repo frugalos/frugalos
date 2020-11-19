@@ -52,7 +52,7 @@ macro_rules! dump {
     }
 }
 
-pub use error::{Error, ErrorKind};
+pub use crate::error::{Error, ErrorKind};
 
 pub mod command;
 pub mod daemon;
@@ -64,6 +64,7 @@ mod bucket;
 mod client;
 mod codec;
 mod config_server;
+mod device;
 mod error;
 mod http;
 mod many_objects;

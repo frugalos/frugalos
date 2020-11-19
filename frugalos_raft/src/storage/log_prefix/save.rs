@@ -12,8 +12,8 @@ use std::time::Instant;
 use super::super::{into_box_future, BoxFuture, Event, Handle, Storage, StorageMetrics};
 use super::delete::{DeleteOldLogEntries, DeleteOldLogPrefixBytes};
 use super::load::LoadLogPrefixIndex;
-use protobuf;
-use util::Phase5;
+use crate::protobuf;
+use crate::util::Phase5;
 
 fn max_lump_data_size() -> usize {
     env::var("RAFT_IO_MAX_LUMP_DATA_SIZE")

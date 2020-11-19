@@ -1,10 +1,4 @@
-use cannyls;
-use ecpool;
-use frugalos_mds;
-use libfrugalos;
 use libfrugalos::entity::object::ObjectVersion;
-use prometrics;
-use raftlog;
 use std::io;
 use std::sync::mpsc::RecvError;
 use trackable::error::TrackableError;

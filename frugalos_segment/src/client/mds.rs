@@ -90,8 +90,8 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use trackable::error::ErrorKindExt;
 
-use config::{ClusterConfig, MdsClientConfig, MdsRequestPolicy};
-use {Error, ErrorKind, ObjectValue, Result};
+use crate::config::{ClusterConfig, MdsClientConfig, MdsRequestPolicy};
+use crate::{Error, ErrorKind, ObjectValue, Result};
 
 // TODO HEAD/GET 以外の参照系リクエストで `ReadConsistency` をサポートする
 #[derive(Debug, Clone)]

@@ -124,7 +124,7 @@ mod tests {
     use std::ops::Range;
     use trackable::result::TestResult;
 
-    use test_util::{self, NodeIndex, System};
+    use crate::test_util::{self, NodeIndex, System};
 
     const NODE_SIZE: usize = 3;
 

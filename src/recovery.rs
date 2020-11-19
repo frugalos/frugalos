@@ -10,7 +10,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use {Error, Result};
+use crate::{Error, Result};
 
 // 未完了の設定ファイル名
 // NOTE: 設定ファイルに今後設定値を記述していけるよう YAML にしておく。

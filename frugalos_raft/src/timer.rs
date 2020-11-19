@@ -1,4 +1,3 @@
-use fibers;
 use futures::{Future, Poll};
 use raftlog::election::Role;
 use raftlog::{Error as RaftError, ErrorKind as RaftErrorKind};

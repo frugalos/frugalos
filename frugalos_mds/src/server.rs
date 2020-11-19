@@ -10,9 +10,9 @@ use rustracing_jaeger::span::Span;
 use std::time::Instant;
 use trackable::error::ErrorKindExt;
 
-use error::to_rpc_error;
-use node::NodeHandle;
-use {Error, ErrorKind, Result, ServiceHandle};
+use crate::error::to_rpc_error;
+use crate::node::NodeHandle;
+use crate::{Error, ErrorKind, Result, ServiceHandle};
 
 macro_rules! rpc_try {
     ($expr:expr) => {

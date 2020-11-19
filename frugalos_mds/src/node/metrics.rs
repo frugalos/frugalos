@@ -2,7 +2,7 @@
 
 use prometrics::metrics::{Histogram, HistogramBuilder};
 
-use {Error, Result};
+use crate::{Error, Result};
 
 /// Creates a histogram, which can be used as default.
 pub fn make_histogram(builder: &mut HistogramBuilder) -> Result<Histogram> {

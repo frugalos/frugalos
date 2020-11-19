@@ -10,13 +10,13 @@ use libfrugalos::entity::object::{FragmentsSummary, ObjectVersion};
 use std::sync::Arc;
 use trackable::error::ErrorKindExt;
 
-use client::storage::{append_checksum, verify_and_remove_checksum, PutAll};
-use config::{
+use crate::client::storage::{append_checksum, verify_and_remove_checksum, PutAll};
+use crate::config::{
     CannyLsClientConfig, ClusterConfig, ClusterMember, ReplicatedClientConfig, ReplicatedConfig,
 };
-use metrics::ReplicatedClientMetrics;
-use util::BoxFuture;
-use {Error, ErrorKind};
+use crate::metrics::ReplicatedClientMetrics;
+use crate::util::BoxFuture;
+use crate::{Error, ErrorKind};
 
 #[derive(Debug, Clone)]
 pub struct ReplicatedClient {

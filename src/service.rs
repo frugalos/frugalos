@@ -1,6 +1,5 @@
 use atomic_immut::AtomicImmut;
 use byteorder::{BigEndian, ByteOrder};
-use cannyls;
 use cannyls::deadline::Deadline;
 use cannyls::device::{Device, DeviceHandle};
 use cannyls::lump::LumpId;
@@ -10,13 +9,10 @@ use fibers::sync::oneshot;
 use fibers::Spawn;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
-use fibers_tasque;
 use fibers_tasque::TaskQueueExt;
 use frugalos_config::{DeviceGroup, Event as ConfigEvent, Service as ConfigService};
 use frugalos_core::tracer::ThreadLocalTracer;
-use frugalos_mds;
 use frugalos_raft::{NodeId, Service as RaftService};
-use frugalos_segment;
 use frugalos_segment::FrugalosSegmentConfig;
 use frugalos_segment::Service as SegmentService;
 use futures::future::Fuse;
@@ -34,11 +30,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
-use bucket::Bucket;
-use client::FrugalosClient;
+use crate::bucket::Bucket;
+use crate::client::FrugalosClient;
+use crate::device::{DeviceState, RunningState};
+use crate::recovery::RecoveryRequest;
+use crate::{DeviceBuildingConfig, Error, ErrorKind, FrugalosServiceConfig, Result};
 use frugalos_core::lump::{LUMP_ID_NAMESPACE_OBJECT, LUMP_ID_NAMESPACE_RAFTLOG};
-use recovery::RecoveryRequest;
-use {DeviceBuildingConfig, Error, ErrorKind, FrugalosServiceConfig, Result};
 
 pub struct PhysicalDevice {
     id: DeviceId,
@@ -127,6 +124,50 @@ where
     }
     pub fn stop(&mut self) {
         self.frugalos_segment_service.stop();
+    }
+    // 単に止めるためだけなら device_seqno は不要だが、ログ出力のために受け取っておく。
+    pub fn stop_device(&mut self, device_seqno: u32, device_id: &DeviceId) -> bool {
+        let existed = self
+            .frugalos_segment_service
+            .device_registry_mut()
+            .stop_device(device_id);
+        if existed {
+            info!(
+                self.logger,
+                "Stopping device";
+                "device_seqno" => device_seqno,
+                "device_id" => device_id.as_str(),
+            );
+            return true;
+        }
+        info!(
+            self.logger,
+            "Device not found";
+            "device_seqno" => device_seqno,
+            "device_id" => device_id.as_str(),
+        );
+        false
+    }
+    // 単にデバイスのデータを取得するだけなら device_seqno は不要だが、ログ出力のために受け取っておく。
+    pub fn get_device_state(&mut self, device_seqno: u32, device_id: &DeviceId) -> DeviceState {
+        info!(
+            self.logger,
+            "Getting device state";
+            "device_seqno" => device_seqno,
+            "device_id" => device_id.as_str(),
+        );
+        let running_state = if self
+            .frugalos_segment_service
+            .device_registry_mut()
+            .is_device_running(device_id)
+        {
+            RunningState::Started
+        } else {
+            RunningState::Stopped
+        };
+        DeviceState {
+            state: running_state,
+        }
     }
     pub fn take_snapshot(&mut self) {
         self.frugalos_segment_service.take_snapshot();
@@ -650,8 +691,8 @@ fn make_truncate_bucket_range(namespace: u8, bucket_seqno: u32) -> Range<LumpId>
 
 #[cfg(test)]
 mod tests {
+    use crate::service;
     use cannyls::lump::LumpId;
-    use service;
     use std::ops::Range;
 
     #[allow(clippy::inconsistent_digit_grouping)]

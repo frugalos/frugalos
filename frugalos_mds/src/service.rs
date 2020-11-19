@@ -10,10 +10,10 @@ use std::fmt;
 use std::mem;
 use std::sync::Arc;
 
-use node::NodeHandle;
-use server::Server;
-use {Error, Result};
-use {StartSegmentGcReply, StopSegmentGcReply};
+use crate::node::NodeHandle;
+use crate::server::Server;
+use crate::{Error, Result};
+use crate::{StartSegmentGcReply, StopSegmentGcReply};
 
 type Nodes = Arc<AtomicImmut<HashMap<LocalNodeId, NodeHandle>>>;
 
@@ -335,7 +335,7 @@ mod tests {
     use std::str::FromStr;
     use trackable::result::TestResult;
 
-    use node::Request;
+    use crate::node::Request;
 
     struct TestNodeForStop {
         node_id: NodeId,

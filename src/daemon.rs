@@ -1,23 +1,18 @@
 //! frugalosプロセス(デーモン)を起動したり操作するための機能を提供するモジュール。
 // FIXME: 実際にはデーモンプロセスではないので、名前は変更する
+use cannyls_rpc::DeviceId;
 use fibers::executor::ThreadPoolExecutorHandle;
 use fibers::sync::mpsc;
 use fibers::sync::oneshot;
 use fibers::{Executor, Spawn, ThreadPoolExecutor};
 use fibers_http_server::metrics::{MetricsHandler, WithMetrics};
 use fibers_http_server::{Server as HttpServer, ServerBuilder as HttpServerBuilder};
-use fibers_rpc;
 use fibers_rpc::client::{ClientService as RpcService, ClientServiceBuilder as RpcServiceBuilder};
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
-use frugalos_config;
 use frugalos_core::tracer::ThreadLocalTracer;
-use frugalos_raft;
 use futures::{Async, Future, Poll, Stream};
-use libfrugalos;
-use prometrics;
 use prometrics::metrics::MetricBuilder;
 use rustracing::sampler::{PassiveSampler, ProbabilisticSampler, Sampler};
-use rustracing_jaeger;
 use rustracing_jaeger::span::SpanContextState;
 use slog::{self, Drain, Logger};
 use std::mem;
@@ -25,13 +20,14 @@ use std::net::SocketAddr;
 use std::process::Command;
 use trackable::error::ErrorKindExt;
 
-use config_server::ConfigServer;
+use crate::config_server::ConfigServer;
+use crate::device::DeviceState;
+use crate::recovery::prepare_recovery;
+use crate::rpc_server::RpcServer;
+use crate::server::{spawn_report_spans_thread, Server};
+use crate::service;
+use crate::{Error, ErrorKind, FrugalosConfig, Result};
 use libfrugalos::repair::RepairConfig;
-use recovery::prepare_recovery;
-use rpc_server::RpcServer;
-use server::{spawn_report_spans_thread, Server};
-use service;
-use {Error, ErrorKind, FrugalosConfig, Result};
 
 /// Frugalosの各種機能を提供するためのデーモン。
 pub struct FrugalosDaemon {
@@ -112,7 +108,9 @@ impl FrugalosDaemon {
         let client = service.client();
         RpcServer::register(
             client.clone(),
-            FrugalosDaemonHandle { command_tx },
+            FrugalosDaemonHandle {
+                command_tx: command_tx.clone(),
+            },
             &mut rpc_server_builder,
             tracer.clone(),
         );
@@ -133,7 +131,11 @@ impl FrugalosDaemon {
             ))
         )?;
 
-        let config_server = ConfigServer::new(rpc_service.handle(), rpc_addr);
+        let config_server = ConfigServer::new(
+            rpc_service.handle(),
+            rpc_addr,
+            FrugalosDaemonHandle { command_tx },
+        );
         track!(config_server.register(&mut http_server_builder))?;
 
         Ok(FrugalosDaemon {
@@ -215,6 +217,22 @@ impl DaemonRunner {
             DaemonCommand::TruncateBucket { bucket_seqno } => {
                 self.service.truncate_bucket(bucket_seqno);
             }
+            DaemonCommand::StopDevice {
+                device_seqno,
+                device_id,
+                reply,
+            } => {
+                let result = self.service.stop_device(device_seqno, &device_id);
+                reply.exit(Ok(result))
+            }
+            DaemonCommand::GetDeviceState {
+                device_seqno,
+                device_id,
+                reply,
+            } => {
+                let result = self.service.get_device_state(device_seqno, &device_id);
+                reply.exit(Ok(result))
+            }
         }
     }
 }
@@ -265,6 +283,50 @@ impl FrugalosDaemonHandle {
         let command = DaemonCommand::TruncateBucket { bucket_seqno };
         let _ = self.command_tx.send(command);
     }
+
+    /// デバイスの停止を要求する
+    pub fn stop_device(
+        &self,
+        device_seqno: u32,
+        device_id: DeviceId,
+    ) -> impl Future<Item = bool, Error = Error> {
+        let (reply_tx, reply_rx) = oneshot::monitor();
+        let command = DaemonCommand::StopDevice {
+            device_seqno,
+            device_id,
+            reply: reply_tx,
+        };
+        let _ = self.command_tx.send(command);
+        reply_rx.map_err(|e| {
+            e.unwrap_or_else(|| {
+                ErrorKind::Other
+                    .cause("Monitoring channel disconnected")
+                    .into()
+            })
+        })
+    }
+
+    /// デバイスの状態を要求する
+    pub fn get_device_state(
+        &self,
+        device_seqno: u32,
+        device_id: DeviceId,
+    ) -> impl Future<Item = DeviceState, Error = Error> {
+        let (reply_tx, reply_rx) = oneshot::monitor();
+        let command = DaemonCommand::GetDeviceState {
+            device_seqno,
+            device_id,
+            reply: reply_tx,
+        };
+        let _ = self.command_tx.send(command);
+        reply_rx.map_err(|e| {
+            e.unwrap_or_else(|| {
+                ErrorKind::Other
+                    .cause("Monitoring channel disconnected")
+                    .into()
+            })
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -275,6 +337,16 @@ enum DaemonCommand {
     TakeSnapshot,
     TruncateBucket {
         bucket_seqno: u32,
+    },
+    StopDevice {
+        device_seqno: u32,
+        device_id: DeviceId,
+        reply: oneshot::Monitored<bool, Error>,
+    },
+    GetDeviceState {
+        device_seqno: u32,
+        device_id: DeviceId,
+        reply: oneshot::Monitored<DeviceState, Error>,
     },
 }
 

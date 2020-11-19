@@ -5,11 +5,10 @@ use frugalos_segment::Client as Segment;
 use frugalos_segment::{self, ErasureCoder, FrugalosSegmentConfig};
 use libfrugalos::entity::bucket::{Bucket as BucketConfig, BucketKind};
 use libfrugalos::entity::object::ObjectId;
-use siphasher;
 use slog::Logger;
 use std::iter;
 
-use Result;
+use crate::Result;
 
 #[derive(Clone)]
 pub struct Bucket {

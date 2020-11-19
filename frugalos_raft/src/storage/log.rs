@@ -203,8 +203,8 @@ mod tests {
     use std::collections::btree_set::BTreeSet;
     use trackable::result::TestResult;
 
-    use test_util::{run_test_with_storage, wait_for};
-    use LocalNodeId;
+    use crate::test_util::{run_test_with_storage, wait_for};
+    use crate::LocalNodeId;
 
     #[test]
     fn delete_log_prefix_works() -> TestResult {

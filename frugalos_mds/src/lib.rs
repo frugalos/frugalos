@@ -36,11 +36,11 @@ extern crate serde_derive;
 #[macro_use]
 extern crate trackable;
 
-pub use config::FrugalosMdsConfig;
-pub use error::{Error, ErrorKind};
+pub use crate::config::FrugalosMdsConfig;
+pub use crate::error::{Error, ErrorKind};
+pub use crate::node::{Event, Node};
+pub use crate::service::{Service, ServiceHandle};
 use fibers::sync::oneshot::Monitored;
-pub use node::{Event, Node};
-pub use service::{Service, ServiceHandle};
 
 mod codec;
 mod config;

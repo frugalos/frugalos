@@ -20,15 +20,15 @@ use std::sync::Arc;
 use std::time::Duration;
 use trackable::error::ErrorKindExt;
 
-use client::ec::{build_ec, ErasureCoder};
-use client::storage::{append_checksum, verify_and_remove_checksum, MaybeFragment, PutAll};
-use config::{
+use crate::client::ec::{build_ec, ErasureCoder};
+use crate::client::storage::{append_checksum, verify_and_remove_checksum, MaybeFragment, PutAll};
+use crate::config::{
     CannyLsClientConfig, ClusterConfig, ClusterMember, DispersedClientConfig, DispersedConfig,
     Participants,
 };
-use metrics::{DispersedClientMetrics, PutAllMetrics};
-use util::{BoxFuture, Phase};
-use {Error, ErrorKind, Result};
+use crate::metrics::{DispersedClientMetrics, PutAllMetrics};
+use crate::util::{BoxFuture, Phase};
+use crate::{Error, ErrorKind, Result};
 
 #[derive(Clone)]
 pub struct DispersedClient {

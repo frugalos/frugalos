@@ -33,10 +33,10 @@ extern crate slog;
 extern crate trackable;
 extern crate proc_macro;
 
-pub use client::ec::{build_ec, ErasureCoder};
-pub use client::Client;
-pub use error::{Error, ErrorKind};
-pub use service::{Service, ServiceHandle};
+pub use crate::client::ec::{build_ec, ErasureCoder};
+pub use crate::client::Client;
+pub use crate::error::{Error, ErrorKind};
+pub use crate::service::{Service, ServiceHandle};
 
 pub mod config;
 

@@ -1,7 +1,7 @@
 ##
 ## FrugalOSビルド用のベースイメージ
 ##
-FROM ringo/scientific:7.2
+FROM centos:7.8.2003
 
 ##
 ## yumパッケージ群をインストール

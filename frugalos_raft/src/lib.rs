@@ -35,15 +35,15 @@ macro_rules! dump {
 
 pub mod future_impls {
     //! `Future`トレイトの実装群.
-    pub use storage::{LoadBallot, LoadLog, SaveBallot, SaveLog};
-    pub use timer::Timeout;
+    pub use crate::storage::{LoadBallot, LoadLog, SaveBallot, SaveLog};
+    pub use crate::timer::Timeout;
 }
 
-pub use node::{LocalNodeId, NodeId};
-pub use raft_io::RaftIo;
-pub use rpc::{Mailer, RpcMetrics, Service, ServiceHandle};
-pub use storage::{ClearLog, Storage, StorageMetrics};
-pub use timer::Timer;
+pub use crate::node::{LocalNodeId, NodeId};
+pub use crate::raft_io::RaftIo;
+pub use crate::rpc::{Mailer, RpcMetrics, Service, ServiceHandle};
+pub use crate::storage::{ClearLog, Storage, StorageMetrics};
+pub use crate::timer::Timer;
 
 mod node;
 mod protobuf;
@@ -57,7 +57,7 @@ mod util;
 
 #[cfg(test)]
 mod tests {
-    use test_util::System;
+    use crate::test_util::System;
     use trackable::result::TestResult;
 
     #[test]
