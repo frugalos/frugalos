@@ -60,3 +60,8 @@ trackable = "^0.2.21"
 
 [workspace]
 members = ["frugalos_core", "frugalos_config", "frugalos_mds", "frugalos_raft", "frugalos_segment"]
+
+[patch.crates-io]
+fibers = { git = "https://github.com/dwango/fibers-rs", branch = "tmp/tokio-1.0" }
+fibers_rpc = { git = "https://github.com/koba-e964/fibers_rpc", branch = "tmp/tokio-1.0" }
+fibers_http_server = { git = "https://github.com/koba-e964/fibers_http_server", branch = "tmp/tokio-1.0" }
