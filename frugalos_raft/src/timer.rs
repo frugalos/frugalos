@@ -2,7 +2,7 @@ use futures::{Future, Poll};
 use raftlog::election::Role;
 use raftlog::{Error as RaftError, ErrorKind as RaftErrorKind};
 use rand::{self, Rng};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use trackable::error::ErrorKindExt;
 
 /// Raft用のタイマー実装.
@@ -39,8 +39,7 @@ impl Timer {
             }
             Role::Leader => self.min_timeout,
         };
-        let inner = fibers::time::timer::timeout(duration);
-        Timeout(inner)
+        Timeout::new(duration)
     }
 }
 
@@ -52,13 +51,32 @@ fn duration_to_millis(duration: Duration) -> u64 {
 ///
 /// `Timer`によって内部的に生成される.
 #[derive(Debug)]
-pub struct Timeout(fibers::time::timer::Timeout);
+#[allow(missing_docs)]
+pub enum Timeout {
+    Unresolved(Instant),
+    Waiting(fibers::time::timer::Timeout),
+}
+
+impl Timeout {
+    fn new(duration: Duration) -> Self {
+        Timeout::Unresolved(Instant::now() + duration)
+    }
+}
 impl Future for Timeout {
     type Item = ();
     type Error = RaftError;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        track!(self
-            .0
+        if let Timeout::Unresolved(inst) = self {
+            *self = Timeout::Waiting(fibers::time::timer::timeout(
+                inst.saturating_duration_since(Instant::now()),
+            ));
+        };
+        let timer = if let Timeout::Waiting(timer) = self {
+            timer
+        } else {
+            unreachable!()
+        };
+        track!(timer
             .poll()
             .map_err(|e| RaftErrorKind::Other.cause(e).into(),))
     }
