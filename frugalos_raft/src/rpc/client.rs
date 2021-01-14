@@ -34,10 +34,12 @@ impl<'a> RpcClient<'a> {
             Message::InstallSnapshotCast(_) => (Some(2048), 200),
         };
 
-        let mut options = Options::default();
-        options.force_wakeup = force_wakeup;
-        options.max_queue_len = max_queue_len;
-        options.priority = priority;
+        let options = Options {
+            force_wakeup,
+            max_queue_len,
+            priority,
+            ..Default::default()
+        };
 
         match message {
             Message::RequestVoteCall(m) => {

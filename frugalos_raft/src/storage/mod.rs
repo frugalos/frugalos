@@ -31,7 +31,9 @@ mod log_suffix;
 static INITIALIZATION_LOCK: AtomicUsize = AtomicUsize::new(0);
 
 fn acquire_initialization_lock() -> bool {
-    INITIALIZATION_LOCK.compare_and_swap(0, 1, atomic::Ordering::SeqCst) == 0
+    INITIALIZATION_LOCK
+        .compare_exchange(0, 1, atomic::Ordering::SeqCst, atomic::Ordering::SeqCst)
+        .is_ok()
 }
 
 fn release_initialization_lock() {
