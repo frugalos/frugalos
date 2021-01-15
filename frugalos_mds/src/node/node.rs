@@ -270,11 +270,13 @@ impl Node {
         let reelection_threshold = env::var("FRUGALOS_REELECTION_THRESHOLD")
             .ok()
             .and_then(|v| v.parse().map(ReElectionThreshold).ok())
-            .unwrap_or_else(|| ReElectionThreshold(config.reelection_threshold));
+            .unwrap_or(ReElectionThreshold(config.reelection_threshold));
         let large_queue_threshold = env::var("FRUGALOS_LARGE_QUEUE_THRESHOLD")
             .ok()
             .and_then(|v| v.parse().map(LargeProposalQueueThreshold).ok())
-            .unwrap_or_else(|| LargeProposalQueueThreshold(config.large_proposal_queue_threshold));
+            .unwrap_or(LargeProposalQueueThreshold(
+                config.large_proposal_queue_threshold,
+            ));
         let large_leader_waiting_queue_threshold =
             LargeLeaderWaitingQueueThreshold(config.large_leader_waiting_queue_threshold);
         let leader_waiting_timeout = CountDownTimeout::new(config.leader_waiting_timeout_threshold);
