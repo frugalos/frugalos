@@ -343,6 +343,7 @@ mod tests {
     use trackable::result::TestResult;
 
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn config_works() -> TestResult {
         let content = r##"
 ---
