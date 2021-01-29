@@ -265,10 +265,11 @@ pub struct FrugalosRpcClientConfig {
 
 impl FrugalosRpcClientConfig {
     fn channel_options(&self) -> fibers_rpc::channel::ChannelOptions {
-        let mut options = fibers_rpc::channel::ChannelOptions::default();
-        options.tcp_connect_timeout = self.tcp_connect_timeout;
-        options.tcp_write_timeout = self.tcp_write_timeout;
-        options
+        fibers_rpc::channel::ChannelOptions {
+            tcp_connect_timeout: self.tcp_connect_timeout,
+            tcp_write_timeout: self.tcp_write_timeout,
+            ..Default::default()
+        }
     }
 }
 
@@ -342,6 +343,7 @@ mod tests {
     use trackable::result::TestResult;
 
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn config_works() -> TestResult {
         let content = r##"
 ---

@@ -31,8 +31,10 @@ impl LoadLogSuffix {
         let handle = storage.handle.clone();
         info!(handle.logger, "[START] LoadLogSuffix: {}", dump!(head));
 
-        let mut suffix = LogSuffix::default();
-        suffix.head = head;
+        let suffix = LogSuffix {
+            head,
+            ..Default::default()
+        };
         LoadLogSuffix {
             handle: handle.clone(),
             suffix,

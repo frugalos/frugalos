@@ -437,7 +437,7 @@ mod tests {
                 *frequency.entry(intermediate_seqno).or_insert(0) += 1;
             }
             for (_, value) in frequency {
-                assert!(1 <= value && value <= 3);
+                assert!((1..=3).contains(&value));
             }
         }
 

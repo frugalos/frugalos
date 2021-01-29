@@ -695,7 +695,7 @@ mod tests {
     use cannyls::lump::LumpId;
     use std::ops::Range;
 
-    #[allow(clippy::inconsistent_digit_grouping)]
+    #[allow(clippy::unusual_byte_groupings)]
     #[test]
     fn make_truncate_bucket_range_works() {
         // https://github.com/frugalos/frugalos/wiki/Naming-Rules-of-LumpIds
