@@ -286,7 +286,7 @@ dependencies = [
 
 [[package]]
 name = "frugalos"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "atomic_immut",
  "bytecodec",
