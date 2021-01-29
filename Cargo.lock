@@ -88,14 +88,15 @@ checksum = "228047a76f468627ca71776ecdebd732a3423081fcf5125585bcd7c49886ce12"
 
 [[package]]
 name = "bytecodec"
-version = "0.4.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "599c561412645564bcfaaacf31368ddf074d7350097f1252565aa88680c9c3c2"
+version = "0.4.13"
+source = "git+https://github.com/koba-e964/bytecodec?branch=tmp/tokio-1.0#f1ac19df3ade3288c4be7edf863b4e20dea15864"
 dependencies = [
  "bincode",
  "byteorder",
+ "pin-project",
  "serde",
  "serde_json",
+ "tokio",
  "trackable",
 ]
 
@@ -259,7 +260,7 @@ dependencies = [
 [[package]]
 name = "fibers_http_server"
 version = "0.1.12"
-source = "git+https://github.com/koba-e964/fibers_http_server?branch=tmp/tokio-1.0#e5cb1f156dbbd7bfa3f4d8dd0110343937a6424d"
+source = "git+https://github.com/koba-e964/fibers_http_server?branch=tmp/tokio-1.0#92c2155b4c843200e0c5f5fbb1274bc03bd680cf"
 dependencies = [
  "atomic_immut",
  "bytecodec",
