@@ -327,6 +327,7 @@ dependencies = [
  "frugalos_raft",
  "frugalos_segment",
  "futures 0.1.25",
+ "futures 0.3.7",
  "hostname",
  "httpcodec",
  "jemalloc-ctl",
@@ -361,6 +362,7 @@ dependencies = [
  "fibers_tasque",
  "frugalos_raft",
  "futures 0.1.25",
+ "futures 0.3.7",
  "libfrugalos",
  "prometrics",
  "protobuf_codec",
@@ -426,6 +428,7 @@ dependencies = [
  "fibers_global",
  "fibers_rpc",
  "futures 0.1.25",
+ "futures 0.3.7",
  "prometrics",
  "protobuf_codec",
  "raftlog",
@@ -434,6 +437,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "slog",
+ "tokio",
  "trackable",
 ]
 

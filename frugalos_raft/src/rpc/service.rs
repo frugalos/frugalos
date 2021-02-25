@@ -1,11 +1,13 @@
 use atomic_immut::AtomicImmut;
-use fibers::sync::mpsc;
+use core::task::{Context, Poll as Poll03};
 use fibers_rpc::server::ServerBuilder;
-use futures::{Async, Future, Poll, Stream};
-use raftlog::{Error, ErrorKind, Result};
+use futures03::Future as Future03;
+use raftlog::{ErrorKind, Result};
 use slog::Logger;
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
 use super::mail::{Mailbox, Mailer};
 use super::server::RpcServer;
@@ -21,14 +23,14 @@ type Nodes = Arc<AtomicImmut<HashMap<LocalNodeId, Mailbox>>>;
 pub struct Service {
     logger: Logger,
     nodes: Nodes,
-    command_tx: mpsc::Sender<Command>,
-    command_rx: mpsc::Receiver<Command>,
+    command_tx: mpsc::UnboundedSender<Command>,
+    command_rx: mpsc::UnboundedReceiver<Command>,
 }
 impl Service {
     /// 新しい`Service`インスタンスを生成する.
     pub fn new(logger: Logger, builder: &mut ServerBuilder) -> Self {
         let nodes = Arc::new(AtomicImmut::new(HashMap::new()));
-        let (command_tx, command_rx) = mpsc::channel();
+        let (command_tx, command_rx) = mpsc::unbounded_channel();
         let this = Service {
             logger,
             nodes,
@@ -70,18 +72,17 @@ impl Service {
         }
     }
 }
-impl Future for Service {
+impl Future03 for Service {
     /// NOTE: この`Future`が正常終了することはない.
-    type Item = ();
-    type Error = Error;
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+    type Output = Result<()>;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll03<Self::Output> {
         loop {
-            let polled = self.command_rx.poll().expect("Never fails");
-            if let Async::Ready(command) = polled {
+            let polled = self.command_rx.poll_recv(cx);
+            if let Poll03::Ready(command) = polled {
                 let command = command.expect("Unreachable");
-                self.handle_command(command);
+                self.as_mut().handle_command(command);
             } else {
-                return Ok(Async::NotReady);
+                return Poll03::Pending;
             }
         }
     }
@@ -100,7 +101,7 @@ enum Command {
 #[derive(Debug, Clone)]
 pub struct ServiceHandle {
     nodes: Nodes,
-    command_tx: mpsc::Sender<Command>,
+    command_tx: mpsc::UnboundedSender<Command>,
 }
 impl ServiceHandle {
     pub(crate) fn add_node(&self, id: LocalNodeId, mailer: &Mailer) -> Result<()> {

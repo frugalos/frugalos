@@ -17,6 +17,8 @@ use frugalos_segment::FrugalosSegmentConfig;
 use frugalos_segment::Service as SegmentService;
 use futures::future::Fuse;
 use futures::{Async, Future, Poll, Stream};
+use futures03::compat::Compat;
+use futures03::TryFutureExt;
 use libfrugalos::entity::bucket::{Bucket as BucketConfig, BucketId};
 use libfrugalos::entity::device::{
     Device as DeviceConfig, FileDevice as FileDeviceConfig, MemoryDevice as MemoryDeviceConfig,
@@ -47,7 +49,7 @@ pub struct Service<S> {
     logger: Logger,
     local_server: Server,
     rpc_service: RpcServiceHandle,
-    raft_service: RaftService,
+    raft_service: Compat<RaftService>,
     frugalos_segment_service: SegmentService<S>,
     config_service: ConfigService,
 
@@ -103,7 +105,7 @@ where
             logger,
             local_server: config_service.local_server().clone(),
             rpc_service,
-            raft_service,
+            raft_service: raft_service.compat(),
             frugalos_segment_service,
             config_service,
 

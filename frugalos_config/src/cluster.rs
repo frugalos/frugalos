@@ -9,6 +9,7 @@ use fibers_rpc::client::{
 use fibers_rpc::server::ServerBuilder as RpcServerBuilder;
 use frugalos_raft::{self, RaftIo};
 use futures::{Async, Future, Poll, Stream};
+use futures03::TryFutureExt;
 use libfrugalos::client::config::Client;
 use libfrugalos::entity::server::Server;
 use prometrics::metrics::MetricBuilder;
@@ -168,7 +169,11 @@ pub fn create<P: AsRef<Path>>(logger: &Logger, mut local: Server, data_dir: P) -
         vec![local.clone()],
     ))?;
     executor.spawn(rpc_server.map_err(move |e| panic!("Error: {}", e)));
-    executor.spawn(raft_service.map_err(move |e| panic!("Error: {}", e)));
+    executor.spawn(
+        raft_service
+            .compat()
+            .map_err(move |e| panic!("Error: {}", e)),
+    );
     executor.spawn(rpc_service.map_err(move |e| panic!("Error: {}", e)));
 
     // クラスタ構成に自サーバを登録

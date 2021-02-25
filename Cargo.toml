@@ -50,6 +50,8 @@ serde_ignored = "0.0.4"
 serde_yaml = "0.8"
 trackable = "^0.2.21"
 url = "1"
+futures03 = {package = "futures", version = "0.3", features = ["compat"]}
+
 
 [dev-dependencies]
 # TODO tempfile を使いたいが現状はコンパイルできないので諸々直す
