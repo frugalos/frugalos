@@ -65,7 +65,6 @@ pub fn verify_device_tree_dfs(
 
 #[cfg(test)]
 mod tests {
-    use super::Result;
     use crate::device_tree::{verify_device_tree, verify_new_device};
     use crate::test_util::build_device_tree;
     use libfrugalos::entity::device::{
@@ -211,7 +210,7 @@ mod tests {
     }
 
     #[test]
-    fn verify_device_works() -> Result<()> {
+    fn verify_device_works() {
         let (devices, root_device_id) =
             build_device_tree(&[3, 8, 1, 2], SegmentAllocationPolicy::ScatterIfPossible);
         let result = verify_device_tree(&root_device_id, &devices);
@@ -231,7 +230,5 @@ mod tests {
         let (devices, new_device) = create_device_btree_map_3();
         let result = verify_new_device(&new_device, &devices);
         assert!(result.is_err());
-
-        Ok(())
     }
 }

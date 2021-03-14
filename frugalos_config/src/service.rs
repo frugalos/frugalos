@@ -212,6 +212,7 @@ impl Service {
         }
         self.leader = Some(leader.addr);
     }
+    #[allow(clippy::unnecessary_wraps)]
     fn handle_command(&mut self, proposal_id: ProposalId, command: Command) -> Result<()> {
         info!(self.logger, "Committed: {}", dump!(proposal_id, command));
 
@@ -542,6 +543,7 @@ impl Service {
         track!(self.rlog.install_snapshot(self.next_commit_index, snapshot))?;
         Ok(())
     }
+    #[allow(clippy::unnecessary_wraps)]
     fn handle_request(&mut self, request: Request) -> Result<()> {
         info!(self.logger, "Request: {:?}", request);
         match request {

@@ -454,6 +454,7 @@ where
         Ok(())
     }
 
+    #[allow(clippy::unnecessary_wraps)]
     fn spawn_device(&mut self, device_config: &DeviceConfig) -> Result<()> {
         let device = LocalDevice::new(
             self.logger.clone(),

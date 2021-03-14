@@ -570,6 +570,7 @@ impl Node {
             }
         }
     }
+    #[allow(clippy::unnecessary_wraps)]
     fn take_snapshot(&mut self) -> Result<bool> {
         let commit = if let Some(commit) = self.last_commit {
             if commit.as_u64() == 0 {

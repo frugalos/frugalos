@@ -464,7 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn participants_works() -> TestResult {
+    fn participants_works() {
         let cluster_size = 5;
         let fragments = 3;
         let version = ObjectVersion(1);
@@ -511,8 +511,6 @@ mod tests {
                     .collect::<Vec<_>>()
             );
         }
-
-        Ok(())
     }
 
     #[test]
@@ -533,14 +531,12 @@ mod tests {
     }
 
     #[test]
-    fn get_object_version_from_lump_id_works() -> TestResult {
+    fn get_object_version_from_lump_id_works() {
         #[allow(clippy::inconsistent_digit_grouping)]
         let lump_id = LumpId::new(1 << 120 | 0x100_0a00_00 << 64 | 0x1234_5678_9abc_def0);
         assert_eq!(
             get_object_version_from_lump_id(lump_id),
             ObjectVersion(0x1234_5678_9abc_def0)
         );
-
-        Ok(())
     }
 }
