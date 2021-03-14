@@ -29,7 +29,7 @@ rand = "0.5"
 serde = "1"
 serde_derive = "1"
 slog = "2"
-trackable = "0.2"
+trackable = "1"
 
 [dev-dependencies]
 fibers_global = "0.1"

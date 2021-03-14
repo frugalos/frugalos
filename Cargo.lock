@@ -90,7 +90,7 @@ dependencies = [
  "byteorder",
  "serde",
  "serde_json",
- "trackable",
+ "trackable 0.2.24",
 ]
 
 [[package]]
@@ -112,7 +112,7 @@ dependencies = [
  "libc",
  "prometrics",
  "slog",
- "trackable",
+ "trackable 0.2.24",
  "uuid",
 ]
 
@@ -131,7 +131,7 @@ dependencies = [
  "futures",
  "protobuf_codec",
  "slog",
- "trackable",
+ "trackable 0.2.24",
 ]
 
 [[package]]
@@ -203,7 +203,7 @@ dependencies = [
  "fibers_tasque",
  "futures",
  "liberasurecode",
- "trackable",
+ "trackable 0.2.24",
 ]
 
 [[package]]
@@ -250,7 +250,7 @@ dependencies = [
  "httpcodec",
  "prometrics",
  "slog",
- "trackable",
+ "trackable 0.2.24",
  "url",
 ]
 
@@ -269,7 +269,7 @@ dependencies = [
  "futures",
  "prometrics",
  "slog",
- "trackable",
+ "trackable 0.2.24",
 ]
 
 [[package]]
@@ -322,7 +322,7 @@ dependencies = [
  "slog",
  "sloggers",
  "tempdir",
- "trackable",
+ "trackable 1.1.0",
  "url",
 ]
 
@@ -346,7 +346,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "slog",
- "trackable",
+ "trackable 1.1.0",
 ]
 
 [[package]]
@@ -358,7 +358,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_yaml",
- "trackable",
+ "trackable 1.1.0",
 ]
 
 [[package]]
@@ -387,7 +387,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "slog",
- "trackable",
+ "trackable 1.1.0",
 ]
 
 [[package]]
@@ -411,7 +411,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "slog",
- "trackable",
+ "trackable 1.1.0",
 ]
 
 [[package]]
@@ -441,7 +441,7 @@ dependencies = [
  "serde_derive",
  "siphasher",
  "slog",
- "trackable",
+ "trackable 1.1.0",
 ]
 
 [[package]]
@@ -495,7 +495,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "235f5e05cc336f97b050fe0d678be8cbe1bd7dfdd54417ec386d7bba92ebf0de"
 dependencies = [
  "bytecodec",
- "trackable",
+ "trackable 0.2.24",
 ]
 
 [[package]]
@@ -627,7 +627,7 @@ dependencies = [
  "libc",
  "serde",
  "serde_derive",
- "trackable",
+ "trackable 0.2.24",
 ]
 
 [[package]]
@@ -758,7 +758,7 @@ dependencies = [
  "bitflags",
  "bytecodec",
  "libc",
- "trackable",
+ "trackable 0.2.24",
 ]
 
 [[package]]
@@ -773,7 +773,16 @@ version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d7b7eaaa90b4a90a932a9ea6666c95a389e424eff347f0f793979289429feee"
 dependencies = [
- "unicode-xid",
+ "unicode-xid 0.1.0",
+]
+
+[[package]]
+name = "proc-macro2"
+version = "1.0.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e0704ee1a7e00d7bb417d0770ea303c1bccbabf0ef1667dae92b5967f5f8a71"
+dependencies = [
+ "unicode-xid 0.2.1",
 ]
 
 [[package]]
@@ -798,7 +807,7 @@ dependencies = [
  "lazy_static 1.1.0",
  "libc",
  "procinfo",
- "trackable",
+ "trackable 0.2.24",
 ]
 
 [[package]]
@@ -808,7 +817,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4341aa6631dac24b35b10fd19d3d3ca3eb15e695da103d84e9f0bd6a8a26e25"
 dependencies = [
  "bytecodec",
- "trackable",
+ "trackable 0.2.24",
 ]
 
 [[package]]
@@ -817,7 +826,16 @@ version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd636425967c33af890042c483632d33fa7a18f19ad1d7ea72e8998c6ef8dea5"
 dependencies = [
- "proc-macro2",
+ "proc-macro2 0.4.20",
+]
+
+[[package]]
+name = "quote"
+version = "1.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3d0b9745dc2debf507c8422de05d7226cc1f0644216dfdfead988f9b1ab32a7"
+dependencies = [
+ "proc-macro2 1.0.24",
 ]
 
 [[package]]
@@ -828,7 +846,7 @@ checksum = "94979b0d3bbf241d77634ddf4b6dd79785777abdc032a74f9518de7914b977fb"
 dependencies = [
  "futures",
  "prometrics",
- "trackable",
+ "trackable 0.2.24",
 ]
 
 [[package]]
@@ -840,7 +858,7 @@ dependencies = [
  "bytecodec",
  "protobuf_codec",
  "raftlog",
- "trackable",
+ "trackable 0.2.24",
 ]
 
 [[package]]
@@ -968,7 +986,7 @@ checksum = "65536f02f89c75dd523cc318e7e1d3cb49a32dbc918a798d04d2ab7547125a97"
 dependencies = [
  "backtrace",
  "rand 0.5.5",
- "trackable",
+ "trackable 0.2.24",
 ]
 
 [[package]]
@@ -981,7 +999,7 @@ dependencies = [
  "rand 0.5.5",
  "rustracing",
  "thrift_codec",
- "trackable",
+ "trackable 0.2.24",
 ]
 
 [[package]]
@@ -1017,9 +1035,9 @@ version = "1.0.80"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "225de307c6302bec3898c51ca302fc94a7a1697ef0845fcee6448f33c032249c"
 dependencies = [
- "proc-macro2",
- "quote",
- "syn",
+ "proc-macro2 0.4.20",
+ "quote 0.6.8",
+ "syn 0.15.13",
 ]
 
 [[package]]
@@ -1134,7 +1152,7 @@ dependencies = [
  "slog-scope",
  "slog-stdlog",
  "slog-term",
- "trackable",
+ "trackable 0.2.24",
 ]
 
 [[package]]
@@ -1155,9 +1173,20 @@ version = "0.15.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b4439ee8325b4e4b57e59309c3724c9a4478eaeb4eb094b6f3fac180a3b2876"
 dependencies = [
- "proc-macro2",
- "quote",
- "unicode-xid",
+ "proc-macro2 0.4.20",
+ "quote 0.6.8",
+ "unicode-xid 0.1.0",
+]
+
+[[package]]
+name = "syn"
+version = "1.0.63"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8fd9bc7ccc2688b3344c2f48b9b546648b25ce0b20fc717ee7fa7981a8ca9717"
+dependencies = [
+ "proc-macro2 1.0.24",
+ "quote 1.0.9",
+ "unicode-xid 0.2.1",
 ]
 
 [[package]]
@@ -1232,7 +1261,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fb61fb3d0a0af14949f3a6949b2639112e13226647112824f4d081533f9b1a8"
 dependencies = [
  "byteorder",
- "trackable",
+ "trackable 0.2.24",
 ]
 
 [[package]]
@@ -1248,9 +1277,19 @@ dependencies = [
 
 [[package]]
 name = "trackable"
-version = "0.2.21"
+version = "0.2.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d96a9d6c49c0fb3620fe8513ada964939e4e5eb017e40936d595e47daf7542d"
+checksum = "b98abb9e7300b9ac902cc04920945a874c1973e08c310627cc4458c04b70dd32"
+dependencies = [
+ "trackable 1.1.0",
+ "trackable_derive",
+]
+
+[[package]]
+name = "trackable"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ffbe24a17d6b233c1d47e2d336b94a295a347b308a9a6d431a65b4eac57e97d"
 dependencies = [
  "serde",
  "serde_derive",
@@ -1259,12 +1298,12 @@ dependencies = [
 
 [[package]]
 name = "trackable_derive"
-version = "0.1.2"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f4062d54dd240bde289717d6b4af18048c3dd552f01a0fd93824f5fc4d2d084"
+checksum = "ebeb235c5847e2f82cfe0f07eb971d1e5f6804b18dac2ae16349cc604380f82f"
 dependencies = [
- "quote",
- "syn",
+ "quote 1.0.9",
+ "syn 1.0.63",
 ]
 
 [[package]]
@@ -1299,6 +1338,12 @@ name = "unicode-xid"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc72304796d0818e357ead4e000d19c9c174ab23dc11093ac919054d20a6a7fc"
+
+[[package]]
+name = "unicode-xid"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7fe0bb3479651439c9112f72b6c505038574c9fbb575ed1bf3b797fa39dd564"
 
 [[package]]
 name = "url"
