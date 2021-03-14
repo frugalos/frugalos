@@ -37,9 +37,9 @@ impl<'a> RpcClient<'a> {
         };
 
         let options = Options {
-            force_wakeup,
             max_queue_len,
             priority,
+            force_wakeup,
             ..Default::default()
         };
 
