@@ -75,8 +75,8 @@ impl Bucket {
             rpc_service,
             ec,
             storage_config,
-            segments,
             segment_config,
+            segments,
         })
     }
     pub fn update_segment(&mut self, segment_no: u16, members: Vec<ClusterMember>) -> Result<()> {

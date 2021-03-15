@@ -355,7 +355,7 @@ mod tests {
     }
 
     #[test]
-    fn compute_deleted_versions_works_correctly() -> TestResult {
+    fn compute_deleted_versions_works_correctly() {
         let lump_ids = vec![
             LumpId::new(1),
             LumpId::new(5),
@@ -367,7 +367,5 @@ mod tests {
         let deleted_objects = SegmentGc::compute_deleted_versions(lump_ids, &object_table);
         // deleted_objects are listed in a newest-first manner.
         assert_eq!(deleted_objects, vec![ObjectVersion(100), ObjectVersion(5)]);
-
-        Ok(())
     }
 }

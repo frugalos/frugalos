@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn stop_works() -> std::io::Result<()> {
+    fn stop_works() {
         let logger = Logger::root(slog::Discard, o!());
         let mut manager = SegmentGcManager::new(logger);
         let count = 13;
@@ -269,6 +269,5 @@ mod tests {
         // 全ジョブを終了する
         counter.store(count - 1, Ordering::SeqCst);
         manager_thread.join().unwrap();
-        Ok(())
     }
 }

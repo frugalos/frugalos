@@ -236,15 +236,15 @@ mod tests {
     /// テスト内で扱うデータ種別
     #[derive(Copy, Clone)]
     enum MetadataKind {
-        MUSIC,
-        LYRIC,
+        Music,
+        Lyric,
     }
 
     fn make_object_id(id: usize, kind: MetadataKind) -> ObjectId {
         #[allow(clippy::useless_conversion)]
         match kind {
-            MetadataKind::MUSIC => ObjectId::from(format!("music:metadata:{}", id)),
-            MetadataKind::LYRIC => ObjectId::from(format!("lyric:metadata:{}", id)),
+            MetadataKind::Music => ObjectId::from(format!("music:metadata:{}", id)),
+            MetadataKind::Lyric => ObjectId::from(format!("lyric:metadata:{}", id)),
         }
     }
 
@@ -270,7 +270,7 @@ mod tests {
     /// バージョンを指定してオブジェクトを登録する。
     fn setup_music_metadata_by_versions(machine: &mut Machine, versions: Vec<ObjectVersion>) {
         versions.into_iter().enumerate().for_each(|(n, version)| {
-            let id = make_object_id(n, MetadataKind::MUSIC);
+            let id = make_object_id(n, MetadataKind::Music);
             let meta = Metadata {
                 version,
                 data: vec![0x01, 0x02],
@@ -285,7 +285,7 @@ mod tests {
 
         assert_eq!(machine.len(), 0);
 
-        let (id, meta) = make_metadata(1, MetadataKind::MUSIC);
+        let (id, meta) = make_metadata(1, MetadataKind::Music);
 
         assert!(machine.put(id, meta, &Expect::None)?.is_none());
 
@@ -300,7 +300,7 @@ mod tests {
 
         assert_eq!(machine.len(), 0);
 
-        let (id, meta) = make_metadata(1, MetadataKind::MUSIC);
+        let (id, meta) = make_metadata(1, MetadataKind::Music);
 
         machine.put(id.clone(), meta.clone(), &Expect::None)?;
 
@@ -332,13 +332,13 @@ mod tests {
 
         let metadata_size = 3;
 
-        setup_metadata(&mut machine, metadata_size, MetadataKind::MUSIC);
+        setup_metadata(&mut machine, metadata_size, MetadataKind::Music);
 
         assert_eq!(machine.len(), metadata_size);
 
         assert!(machine
             .get(
-                &make_object_id(0, MetadataKind::MUSIC),
+                &make_object_id(0, MetadataKind::Music),
                 &Expect::IfMatch(vec![DEFAULT_OBJECT_VERSION])
             )?
             .is_some());
@@ -351,12 +351,12 @@ mod tests {
         let mut machine = Machine::new();
         let metadata_size = 3;
 
-        setup_metadata(&mut machine, metadata_size, MetadataKind::MUSIC);
+        setup_metadata(&mut machine, metadata_size, MetadataKind::Music);
 
         assert_eq!(machine.len(), metadata_size);
 
         assert!(machine
-            .delete(&make_object_id(0, MetadataKind::MUSIC), &Expect::Any)?
+            .delete(&make_object_id(0, MetadataKind::Music), &Expect::Any)?
             .is_some());
 
         assert_eq!(machine.len(), metadata_size - 1);
@@ -369,13 +369,13 @@ mod tests {
         let mut machine = Machine::new();
         let metadata_size = 3;
 
-        setup_metadata(&mut machine, metadata_size, MetadataKind::MUSIC);
+        setup_metadata(&mut machine, metadata_size, MetadataKind::Music);
 
         assert_eq!(machine.len(), metadata_size);
 
         assert!(machine
             .delete(
-                &make_object_id(metadata_size + 30, MetadataKind::MUSIC),
+                &make_object_id(metadata_size + 30, MetadataKind::Music),
                 &Expect::Any
             )?
             .is_none());
@@ -386,16 +386,16 @@ mod tests {
     }
 
     #[test]
-    fn it_fails_to_delete_object_by_id_with_incorrect_expect() -> TestResult {
+    fn it_fails_to_delete_object_by_id_with_incorrect_expect() {
         let mut machine = Machine::new();
         let metadata_size = 3;
 
-        setup_metadata(&mut machine, metadata_size, MetadataKind::MUSIC);
+        setup_metadata(&mut machine, metadata_size, MetadataKind::Music);
 
         // expect が指定されていない
         assert!(machine
             .delete(
-                &make_object_id(0, MetadataKind::MUSIC),
+                &make_object_id(0, MetadataKind::Music),
                 &Expect::IfMatch(vec![])
             )
             .is_err());
@@ -403,7 +403,7 @@ mod tests {
         // 存在しないバージョンを指定している
         assert!(machine
             .delete(
-                &make_object_id(0, MetadataKind::MUSIC),
+                &make_object_id(0, MetadataKind::Music),
                 &Expect::IfMatch(vec![UNKNOWN_OBJECT_VERSION])
             )
             .is_err());
@@ -411,12 +411,10 @@ mod tests {
         // 存在するバージョンを指定している
         assert!(machine
             .delete(
-                &make_object_id(0, MetadataKind::MUSIC),
+                &make_object_id(0, MetadataKind::Music),
                 &Expect::IfNoneMatch(vec![DEFAULT_OBJECT_VERSION])
             )
             .is_err());
-
-        Ok(())
     }
 
     #[test]
@@ -443,9 +441,9 @@ mod tests {
         let music_metadata_size = 3;
         let lyric_metadata_size = 1;
 
-        setup_metadata(&mut machine, music_metadata_size, MetadataKind::MUSIC);
+        setup_metadata(&mut machine, music_metadata_size, MetadataKind::Music);
 
-        let (id, meta) = make_metadata(1, MetadataKind::LYRIC);
+        let (id, meta) = make_metadata(1, MetadataKind::Lyric);
 
         assert!(machine.put(id.clone(), meta, &Expect::None)?.is_none());
 
@@ -463,11 +461,11 @@ mod tests {
     }
 
     #[test]
-    fn it_doesnt_delete_non_matched_objects_by_prefix() -> TestResult {
+    fn it_doesnt_delete_non_matched_objects_by_prefix() {
         let mut machine = Machine::new();
         let metadata_size = 3;
 
-        setup_metadata(&mut machine, metadata_size, MetadataKind::MUSIC);
+        setup_metadata(&mut machine, metadata_size, MetadataKind::Music);
 
         assert_eq!(machine.len(), metadata_size);
 
@@ -477,7 +475,5 @@ mod tests {
 
         // プレフィックスが一致していないので削除しない
         assert_eq!(machine.len(), metadata_size);
-
-        Ok(())
     }
 }

@@ -127,9 +127,8 @@ mod tests {
 
     #[test]
     #[allow(clippy::reversed_empty_ranges)]
-    fn it_rejects_invalid_range() -> TestResult {
+    fn it_rejects_invalid_range() {
         assert!(SnapshotThreshold::new(GOOD_SEED, Range { start: 3, end: 2 }).is_err());
-        Ok(())
     }
 
     #[test]

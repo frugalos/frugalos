@@ -18,8 +18,10 @@ impl<'a> RpcClient<'a> {
         }
     }
     pub fn send_rpc_message(&self, message: Message) -> bool {
-        let force_wakeup =
-            matches!(message, Message::RequestVoteReply(_) | Message::AppendEntriesReply(_));
+        let force_wakeup = matches!(
+            message,
+            Message::RequestVoteReply(_) | Message::AppendEntriesReply(_)
+        );
 
         let (max_queue_len, priority) = match message {
             Message::RequestVoteCall(_) | Message::RequestVoteReply(_) => (None, 32),
@@ -35,9 +37,9 @@ impl<'a> RpcClient<'a> {
         };
 
         let options = Options {
-            force_wakeup,
             max_queue_len,
             priority,
+            force_wakeup,
             ..Default::default()
         };
 

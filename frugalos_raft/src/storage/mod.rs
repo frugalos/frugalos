@@ -267,6 +267,7 @@ impl Storage {
         }
         Ok(())
     }
+    #[allow(clippy::unnecessary_wraps)]
     fn handle_log_suffix_loaded_event(&mut self, suffix: LogSuffix) -> Result<()> {
         // ログの接尾部分がストレージから読み込まれたので、バッファに反映する
         info!(
@@ -277,6 +278,7 @@ impl Storage {
         self.log_suffix = suffix;
         Ok(())
     }
+    #[allow(clippy::unnecessary_wraps)]
     fn handle_log_suffix_deleted_event(&mut self) -> Result<()> {
         // ログの接尾部分がストレージから削除されたので、バッファに反映する
         info!(
