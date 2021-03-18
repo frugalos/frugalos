@@ -89,7 +89,7 @@ checksum = "228047a76f468627ca71776ecdebd732a3423081fcf5125585bcd7c49886ce12"
 [[package]]
 name = "bytecodec"
 version = "0.4.13"
-source = "git+https://github.com/koba-e964/bytecodec?branch=tmp/tokio-1.0#f1ac19df3ade3288c4be7edf863b4e20dea15864"
+source = "git+https://github.com/koba-e964/bytecodec?branch=feature/tokio-1.0#49f838616643617e47a0b2e4ea043fde40141af8"
 dependencies = [
  "bincode",
  "byteorder",
@@ -260,7 +260,7 @@ dependencies = [
 [[package]]
 name = "fibers_http_server"
 version = "0.1.12"
-source = "git+https://github.com/koba-e964/fibers_http_server?branch=tmp/tokio-1.0#92c2155b4c843200e0c5f5fbb1274bc03bd680cf"
+source = "git+https://github.com/koba-e964/fibers_http_server?branch=tmp/tokio-1.0#2266ee3ee3a9c3fd7975ba87938f4a07d387e5e2"
 dependencies = [
  "atomic_immut",
  "bytecodec",
