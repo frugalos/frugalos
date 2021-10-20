@@ -219,8 +219,13 @@ impl Storage {
 
         // suffixのメモリ中のcacheを切り詰める。
         // truncate(pos)は [0..pos] 化するメソッド。
-        let result = self.log_suffix.truncate(from - 1);
-        assert!(result.is_ok());
+        if from == LogIndex::from(0) {
+            // cacheを空のsuffixにする
+            self.log_suffix = LogSuffix::default();
+        } else {
+            let result = self.log_suffix.truncate(from - 1);
+            assert!(result.is_ok());
+        }
 
         DeleteSuffixRange::new(&self.handle, self.node_id(), from)
     }
