@@ -165,13 +165,46 @@ impl LocalNodeId {
         Range { start, end }
     }
 
-    /// (from, ∞] に対応する LumpId を返す。
-    /// ただし、 `from` は LogIndex であることに注意する。
-    pub fn lump_id_range_from(self, from: LogIndex) -> Range<LumpId> {
-        let start_end = self.to_available_lump_id_range();
+    /// Suffix中の位置を表すLogIndexを受け取り、
+    /// [from, ∞) に対応する LumpId を返す。
+    ///
+    /// このメソッドは、LogSuffixを範囲削除する際に使うことだけを
+    /// 想定しているので、一般性は考慮していない。
+    pub fn lump_ids_corresponding_to_suffix_from(self, from: LogIndex) -> Range<LumpId> {
+        // fromに対応するLumpIdを作る。
+        let start = self.to_log_entry_lump_id(from);
+
+        // 次に∞に対応するLumpIdを作る。
+        // 16バイト確保して
+        let mut id = [0u8; 16];
+        // 先頭7バイトにノードを詰める
+        (&mut id[0..7]).copy_from_slice(&self.0[..]);
+
+        // 8バイト目にLOG_ENTRYを表すTYPEを書き込み
+        id[7] = LUMP_TYPE_LOG_ENTRY;
+
+        // TODO: LUMP_TYPE_LOG_ENTRY=1は永劫なりたつべきなので
+        // Overflowのチェックは不要だが、しても良い。
+        id[7] += 1;
+
+        // ↑上のインクリメントは次のような意味がある。
+        //
+        // 素朴に
+        // id[7] = LUMP_TYPE_LOG_ENTRY
+        // id[8] = 0xff, id[9] = 0xff, ..., id[15] = 0xff
+        // としても良いが、
+        // これだと[from, 0xffff..ff)までの削除になり、
+        // 最後の0xffff..ffが削除できない可能性がある。
+        //
+        // そこで、id[7]をインクリメントしておくことで
+        // 0xffff..ffも削除できるようにしている。
+
+        // 最後にLumpId化する
+        let end = LumpId::new(BigEndian::read_u128(&id[..]));
+
         Range {
-            start: self.to_log_entry_lump_id(from),
-            end: start_end.end
+            start,
+            end,
         }
     }
 }

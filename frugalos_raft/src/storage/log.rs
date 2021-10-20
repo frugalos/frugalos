@@ -207,7 +207,7 @@ impl DeleteSuffixRange {
                 .deadline(Deadline::Infinity)
                 .prioritized()
                 .wait_for_running()
-                .delete_range(node.lump_id_range_from(from))
+                .delete_range(node.lump_ids_corresponding_to_suffix_from(from))
                 .map(|_| ()),
         );
         Self { future }
