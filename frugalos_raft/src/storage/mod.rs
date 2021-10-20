@@ -207,7 +207,21 @@ impl Storage {
         };
         SaveLog::new(inner, self.metrics.clone())
     }
+
+    // [from, ∞) で from 以降のエントリを一括削除する。
+    // テクニカルな条件ではあるが、fromはSuffix中の位置を表し、
+    // Prefix中の位置を表すことはない。
+    // なぜなら、Prefixは確定済みのデータの集まりであり、
+    // 確定している以上は消す必要がないから。
     pub(crate) fn delete_suffix_from(&mut self, from: LogIndex) -> DeleteSuffixRange {
+        // fromはsuffix中の位置なので次のassertionが成立する
+        assert!(from <= self.log_suffix.tail().index);
+
+        // suffixのメモリ中のcacheを切り詰める。
+        // truncate(pos)は [0..pos] 化するメソッド。
+        let result = self.log_suffix.truncate(from - 1);
+        assert!(result.is_ok());
+
         DeleteSuffixRange::new(&self.handle, self.node_id(), from)
     }
     
