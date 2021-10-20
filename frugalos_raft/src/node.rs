@@ -164,6 +164,16 @@ impl LocalNodeId {
         let end = LumpId::new(BigEndian::read_u128(&id[..]));
         Range { start, end }
     }
+
+    /// (from, ∞] に対応する LumpId を返す。
+    /// ただし、 `from` は LogIndex であることに注意する。
+    pub fn lump_id_range_from(self, from: LogIndex) -> Range<LumpId> {
+        let start_end = self.to_available_lump_id_range();
+        Range {
+            start: self.to_log_entry_lump_id(from),
+            end: start_end.end
+        }
+    }
 }
 impl fmt::Debug for LocalNodeId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

@@ -1,7 +1,7 @@
 use cannyls::deadline::Deadline;
 use fibers::sync::mpsc;
 use futures::{Async, Future, Poll};
-use raftlog::log::{Log, LogSuffix};
+use raftlog::log::{Log, LogIndex, LogSuffix};
 use raftlog::{Error, ErrorKind};
 use slog::Logger;
 use std::mem;
@@ -193,6 +193,39 @@ impl Future for DeleteLog {
         }
     }
 }
+
+pub struct DeleteSuffixRange {
+    future: BoxFuture<()>,
+}
+
+impl DeleteSuffixRange {
+    pub(crate) fn new(handle: &Handle, node: LocalNodeId, from: LogIndex) -> Self {
+        let future = into_box_future(
+            handle
+                .device
+                .request()
+                .deadline(Deadline::Infinity)
+                .prioritized()
+                .wait_for_running()
+                .delete_range(node.lump_id_range_from(from))
+                .map(|_| ()),
+        );
+        Self { future }
+    }
+}
+
+impl Future for DeleteSuffixRange {
+    type Item = ();
+    type Error = Error;
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        if let Async::Ready(()) = track!(self.future.poll())? {
+            Ok(Async::Ready(()))
+        } else {
+            Ok(Async::NotReady)
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

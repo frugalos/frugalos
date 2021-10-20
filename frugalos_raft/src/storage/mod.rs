@@ -12,7 +12,7 @@ use trackable::error::ErrorKindExt;
 use crate::LocalNodeId;
 
 pub use self::ballot::{LoadBallot, SaveBallot};
-pub use self::log::{DeleteLog, LoadLog, SaveLog};
+pub use self::log::{DeleteLog, DeleteSuffixRange, LoadLog, SaveLog};
 pub use self::log_prefix::{LoadLogPrefix, SaveLogPrefix};
 pub use self::log_suffix::{LoadLogSuffix, SaveLogSuffix};
 
@@ -207,7 +207,10 @@ impl Storage {
         };
         SaveLog::new(inner, self.metrics.clone())
     }
-
+    pub(crate) fn delete_suffix_from(&mut self, from: LogIndex) -> DeleteSuffixRange {
+        DeleteSuffixRange::new(&self.handle, self.node_id(), from)
+    }
+    
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn is_busy(&mut self) -> bool {
         if self.phase == Phase::Started {
