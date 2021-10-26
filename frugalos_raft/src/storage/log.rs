@@ -226,7 +226,6 @@ impl Future for DeleteSuffixRange {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use cannyls::lump::LumpData;
@@ -236,7 +235,7 @@ mod tests {
     use std::collections::btree_set::BTreeSet;
     use trackable::result::TestResult;
 
-    use crate::test_util::{run_test_with_storage, wait_for};
+    use crate::test_util::{run_test_with_storage, run_test_with_storages, wait_for};
     use crate::LocalNodeId;
 
     #[test]
@@ -327,13 +326,277 @@ mod tests {
     }
 
     #[test]
-    fn test_TODO() {
-        /*
-         * 1. 単一ノードでprefixとsuffixを混在させてsuffixだけ消えることを確認する
-         * 1'. prefixを削除できないことを確認する
-         * 2. 複数ノードで他所のデータを削除しないことを確認する
-         * 3. cacheが消えることを確認する
-         */
-        todo!();
+    #[should_panic]
+    fn do_my_test1() {
+        // テスト内容: SHOULD PANIC
+        // suffixの範囲外から削除する場合にはpanicになる。
+
+        let node_id = LocalNodeId::new([0, 11, 222, 3, 44, 5, 66]);
+
+        run_test_with_storage(node_id, |(mut storage, device)| {
+            // 存在しない位置からの削除なのでpanic
+            //
+            // Design Question:
+            // suffixのtailを超えた位置からの削除はエラーとするべきか？
+            // 現在はエラーとし、Futureを生成する段階でPANICとしている。
+            // ここで良いか？Futureは作らせて実行時にエラーとするべきか？
+            wait_for(storage.delete_suffix_from(LogIndex::new(3)))?;
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn do_my_test2() -> TestResult {
+        // テスト内容: 単一ノードでsuffixを作り範囲削除出来ていることを確認する。
+
+        let node_id = LocalNodeId::new([0, 11, 222, 3, 44, 5, 66]);
+
+        run_test_with_storage(node_id, |(mut storage, device)| {
+            let term = Term::new(0);
+            let log_entries = vec![LogEntry::Noop { term }; 3];
+            let log_suffix = LogSuffix {
+                head: LogPosition {
+                    prev_term: term,
+                    index: LogIndex::new(0),
+                },
+                entries: log_entries.clone(),
+            };
+
+            let is_there = |idx: u64| -> bool {
+                let lump_id = node_id.to_log_entry_lump_id(LogIndex::new(idx));
+                let result = wait_for(device.handle().request().head(lump_id)).unwrap();
+                result.is_some()
+            };
+
+            assert!(!is_there(0));
+            assert!(!is_there(1));
+            assert!(!is_there(2));
+            assert!(!is_there(3));
+
+            wait_for(storage.save_log_suffix(&log_suffix))?;
+
+            assert!(is_there(0));
+            assert!(is_there(1));
+            assert!(is_there(2));
+            assert!(!is_there(3)); // <- 長さ3のsuffixなのでここは不在で良い
+
+            wait_for(storage.delete_suffix_from(LogIndex::new(2)))?;
+
+            assert!(is_there(0));
+            assert!(is_there(1));
+            assert!(!is_there(2)); // <- [2,∞)の削除をしたので消えているべき
+            assert!(!is_there(3));
+
+            wait_for(storage.delete_suffix_from(LogIndex::new(0)))?;
+
+            assert!(!is_there(0)); // <- [0,∞)の削除をしたので全て消えているべき
+            assert!(!is_there(1));
+            assert!(!is_there(2));
+            assert!(!is_there(3));
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn do_my_test3() -> TestResult {
+        // テスト内容: 単一ノードでprefix と suffixを作り
+        // suffixだけを範囲削除出来ていることを確認する。
+
+        let node_id = LocalNodeId::new([0, 11, 222, 3, 44, 5, 66]);
+
+        run_test_with_storage(node_id, |(mut storage, device)| {
+            // <Prefixを書き込むパート>
+            let log_prefix = LogPrefix {
+                tail: LogPosition {
+                    prev_term: Term::new(10), // Suffixの開始Termは10
+                    index: LogIndex::new(1),  // Suffixはindex 1から開始
+                },
+                config: ClusterConfig::new(BTreeSet::new()),
+                snapshot: vec![],
+            };
+
+            wait_for(storage.save_log_prefix(log_prefix))?;
+            // </Prefixを書き込むパート>
+
+            let check_prefix = || {
+                let lump_id = node_id.to_log_prefix_index_lump_id();
+                let result = wait_for(device.handle().request().head(lump_id)).unwrap();
+                assert!(result.is_some());
+
+                let prefix_0 = node_id.to_log_prefix_lump_id(0);
+                let result = wait_for(device.handle().request().head(prefix_0)).unwrap();
+                assert!(result.is_some());
+
+                let prefix_1 = node_id.to_log_prefix_lump_id(1);
+                let result = wait_for(device.handle().request().head(prefix_1)).unwrap();
+                assert!(result.is_none()); // <- ここには書き込んでいないので存在しない
+            };
+
+            check_prefix();
+
+            // <Suffixを書き込むパート>
+            let term = Term::new(10);
+            let log_entries = vec![LogEntry::Noop { term }; 3];
+            let log_suffix = LogSuffix {
+                head: LogPosition {
+                    prev_term: term,
+                    index: LogIndex::new(1),
+                },
+                entries: log_entries.clone(),
+            };
+
+            let is_there = |idx: u64| -> bool {
+                let lump_id = node_id.to_log_entry_lump_id(LogIndex::new(idx));
+                let result = wait_for(device.handle().request().head(lump_id)).unwrap();
+                result.is_some()
+            };
+
+            assert!(!is_there(0));
+            assert!(!is_there(1));
+            assert!(!is_there(2));
+            assert!(!is_there(3));
+            assert!(!is_there(4));
+
+            wait_for(storage.save_log_suffix(&log_suffix))?;
+            // </Suffixを書き込むパート>
+
+            assert!(!is_there(0)); // index 1からsuffixは開始している
+            assert!(is_there(1));
+            assert!(is_there(2));
+            assert!(is_there(3));
+            assert!(!is_there(4)); // index 1から長さ3なので4には不在
+
+            let result = wait_for(device.handle().request().list())?;
+            dbg!(&result);
+
+            // Design Question
+            // suffixのheadより手前からの削除を実行出来ても良いか？
+            // エラーとするべきではないか？
+            // tailを超えた位置からの削除はエラーとしている。
+            wait_for(storage.delete_suffix_from(LogIndex::new(0)))?;
+
+            assert!(!is_there(0)); // <- [0,∞)の削除をしたので全て消えているべき
+            assert!(!is_there(1));
+            assert!(!is_there(2));
+            assert!(!is_there(3));
+            assert!(!is_there(4));
+
+            check_prefix();
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn do_my_test4() -> TestResult {
+        // テスト内容: 複数ノードでsuffixを作り範囲削除出来ていることを確認する。
+
+        let node0_id = LocalNodeId::new([0, 0, 0, 0, 0, 0, 1]);
+        let node1_id = LocalNodeId::new([0, 0, 0, 0, 0, 0, 2]);
+
+        let nodes = vec![node0_id, node1_id];
+
+        run_test_with_storages(nodes, |(mut storages, device)| {
+            let term = Term::new(0);
+            let log_entries = vec![LogEntry::Noop { term }; 3];
+            let log_suffix = LogSuffix {
+                head: LogPosition {
+                    prev_term: term,
+                    index: LogIndex::new(0),
+                },
+                entries: log_entries.clone(),
+            };
+
+            let is_there = |idx: u64| -> bool {
+                let lump_id = node0_id.to_log_entry_lump_id(LogIndex::new(idx));
+                let result = wait_for(device.handle().request().head(lump_id)).unwrap();
+                result.is_some()
+            };
+
+            assert!(!is_there(0));
+            assert!(!is_there(1));
+            assert!(!is_there(2));
+            assert!(!is_there(3));
+
+            wait_for(storages[0].save_log_suffix(&log_suffix))?;
+
+            let result = wait_for(device.handle().request().list())?;
+            dbg!(&result);
+
+            assert!(is_there(0));
+            assert!(is_there(1));
+            assert!(is_there(2));
+            assert!(!is_there(3));
+
+            wait_for(storages[1].save_log_suffix(&log_suffix))?;
+
+            let result = wait_for(device.handle().request().list())?;
+            dbg!(&result);
+
+            wait_for(storages[0].delete_suffix_from(LogIndex::new(0)))?;
+
+            let result = wait_for(device.handle().request().list())?;
+            dbg!(&result);
+
+            Ok(())
+        })
+    }
+
+    fn eq_log_suffix(left: &LogSuffix, right: &LogSuffix) -> bool {
+        left.head == right.head && left.entries == right.entries
+    }
+
+    #[test]
+    fn do_my_test5() -> TestResult {
+        let node_id = LocalNodeId::new([0, 11, 222, 3, 44, 5, 66]);
+
+        run_test_with_storage(node_id, |(mut storage, device)| {
+            let log_entries = vec![
+                LogEntry::Noop { term: Term::new(0) },
+                LogEntry::Noop { term: Term::new(1) },
+                LogEntry::Noop { term: Term::new(2) },
+            ];
+            let log_suffix = LogSuffix {
+                head: LogPosition {
+                    prev_term: Term::new(0),
+                    index: LogIndex::new(0),
+                },
+                entries: log_entries.clone(),
+            };
+
+            let is_there = |idx: u64| -> bool {
+                let lump_id = node_id.to_log_entry_lump_id(LogIndex::new(idx));
+                let result = wait_for(device.handle().request().head(lump_id)).unwrap();
+                result.is_some()
+            };
+
+            // まだ何も書き込んでいないのでデフォルト値をとっている
+            assert!(eq_log_suffix(&storage.log_suffix(), &LogSuffix::default()));
+
+            wait_for(storage.save_log_suffix(&log_suffix))?;
+
+            // 書き込むとcacheも変更される
+            assert!(eq_log_suffix(&storage.log_suffix(), &log_suffix));
+
+            // 最終エントリだけ削除してみる
+            wait_for(storage.delete_suffix_from(LogIndex::new(2)))?;
+            assert!(eq_log_suffix(
+                &storage.log_suffix(),
+                &LogSuffix {
+                    head: LogPosition {
+                        prev_term: Term::new(0),
+                        index: LogIndex::new(0),
+                    },
+                    entries: log_entries[0..=1].to_vec()
+                }
+            ));
+
+            // 全削除する
+            wait_for(storage.delete_suffix_from(LogIndex::new(0)))?;
+            assert!(eq_log_suffix(&storage.log_suffix(), &LogSuffix::default()));
+
+            Ok(())
+        })
     }
 }

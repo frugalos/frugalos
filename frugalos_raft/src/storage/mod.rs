@@ -103,6 +103,10 @@ impl Storage {
     pub(crate) fn handle(&self) -> Handle {
         self.handle.clone()
     }
+    #[cfg(test)]
+    pub(crate) fn log_suffix(&self) -> LogSuffix {
+        self.log_suffix.clone()
+    }
     pub(crate) fn save_ballot(&mut self, ballot: Ballot) -> ballot::SaveBallot {
         ballot::SaveBallot::new(self, ballot)
     }
@@ -215,21 +219,21 @@ impl Storage {
     // 確定している以上は消す必要がないから。
     pub(crate) fn delete_suffix_from(&mut self, from: LogIndex) -> DeleteSuffixRange {
         // fromはsuffix中の位置なので次のassertionが成立する
-        assert!(from <= self.log_suffix.tail().index);
+        assert!(from < self.log_suffix.tail().index);
 
         // suffixのメモリ中のcacheを切り詰める。
-        // truncate(pos)は [0..pos] 化するメソッド。
+        // truncate(pos)は [0..pos) = [0..pos-1] 化するメソッド。
         if from == LogIndex::from(0) {
             // cacheを空のsuffixにする
             self.log_suffix = LogSuffix::default();
         } else {
-            let result = self.log_suffix.truncate(from - 1);
+            let result = self.log_suffix.truncate(from);
             assert!(result.is_ok());
         }
 
         DeleteSuffixRange::new(&self.handle, self.node_id(), from)
     }
-    
+
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn is_busy(&mut self) -> bool {
         if self.phase == Phase::Started {
