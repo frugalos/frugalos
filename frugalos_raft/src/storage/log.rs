@@ -204,12 +204,17 @@ impl DeleteSuffixRange {
             handle
                 .device
                 .request()
-                .deadline(Deadline::Infinity)
+                .deadline(Deadline::Immediate)
                 .prioritized()
                 .wait_for_running()
                 .delete_range(node.lump_ids_corresponding_to_suffix_from(from))
                 .map(|_| ()),
         );
+        Self { future }
+    }
+    // Raftlog::Errorを受け取って即座に失敗するfutureに変換する
+    pub(crate) fn err(error: Error) -> Self {
+        let future = Box::new(futures::future::err(error));
         Self { future }
     }
 }
@@ -326,27 +331,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn do_my_test1() {
-        // テスト内容: SHOULD PANIC
-        // suffixの範囲外から削除する場合にはpanicになる。
-
-        let node_id = LocalNodeId::new([0, 11, 222, 3, 44, 5, 66]);
-
-        run_test_with_storage(node_id, |(mut storage, device)| {
-            // 存在しない位置からの削除なのでpanic
-            //
-            // Design Question:
-            // suffixのtailを超えた位置からの削除はエラーとするべきか？
-            // 現在はエラーとし、Futureを生成する段階でPANICとしている。
-            // ここで良いか？Futureは作らせて実行時にエラーとするべきか？
-            wait_for(storage.delete_suffix_from(LogIndex::new(3)))?;
-            Ok(())
-        });
-    }
-
-    #[test]
-    fn do_my_test2() -> TestResult {
+    fn delete_suffix_works_on_suffix_only_setting() -> TestResult {
         // テスト内容: 単一ノードでsuffixを作り範囲削除出来ていることを確認する。
 
         let node_id = LocalNodeId::new([0, 11, 222, 3, 44, 5, 66]);
@@ -362,6 +347,7 @@ mod tests {
                 entries: log_entries.clone(),
             };
 
+            // node_id上に、指定indexエントリが存在するかどうかを確認するclosure
             let is_there = |idx: u64| -> bool {
                 let lump_id = node_id.to_log_entry_lump_id(LogIndex::new(idx));
                 let result = wait_for(device.handle().request().head(lump_id)).unwrap();
@@ -380,15 +366,18 @@ mod tests {
             assert!(is_there(2));
             assert!(!is_there(3)); // <- 長さ3のsuffixなのでここは不在で良い
 
-            wait_for(storage.delete_suffix_from(LogIndex::new(2)))?;
+            // 不在位置からの削除は不正なのでエラーになるべき
+            let result = wait_for(storage.delete_suffix_from(LogIndex::new(3)));
+            assert!(result.is_err());
 
+            // 正当な削除により正しく変更出来ていることを確認
+            wait_for(storage.delete_suffix_from(LogIndex::new(2)))?;
             assert!(is_there(0));
             assert!(is_there(1));
             assert!(!is_there(2)); // <- [2,∞)の削除をしたので消えているべき
             assert!(!is_there(3));
 
             wait_for(storage.delete_suffix_from(LogIndex::new(0)))?;
-
             assert!(!is_there(0)); // <- [0,∞)の削除をしたので全て消えているべき
             assert!(!is_there(1));
             assert!(!is_there(2));
@@ -399,7 +388,7 @@ mod tests {
     }
 
     #[test]
-    fn do_my_test3() -> TestResult {
+    fn delete_suffix_works_on_prefix_and_suffix_setting() -> TestResult {
         // テスト内容: 単一ノードでprefix と suffixを作り
         // suffixだけを範囲削除出来ていることを確認する。
 
@@ -446,6 +435,7 @@ mod tests {
                 entries: log_entries.clone(),
             };
 
+            // node_id上に、指定indexエントリが存在するかどうかを確認するclosure
             let is_there = |idx: u64| -> bool {
                 let lump_id = node_id.to_log_entry_lump_id(LogIndex::new(idx));
                 let result = wait_for(device.handle().request().head(lump_id)).unwrap();
@@ -470,13 +460,17 @@ mod tests {
             let result = wait_for(device.handle().request().list())?;
             dbg!(&result);
 
-            // Design Question
-            // suffixのheadより手前からの削除を実行出来ても良いか？
-            // エラーとするべきではないか？
-            // tailを超えた位置からの削除はエラーとしている。
-            wait_for(storage.delete_suffix_from(LogIndex::new(0)))?;
+            // index-0にはデータがないので、そこからの削除が発行されることは
+            // Raftlogとの不整合が発生していることになり、削除には失敗するべきである
+            let result = wait_for(storage.delete_suffix_from(LogIndex::new(0)));
+            assert!(result.is_err());
 
-            assert!(!is_there(0)); // <- [0,∞)の削除をしたので全て消えているべき
+            // index-4からの削除も同様に失敗することを確認する
+            let result = wait_for(storage.delete_suffix_from(LogIndex::new(4)));
+            assert!(result.is_err());
+
+            // index-1から全てのデータを削除する
+            wait_for(storage.delete_suffix_from(LogIndex::new(1)))?;
             assert!(!is_there(1));
             assert!(!is_there(2));
             assert!(!is_there(3));
@@ -489,8 +483,8 @@ mod tests {
     }
 
     #[test]
-    fn do_my_test4() -> TestResult {
-        // テスト内容: 複数ノードでsuffixを作り範囲削除出来ていることを確認する。
+    fn delete_suffix_works_on_multiple_nodes_setting() -> TestResult {
+        // テスト内容: 複数ノード node0とnode1 でsuffixを作り範囲削除出来ていることを確認する。
 
         let node0_id = LocalNodeId::new([0, 0, 0, 0, 0, 0, 1]);
         let node1_id = LocalNodeId::new([0, 0, 0, 0, 0, 0, 2]);
@@ -508,50 +502,70 @@ mod tests {
                 entries: log_entries.clone(),
             };
 
-            let is_there = |idx: u64| -> bool {
+            // node_id0 上に、指定indexエントリが存在するかどうかを確認するclosure
+            let is_there0 = |idx: u64| -> bool {
                 let lump_id = node0_id.to_log_entry_lump_id(LogIndex::new(idx));
                 let result = wait_for(device.handle().request().head(lump_id)).unwrap();
                 result.is_some()
             };
+            let is_there1 = |idx: u64| -> bool {
+                let lump_id = node1_id.to_log_entry_lump_id(LogIndex::new(idx));
+                let result = wait_for(device.handle().request().head(lump_id)).unwrap();
+                result.is_some()
+            };
 
-            assert!(!is_there(0));
-            assert!(!is_there(1));
-            assert!(!is_there(2));
-            assert!(!is_there(3));
+            // node0の状況確認
+            assert!(!is_there0(0));
+            assert!(!is_there0(1));
+            assert!(!is_there0(2));
+            assert!(!is_there0(3));
 
+            // node1の状況確認
+            assert!(!is_there1(0));
+            assert!(!is_there1(1));
+            assert!(!is_there1(2));
+            assert!(!is_there1(3));
+
+            // node0への保存
             wait_for(storages[0].save_log_suffix(&log_suffix))?;
 
-            let result = wait_for(device.handle().request().list())?;
-            dbg!(&result);
+            assert!(is_there0(0));
+            assert!(is_there0(1));
+            assert!(is_there0(2));
+            assert!(!is_there0(3));
 
-            assert!(is_there(0));
-            assert!(is_there(1));
-            assert!(is_there(2));
-            assert!(!is_there(3));
-
+            // node1への保存
             wait_for(storages[1].save_log_suffix(&log_suffix))?;
 
-            let result = wait_for(device.handle().request().list())?;
-            dbg!(&result);
+            assert!(is_there1(0));
+            assert!(is_there1(1));
+            assert!(is_there1(2));
+            assert!(!is_there1(3));
 
             wait_for(storages[0].delete_suffix_from(LogIndex::new(0)))?;
-
-            let result = wait_for(device.handle().request().list())?;
-            dbg!(&result);
+            //node0からは消えているが
+            assert!(!is_there0(0));
+            assert!(!is_there0(1));
+            assert!(!is_there0(2));
+            // node1からは消えていない
+            assert!(is_there1(0));
+            assert!(is_there1(1));
+            assert!(is_there1(2));
 
             Ok(())
         })
     }
 
+    // LogSuffixがPartialEqをderiveしていないのでadhocに実装している
     fn eq_log_suffix(left: &LogSuffix, right: &LogSuffix) -> bool {
         left.head == right.head && left.entries == right.entries
     }
 
     #[test]
-    fn do_my_test5() -> TestResult {
+    fn delete_suffix_works_with_changing_cache_correctly() -> TestResult {
         let node_id = LocalNodeId::new([0, 11, 222, 3, 44, 5, 66]);
 
-        run_test_with_storage(node_id, |(mut storage, device)| {
+        run_test_with_storage(node_id, |(mut storage, _)| {
             let log_entries = vec![
                 LogEntry::Noop { term: Term::new(0) },
                 LogEntry::Noop { term: Term::new(1) },
@@ -563,12 +577,6 @@ mod tests {
                     index: LogIndex::new(0),
                 },
                 entries: log_entries.clone(),
-            };
-
-            let is_there = |idx: u64| -> bool {
-                let lump_id = node_id.to_log_entry_lump_id(LogIndex::new(idx));
-                let result = wait_for(device.handle().request().head(lump_id)).unwrap();
-                result.is_some()
             };
 
             // まだ何も書き込んでいないのでデフォルト値をとっている
