@@ -44,6 +44,7 @@ impl Io for RaftIo {
     type LoadBallot = storage::LoadBallot;
     type SaveLog = storage::SaveLog;
     type LoadLog = storage::LoadLog;
+    type DeleteLog = storage::DeleteSuffixRange;
     type Timeout = Timeout;
     fn try_recv_message(&mut self) -> Result<Option<Message>> {
         self.mailer
@@ -74,6 +75,9 @@ impl Io for RaftIo {
     }
     fn load_log(&mut self, start: LogIndex, end: Option<LogIndex>) -> Self::LoadLog {
         self.storage.load_log(start, end)
+    }
+    fn delete_suffix_from(&mut self, from: LogIndex) -> Self::DeleteLog {
+        self.storage.delete_suffix_from(from)
     }
     fn create_timeout(&mut self, role: Role) -> Self::Timeout {
         self.timer.create_timeout(role)

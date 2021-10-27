@@ -12,7 +12,7 @@ use trackable::error::ErrorKindExt;
 use crate::LocalNodeId;
 
 pub use self::ballot::{LoadBallot, SaveBallot};
-pub use self::log::{DeleteLog, LoadLog, SaveLog};
+pub use self::log::{DeleteLog, DeleteSuffixRange, LoadLog, SaveLog};
 pub use self::log_prefix::{LoadLogPrefix, SaveLogPrefix};
 pub use self::log_suffix::{LoadLogSuffix, SaveLogSuffix};
 
@@ -102,6 +102,10 @@ impl Storage {
     #[cfg(test)]
     pub(crate) fn handle(&self) -> Handle {
         self.handle.clone()
+    }
+    #[cfg(test)]
+    pub(crate) fn log_suffix(&self) -> LogSuffix {
+        self.log_suffix.clone()
     }
     pub(crate) fn save_ballot(&mut self, ballot: Ballot) -> ballot::SaveBallot {
         ballot::SaveBallot::new(self, ballot)
@@ -206,6 +210,52 @@ impl Storage {
             log::SaveLogInner::Prefix(log_prefix::SaveLogPrefix::new(self, prefix))
         };
         SaveLog::new(inner, self.metrics.clone())
+    }
+
+    // [from, ∞) で from 以降のエントリを一括削除する。
+    // テクニカルな条件ではあるが、fromはSuffix中の位置を表し、
+    // Prefix中の位置を表すことはない。
+    // なぜなら、Prefixは確定済みのデータの集まりであり、
+    // 確定している以上は消す必要がないから。
+    pub(crate) fn delete_suffix_from(&mut self, from: LogIndex) -> DeleteSuffixRange {
+        // 前提: self.log_suffix はメモリ上のsuffixのcache
+        //
+        // `delete_suffix_from`はsuffixに「存在する」エントリのうち
+        // 不要と判断されたものを削除する操作なので
+        // 前提と合わせると、次の条件が成立していない状況は致命的なエラーとなる
+        if from >= self.log_suffix.tail().index {
+            // tail = log_suffixの最終エントリ+1
+            // すなわちtail-位置にはエントリは存在しない
+            let err_msg = format!(
+                "The index {:?} is larger than log_suffix's last {:?}",
+                from,
+                self.log_suffix.tail()
+            );
+
+            let err: Error = ErrorKind::InconsistentState.cause(err_msg).into();
+            return DeleteSuffixRange::err(track!(err));
+        } else if from < self.log_suffix.head.index {
+            let err_msg = format!(
+                "The index {:?} is smaller than log_suffix's start {:?}",
+                from, self.log_suffix.head
+            );
+
+            let err: Error = ErrorKind::InconsistentState.cause(err_msg).into();
+            return DeleteSuffixRange::err(track!(err));
+        }
+
+        // suffixのメモリ中のcacheを切り詰める。
+        if from == LogIndex::from(0) {
+            // cacheを空のsuffixにする
+            self.log_suffix = LogSuffix::default();
+        } else {
+            // X.truncate(pos)は X <- X[0..pos-1] で更新するメソッド
+            self.log_suffix
+                .truncate(from)
+                .expect("上記のfromに関する条件から失敗しない");
+        }
+
+        DeleteSuffixRange::new(&self.handle, self.node_id(), from)
     }
 
     #[allow(clippy::wrong_self_convention)]

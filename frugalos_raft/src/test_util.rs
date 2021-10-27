@@ -221,6 +221,23 @@ where
     f((storage, device))
 }
 
+/// `Storage` を利用するテストケースを実行する。
+pub(crate) fn run_test_with_storages<F>(node_ids: Vec<LocalNodeId>, f: F) -> TestResult
+where
+    F: FnOnce((Vec<Storage>, cannyls::device::Device)) -> TestResult,
+{
+    let device = track!(spawn_memory_device(1024 * 1024))?;
+
+    let mut v = Vec::new();
+
+    for node_id in node_ids {
+        let logger = Logger::root(Discard, o!());
+        let storage = Storage::new(logger, node_id, device.handle(), StorageMetrics::new());
+        v.push(storage);
+    }
+    f((v, device))
+}
+
 /// テスト用に raft クラスタに propose するために使えるデータを生成して返す。
 pub(crate) fn make_proposals(size: usize) -> Vec<Vec<u8>> {
     (0..size)
